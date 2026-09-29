@@ -41,6 +41,11 @@ class PROJECT_CROSSHAIR_API UCrosshairInputConfig : public UDataAsset
 {
 	GENERATED_BODY()
 public:
+/** Required actions are checked before any bindings are installed. */
+	bool IsComplete() const
+	{
+		return Mapping && Move && MouseLook && StickLook && Jump && Sprint && Crouch && Fire && Aim && Reload && SwitchWeapon && Placement && RotateTarget && RemoveTarget && ClearTargets && SaveStart && Reset;
+	}
 	UPROPERTY(EditAnywhere) TObjectPtr<UInputMappingContext> Mapping;
 	UPROPERTY(EditAnywhere) TObjectPtr<UInputAction> Move;
 	UPROPERTY(EditAnywhere) TObjectPtr<UInputAction> MouseLook;
@@ -104,6 +109,13 @@ namespace CrosshairRules
 		DeadZone = FMath::Clamp(DeadZone, 0.f, 0.9f);
 		if (Length <= DeadZone) return FVector2D::ZeroVector;
 		return Input / Length * FMath::Pow(FMath::Clamp((Length - DeadZone) / (1.f - DeadZone), 0.f, 1.f), FMath::Max(0.1f, Exponent));
+	}
+	/** Stick rate integrates over time, so the same input turns equally at different frame rates. */
+	inline FVector2D StickDelta(FVector2D Input, const FCrosshairSettings& Settings, float AimAlpha, float DeltaSeconds)
+	{
+		const FVector2D Axis = FilterStick(Input, Settings.StickDeadZone, Settings.StickExponent);
+		const float Scale = DeltaSeconds * FMath::Lerp(1.f, Settings.AimSensitivity, AimAlpha);
+		return FVector2D(Axis.X * Settings.StickYawSpeed, Axis.Y * Settings.StickPitchSpeed) * Scale;
 	}
 	inline bool CanFire(int32 Ammo, bool bReloading, double Now, double NextShot)
 	{

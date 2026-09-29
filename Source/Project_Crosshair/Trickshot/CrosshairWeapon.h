@@ -15,7 +15,7 @@ class PROJECT_CROSSHAIR_API ACrosshairWeapon : public AActor
 public:
 	ACrosshairWeapon();
 	virtual void Tick(float DeltaSeconds) override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	void Initialize(UCrosshairWeaponDefinition* InDefinition);
 	void SetEquipped(bool bEquipped);
 	void StartFire();
@@ -51,7 +51,7 @@ class PROJECT_CROSSHAIR_API UCrosshairInventoryComponent : public UActorComponen
 public:
 	UCrosshairInventoryComponent();
 	virtual void BeginPlay() override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UFUNCTION(BlueprintPure) ACrosshairWeapon* GetCurrent() const;
 	UFUNCTION(BlueprintCallable) void Equip(int32 Index);
 	void Cycle();

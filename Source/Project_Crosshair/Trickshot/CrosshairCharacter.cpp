@@ -23,12 +23,13 @@ ACrosshairCharacter::ACrosshairCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
 	bAlwaysRelevant = true;
-	NetUpdateFrequency = 120;
-	MinNetUpdateFrequency = 60;
+	SetNetUpdateFrequency(120);
+	SetMinNetUpdateFrequency(60);
 	Inventory = CreateDefaultSubobject<UCrosshairInventoryComponent>(TEXT("Inventory"));
 	Placement = CreateDefaultSubobject<UCrosshairPlacementComponent>(TEXT("Placement"));
 	Attempt = CreateDefaultSubobject<UCrosshairAttemptComponent>(TEXT("Attempt"));
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
+	GetCharacterMovement()->SetCrouchedHalfHeight(58.f);
 	GetCharacterMovement()->JumpZVelocity = 460;
 	GetCharacterMovement()->AirControl = 0.25f;
 	GetCharacterMovement()->BrakingDecelerationFalling = 0;
@@ -46,23 +47,19 @@ ACrosshairCharacter::ACrosshairCharacter()
 	GetFirstPersonMesh()->SetCastShadow(false);
 	GetFirstPersonMesh()->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::None;
 	GetMesh()->SetVisibility(false);
-	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Arms(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
-	static ConstructorHelpers::FObjectFinder<UAnimSequence> Idle(TEXT("/Game/Characters/Mannequins/Anims/Rifle/MF_Rifle_Idle_ADS"));
-	static ConstructorHelpers::FObjectFinder<UAnimSequence> Reload(TEXT("/Game/Characters/Mannequins/Anims/Rifle/MM_Rifle_Reload"));
-	GetFirstPersonMesh()->SetSkeletalMesh(Arms.Object);
-	IdleAnimation = Idle.Object;
-	ReloadAnimation = Reload.Object;
-	static ConstructorHelpers::FObjectFinder<UCrosshairInputConfig> Config(TEXT("/Game/Crosshair/Input/DA_Input"));
-	Inputs = Config.Object;
-	static ConstructorHelpers::FObjectFinder<UCrosshairWeaponDefinition> Sniper(TEXT("/Game/Crosshair/Weapons/DA_Sniper"));
-	static ConstructorHelpers::FObjectFinder<UCrosshairWeaponDefinition> Rifle(TEXT("/Game/Crosshair/Weapons/DA_AR"));
-	static ConstructorHelpers::FObjectFinder<UCrosshairWeaponDefinition> SMG(TEXT("/Game/Crosshair/Weapons/DA_SMG"));
-	Inventory->Loadout = {Sniper.Object, Rifle.Object, SMG.Object};
+
+}
+void ACrosshairCharacter::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	Inventory->Loadout = DefaultLoadout;
+	Placement->TargetClass = TargetClass;
+	GetCharacterMovement()->MaxWalkSpeedCrouched = CrouchSpeed;
 }
 void ACrosshairCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	GetFirstPersonMesh()->PlayAnimation(IdleAnimation, true);
+	if (IdleAnimation) GetFirstPersonMesh()->PlayAnimation(IdleAnimation, true);
 	if (IsReplayPlayback()) return;
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
@@ -76,12 +73,16 @@ void ACrosshairCharacter::BeginPlay()
 }
 void ACrosshairCharacter::EndPlay(EEndPlayReason::Type Reason)
 {
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+		if (ULocalPlayer* Local = PC->GetLocalPlayer())
+			if (auto* Input = Local->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+				if (Inputs && Inputs->Mapping) Input->RemoveMappingContext(Inputs->Mapping);
 	if (!IsReplayPlayback()) for (ACrosshairWeapon* Weapon : Inventory->Weapons) if (IsValid(Weapon)) Weapon->Destroy();
 	Super::EndPlay(Reason);
 }
-void ACrosshairCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const
+void ACrosshairCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
-	Super::GetLifetimeReplicatedProps(Out);
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME_CONDITION(ACrosshairCharacter, RecordedView, COND_ReplayOnly);
 }
 bool ACrosshairCharacter::IsReplayPlayback() const
@@ -116,6 +117,7 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		Camera->SetFieldOfView(FMath::Lerp(Settings.FieldOfView, Weapon && Weapon->Definition ? Weapon->Definition->AimFOV : Settings.FieldOfView, AimAlpha));
 		const float EyeZ = bIsCrouched ? 30.f : 64.f;
 		Camera->SetRelativeLocation(FVector(0, 0, FMath::FInterpTo(Camera->GetRelativeLocation().Z, EyeZ, DeltaSeconds, 12)));
+		GetCharacterMovement()->MaxWalkSpeedCrouched = CrouchSpeed;
 		GetCharacterMovement()->MaxWalkSpeed = bSprintHeld && !bWantsAim && !bIsCrouched ? SprintSpeed : WalkSpeed * FMath::Lerp(1.f, 0.6f, AimAlpha);
 		RecordedView.Location = Camera->GetComponentLocation();
 		RecordedView.Rotation = Camera->GetComponentRotation();
@@ -139,7 +141,7 @@ void ACrosshairCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 {
 	// The base template binds its own input assets; this mode supplies a complete independent mapping.
 	UEnhancedInputComponent* Enhanced = Cast<UEnhancedInputComponent>(Input);
-	if (!Enhanced || !Inputs) { UE_LOG(LogTemp, Error, TEXT("Crosshair input assets are missing. Run Scripts/create_crosshair_assets.py.")); return; }
+	if (!Enhanced || !Inputs || !Inputs->IsComplete()) { UE_LOG(LogTemp, Error, TEXT("Crosshair input assets are missing. Run Scripts/create_crosshair_assets.py.")); return; }
 	Enhanced->BindAction(Inputs->Move, ETriggerEvent::Triggered, this, &ACrosshairCharacter::Move);
 	Enhanced->BindAction(Inputs->MouseLook, ETriggerEvent::Triggered, this, &ACrosshairCharacter::MouseAim);
 	Enhanced->BindAction(Inputs->StickLook, ETriggerEvent::Triggered, this, &ACrosshairCharacter::StickAim);
@@ -153,7 +155,7 @@ void ACrosshairCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 	BIND_START(Reload, ReloadPressed); BIND_START(SwitchWeapon, SwitchPressed);
 	BIND_START(Placement, PlacementPressed); BIND_START(RotateTarget, RotatePressed);
 	BIND_START(RemoveTarget, RemovePressed); BIND_START(ClearTargets, ClearPressed);
-	BIND_START(SaveStart, SavePressed); BIND_START(Reset, ResetPressed); BIND_START(Menu, MenuPressed);
+	BIND_START(SaveStart, SavePressed); BIND_START(Reset, ResetPressed); // Menu belongs to the controller, including during replay.
 #undef BIND_START
 #undef BIND_END
 }
@@ -179,11 +181,10 @@ void ACrosshairCharacter::StickAim(const FInputActionValue& Value)
 {
 	if (!CanAct()) return;
 	const auto& Settings = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
-	const FVector2D Axis = CrosshairRules::FilterStick(Value.Get<FVector2D>(), Settings.StickDeadZone, Settings.StickExponent);
-	const float Scale = GetWorld()->GetDeltaSeconds() * FMath::Lerp(1.f, Settings.AimSensitivity, AimAlpha);
+	const FVector2D Delta = CrosshairRules::StickDelta(Value.Get<FVector2D>(), Settings, AimAlpha, GetWorld()->GetDeltaSeconds());
 	FRotator Rotation = GetControlRotation();
-	Rotation.Yaw += Axis.X * Settings.StickYawSpeed * Scale;
-	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) + Axis.Y * Settings.StickPitchSpeed * Scale, -85.f, 85.f);
+	Rotation.Yaw += Delta.X;
+	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) + Delta.Y, -85.f, 85.f);
 	GetController()->SetControlRotation(Rotation);
 }
 void ACrosshairCharacter::JumpPressed() { if (CanAct()) Jump(); }
@@ -191,7 +192,7 @@ void ACrosshairCharacter::JumpReleased() { StopJumping(); }
 void ACrosshairCharacter::SprintPressed() { if (CanAct()) bSprintHeld = true; }
 void ACrosshairCharacter::SprintReleased() { bSprintHeld = false; }
 void ACrosshairCharacter::CrouchPressed() { if (CanAct()) { if (bIsCrouched) UnCrouch(); else Crouch(); } }
-void ACrosshairCharacter::FirePressed() { if (!CanAct()) return; if (Placement->bPlacing) Placement->Confirm(); else if (auto* W = Inventory->GetCurrent()) W->StartFire(); }
+void ACrosshairCharacter::FirePressed() { if (!CanAct()) return; bSprintHeld = false; if (Placement->bPlacing) Placement->Confirm(); else if (auto* W = Inventory->GetCurrent()) W->StartFire(); }
 void ACrosshairCharacter::FireReleased() { if (auto* W = Inventory->GetCurrent()) W->StopFire(); }
 void ACrosshairCharacter::AimPressed() { if (!CanAct()) return; if (Placement->bPlacing) Placement->Toggle(); else { bAimHeld = true; bSprintHeld = false; } }
 void ACrosshairCharacter::AimReleased() { bAimHeld = false; }

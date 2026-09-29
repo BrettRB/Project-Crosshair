@@ -27,19 +27,22 @@ ACrosshairDummy::ACrosshairDummy()
 	Head->SetRelativeLocation(FVector(0, 0, 66));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere"));
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Material(TEXT("/Game/Crosshair/Targets/M_Target"));
 	Body->SetStaticMesh(Cylinder.Object);
 	Head->SetStaticMesh(Sphere.Object);
-	if (Material.Succeeded()) { Body->SetMaterial(0, Material.Object); Head->SetMaterial(0, Material.Object); }
 }
 
-void ACrosshairDummy::BeginPlay() { Super::BeginPlay(); OnRep_Hit(); }
-void ACrosshairDummy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const
+void ACrosshairDummy::BeginPlay()
 {
-	Super::GetLifetimeReplicatedProps(Out);
+	Super::BeginPlay();
+	if (TargetMaterial) { Body->SetMaterial(0, TargetMaterial); Head->SetMaterial(0, TargetMaterial); }
+	OnRep_Hit();
+}
+void ACrosshairDummy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ACrosshairDummy, bHit);
 }
-float ACrosshairDummy::TakeDamage(float Amount, const FDamageEvent& Event, AController* Instigator, AActor* Causer)
+float ACrosshairDummy::TakeDamage(float Amount, const FDamageEvent& Event, AController* EventInstigator, AActor* Causer)
 {
 	if (!HasAuthority() || bHit || Amount <= 0 || (GetWorld()->GetDemoNetDriver() && GetWorld()->GetDemoNetDriver()->IsPlaying())) return 0;
 	bHit = true;

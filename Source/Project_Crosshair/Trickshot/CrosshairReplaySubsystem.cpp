@@ -11,18 +11,32 @@
 #include "Misc/PackageName.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
-namespace { const TCHAR* SaveSlot = TEXT("CrosshairProfile_v1"); }
+namespace
+{
+	const TCHAR* ProfileSlot()
+	{
+		return FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmokeSaved")) ? TEXT("CrosshairSmoke_v1") : TEXT("CrosshairProfile_v1");
+	}
+}
 
 void UCrosshairReplaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	Save = Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(SaveSlot, 0));
+	if (!FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke"))) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(ProfileSlot(), 0));
 	if (!Save) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::CreateSaveGameObject(UCrosshairSaveGame::StaticClass()));
 }
 void UCrosshairReplaySubsystem::Deinitialize()
 {
-	StopRecording(false);
+	const bool Keep = IsFinishing();
+	StopRecording(Keep);
+	if (Keep && !Current.Name.IsEmpty())
+	{
+		Save->Replays.Add(Current);
+		Current = FCrosshairReplayEntry();
+	}
 	SaveSettings();
 	Super::Deinitialize();
 }
@@ -37,7 +51,7 @@ void UCrosshairReplaySubsystem::SaveSettings()
 	S.MouseSensitivity = FMath::Clamp(S.MouseSensitivity, 0.01f, 1.f);
 	S.AimSensitivity = FMath::Clamp(S.AimSensitivity, 0.05f, 1.f);
 	S.FieldOfView = FMath::Clamp(S.FieldOfView, 65.f, 110.f);
-	if (!UGameplayStatics::SaveGameToSlot(Save, SaveSlot, 0)) Report(TEXT("Unable to save settings/replay list. Check free disk space."));
+	if (!UGameplayStatics::SaveGameToSlot(Save, ProfileSlot(), 0)) Report(TEXT("Unable to save settings/replay list. Check free disk space."));
 }
 void UCrosshairReplaySubsystem::Report(const FString& Message)
 {
@@ -55,7 +69,7 @@ void UCrosshairReplaySubsystem::PracticeReady(ACrosshairCharacter* Player)
 		Player->Attempt->StartTransform = ReturnStart;
 		Player->Inventory->Equip(ReturnWeapon);
 	}
-	ReturnMap = Player->GetWorld()->GetOutermost()->GetName();
+	ReturnMap = UWorld::RemovePIEPrefix(Player->GetWorld()->GetOutermost()->GetName());
 	Phase = ECrosshairReplayPhase::Idle;
 	Player->Attempt->ResetAttempt();
 }
@@ -80,7 +94,7 @@ void UCrosshairReplaySubsystem::StopRecording(bool bKeep)
 }
 void UCrosshairReplaySubsystem::BeginAttempt()
 {
-	if (IsPlayback()) return;
+	if (IsPlayback() || IsFinishing()) return;
 	StopRecording(false);
 	Phase = Save->Settings.bContinuousPractice ? ECrosshairReplayPhase::Idle : ECrosshairReplayPhase::StartPending;
 	PhaseStarted = FPlatformTime::Seconds();
@@ -94,13 +108,14 @@ void UCrosshairReplaySubsystem::CompleteAttempt()
 	}
 	CaptureSession();
 	Current.HitSeconds = GetWorld()->GetDemoNetDriver()->GetDemoCurrentTime();
+	bFinalizeWarning = false;
 	Phase = ECrosshairReplayPhase::Tail;
 	TailEndsAt = GetWorld()->GetTimeSeconds() + 1.0;
 	Report(TEXT("Hit confirmed — saving replay"));
 }
 void UCrosshairReplaySubsystem::PlaySaved(int32 Index)
 {
-	if (!Save->Replays.IsValidIndex(Index) || IsFinishing()) return;
+	if (!Save->Replays.IsValidIndex(Index) || IsFinishing() || IsPlayback()) return;
 	const FCrosshairReplayEntry Entry = Save->Replays[Index];
 	if (Entry.FormatVersion != ReplayFormatVersion || !FPackageName::DoesPackageExist(Entry.Map))
 	{
@@ -109,7 +124,9 @@ void UCrosshairReplaySubsystem::PlaySaved(int32 Index)
 	}
 	CaptureSession();
 	StopRecording(false);
-	StartPlayback(Entry);
+	Viewing = Entry;
+	Phase = ECrosshairReplayPhase::AwaitPlayback;
+	PhaseStarted = FPlatformTime::Seconds();
 }
 void UCrosshairReplaySubsystem::StartPlayback(const FCrosshairReplayEntry& Entry)
 {
@@ -173,8 +190,27 @@ void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 		Current.FormatVersion = ReplayFormatVersion;
 		if (IConsoleVariable* Rate = IConsoleManager::Get().FindConsoleVariable(TEXT("demo.RecordHz"))) Rate->Set(60.f, ECVF_SetByCode);
 		GetGameInstance()->StartRecordingReplay(Current.Name, Current.RecordedAt, {TEXT("ReplayStreamerOverride=LocalFileNetworkReplayStreaming")});
-		Phase = World->GetDemoNetDriver() && World->GetDemoNetDriver()->IsRecording() ? ECrosshairReplayPhase::Recording : ECrosshairReplayPhase::Idle;
-		Report(Phase == ECrosshairReplayPhase::Recording ? TEXT("Attempt ready") : TEXT("Replay recording unavailable. Try Standalone Game or the Windows build."));
+		Phase = ECrosshairReplayPhase::Starting;
+		PhaseStarted = Now;
+	}
+	else if (Phase == ECrosshairReplayPhase::Starting)
+	{
+		if (World->GetDemoNetDriver() && World->GetDemoNetDriver()->IsRecording())
+		{
+			Phase = ECrosshairReplayPhase::Recording;
+			Report(TEXT("Attempt ready"));
+		}
+		else if (Now - PhaseStarted > 10)
+		{
+			StopRecording(false);
+			Phase = ECrosshairReplayPhase::Idle;
+			Report(TEXT("Replay recording unavailable. Use Standalone Game or Windows build; reset to retry."));
+		}
+	}
+	else if (Phase == ECrosshairReplayPhase::AwaitPlayback)
+	{
+		if (bWriterReady) StartPlayback(Viewing);
+		else if (Now - PhaseStarted > 20) { Report(TEXT("Previous recording is still closing; returning to practice.")); ReturnToPractice(); }
 	}
 	else if (Phase == ECrosshairReplayPhase::Recording && World->GetDemoNetDriver() && World->GetDemoNetDriver()->GetDemoCurrentTime() > 120)
 	{
@@ -195,10 +231,11 @@ void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 		Current = FCrosshairReplayEntry();
 		StartPlayback(Entry);
 	}
-	else if (Phase == ECrosshairReplayPhase::Finalizing && Now - PhaseStarted > 20)
+	else if (Phase == ECrosshairReplayPhase::Finalizing && Now - PhaseStarted > 20 && !bFinalizeWarning)
 	{
-		Report(TEXT("Replay storage is taking too long. Check disk space, then reset."));
-		Phase = ECrosshairReplayPhase::Idle;
+		Report(TEXT("Replay storage is slow. Recording retained; practice controls restored."));
+		bFinalizeWarning = true;
+		if (LivePlayer.IsValid()) LivePlayer->Attempt->bSucceeded = false;
 	}
 	else if (IsPlayback())
 	{

@@ -14,16 +14,16 @@ ACrosshairWeapon::ACrosshairWeapon()
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
 	bAlwaysRelevant = true;
-	NetUpdateFrequency = 60;
+	SetNetUpdateFrequency(60);
 	Mesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Weapon mesh"));
 	SetRootComponent(Mesh);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Mesh->SetCastShadow(false);
 }
 void ACrosshairWeapon::BeginPlay() { Super::BeginPlay(); OnRep_Definition(); }
-void ACrosshairWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const
+void ACrosshairWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
-	Super::GetLifetimeReplicatedProps(Out);
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ACrosshairWeapon, Definition);
 	DOREPLIFETIME(ACrosshairWeapon, Ammo);
 	DOREPLIFETIME(ACrosshairWeapon, bReloading);
@@ -55,8 +55,9 @@ void ACrosshairWeapon::ResetWeapon()
 {
 	StopFire();
 	bReloading = false;
-	Ammo = Definition ? Definition->MagazineSize : 0;
+	Ammo = Definition ? FMath::Max(1, Definition->MagazineSize) : 0;
 	NextShotAt = GetWorld()->GetTimeSeconds();
+	Kick = 0;
 }
 void ACrosshairWeapon::StartFire()
 {
@@ -70,7 +71,7 @@ void ACrosshairWeapon::Reload()
 	StopFire();
 	bReloading = true;
 	ReloadStartedAt = GetWorld()->GetTimeSeconds();
-	ReloadEndsAt = ReloadStartedAt + Definition->ReloadSeconds;
+	ReloadEndsAt = ReloadStartedAt + FMath::Max(0.1f, Definition->ReloadSeconds);
 }
 void ACrosshairWeapon::Tick(float DeltaSeconds)
 {
@@ -80,7 +81,7 @@ void ACrosshairWeapon::Tick(float DeltaSeconds)
 	if (!HasAuthority() || (GetWorld()->GetDemoNetDriver() && GetWorld()->GetDemoNetDriver()->IsPlaying())) return;
 	if (bReloading && GetWorld()->GetTimeSeconds() >= ReloadEndsAt)
 	{
-		Ammo = Definition ? Definition->MagazineSize : 0;
+		Ammo = Definition ? FMath::Max(1, Definition->MagazineSize) : 0;
 		bReloading = false;
 	}
 	if (bTriggerHeld && Definition && Definition->bAutomatic) TryFire();
@@ -136,7 +137,7 @@ void ACrosshairWeapon::UpdatePresentation(float AimAlpha)
 	FRotator Rotation = Definition->MeshRotation;
 	if (bReloading)
 	{
-		const float Phase = FMath::Clamp((GetWorld()->GetTimeSeconds() - ReloadStartedAt) / Definition->ReloadSeconds, 0.f, 1.f);
+		const float Phase = FMath::Clamp((GetWorld()->GetTimeSeconds() - ReloadStartedAt) / FMath::Max(0.1f, Definition->ReloadSeconds), 0.f, 1.f);
 		Offset.Z -= FMath::Sin(Phase * PI) * 20;
 		Rotation.Roll += FMath::Sin(Phase * PI) * 30;
 	}
@@ -144,9 +145,9 @@ void ACrosshairWeapon::UpdatePresentation(float AimAlpha)
 }
 
 UCrosshairInventoryComponent::UCrosshairInventoryComponent() { SetIsReplicatedByDefault(true); }
-void UCrosshairInventoryComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const
+void UCrosshairInventoryComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
-	Super::GetLifetimeReplicatedProps(Out);
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UCrosshairInventoryComponent, Weapons);
 	DOREPLIFETIME(UCrosshairInventoryComponent, ActiveIndex);
 }
@@ -163,6 +164,7 @@ void UCrosshairInventoryComponent::BeginPlay()
 		Params.Instigator = Player;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		ACrosshairWeapon* Weapon = GetWorld()->SpawnActor<ACrosshairWeapon>(ACrosshairWeapon::StaticClass(), Params);
+		if (!Weapon) { UE_LOG(LogTemp, Error, TEXT("Unable to spawn loadout weapon")); continue; }
 		Weapon->Initialize(Definition);
 		Weapon->AttachToComponent(Player->GetFirstPersonCameraComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		Weapon->SetEquipped(false);

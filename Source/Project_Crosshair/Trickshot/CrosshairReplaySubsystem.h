@@ -8,7 +8,7 @@
 class ACrosshairCharacter;
 class FLocalFileNetworkReplayStreamer;
 
-enum class ECrosshairReplayPhase : uint8 { Idle, StartPending, Recording, Tail, Finalizing, Loading, Playing, Returning };
+enum class ECrosshairReplayPhase : uint8 { Idle, StartPending, Starting, Recording, AwaitPlayback, Tail, Finalizing, Loading, Playing, Returning };
 
 /** Persists across map travel. Uses Unreal replay files; these are not video files. */
 UCLASS()
@@ -32,7 +32,7 @@ public:
 	UFUNCTION(BlueprintCallable) void SaveSettings();
 	FCrosshairSettings& GetSettings() { return Save->Settings; }
 	const TArray<FCrosshairReplayEntry>& GetReplays() const { return Save->Replays; }
-	bool IsPlayback() const { return Phase == ECrosshairReplayPhase::Loading || Phase == ECrosshairReplayPhase::Playing; }
+	bool IsPlayback() const { return Phase == ECrosshairReplayPhase::AwaitPlayback || Phase == ECrosshairReplayPhase::Loading || Phase == ECrosshairReplayPhase::Playing; }
 	bool IsFinishing() const { return Phase == ECrosshairReplayPhase::Tail || Phase == ECrosshairReplayPhase::Finalizing; }
 	bool IsRecording() const { return Phase == ECrosshairReplayPhase::Recording; }
 	FString Status;
@@ -53,6 +53,7 @@ private:
 	TArray<FTransform> ReturnTargets;
 	int32 ReturnWeapon = 0;
 	bool bHaveSession = false;
+	bool bFinalizeWarning = false;
 	bool bSeekStarted = false;
 	bool bSeekComplete = false;
 	double PhaseStarted = 0;

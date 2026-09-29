@@ -8,6 +8,9 @@
 #include "EngineUtils.h"
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Components/CapsuleComponent.h"
 
 UCrosshairPlacementComponent::UCrosshairPlacementComponent() { PrimaryComponentTick.bCanEverTick = true; }
 void UCrosshairPlacementComponent::Toggle()
@@ -20,29 +23,59 @@ void UCrosshairPlacementComponent::Toggle()
 		Player->Notify(bPlacing ? TEXT("Place target: aim at ground, Fire to confirm, ADS to cancel") : TEXT("Placement cancelled"));
 	}
 }
+void UCrosshairPlacementComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	PreviewMesh = NewObject<UStaticMeshComponent>(GetOwner(), TEXT("PlacementPreview"));
+	PreviewMesh->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
+	PreviewMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	PreviewMesh->SetCastShadow(false);
+	PreviewMesh->RegisterComponent();
+	PreviewMesh->SetWorldScale3D(FVector(0.56, 0.56, 1.8));
+	PreviewMesh->SetVisibility(false);
+}
+void UCrosshairPlacementComponent::EndPlay(EEndPlayReason::Type Reason)
+{
+	if (PreviewMesh) PreviewMesh->DestroyComponent();
+	Super::EndPlay(Reason);
+}
+void UCrosshairPlacementComponent::UpdatePreview()
+{
+	ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner());
+	bValidPlacement = false;
+	if (!Player || !Player->CanAct() || !bPlacing) return;
+	const UCameraComponent* Camera = Player->GetFirstPersonCameraComponent();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TargetPlacement), false);
+	FHitResult Ground;
+	const FVector Start = Camera->GetComponentLocation();
+	Params.AddIgnoredActor(Player);
+	GetWorld()->LineTraceSingleByChannel(Ground, Start, Start + Camera->GetForwardVector() * PlacementRange, ECC_Visibility, Params);
+	Preview.SetLocation(Ground.ImpactPoint + FVector(0, 0, 94));
+	// Include the player in clearance checks; do not place a target inside the player capsule.
+	FCollisionQueryParams Clearance(SCENE_QUERY_STAT(TargetClearance), false);
+	bValidPlacement = Ground.bBlockingHit && IsSupportedSurface(Ground.ImpactNormal) && !GetWorld()->OverlapBlockingTestByChannel(Preview.GetLocation(), Preview.GetRotation(), ECC_Pawn, FCollisionShape::MakeCapsule(28, 90), Clearance);
+}
 void UCrosshairPlacementComponent::TickComponent(float Delta, ELevelTick Type, FActorComponentTickFunction* Function)
 {
 	Super::TickComponent(Delta, Type, Function);
-	ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner());
-	if (!bPlacing || !Player || Player->IsReplayPlayback()) return;
-	const UCameraComponent* Camera = Player->GetFirstPersonCameraComponent();
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(TargetPlacement), false, GetOwner());
-	FHitResult Ground;
-	const FVector Start = Camera->GetComponentLocation();
-	GetWorld()->LineTraceSingleByChannel(Ground, Start, Start + Camera->GetForwardVector() * PlacementRange, ECC_Visibility, Params);
-	Preview.SetLocation(Ground.ImpactPoint + FVector(0, 0, 94));
-	bValidPlacement = Ground.bBlockingHit && IsSupportedSurface(Ground.ImpactNormal) && !GetWorld()->OverlapBlockingTestByChannel(Preview.GetLocation(), Preview.GetRotation(), ECC_Pawn, FCollisionShape::MakeCapsule(28, 90), Params);
-	const FColor Color = bValidPlacement ? FColor::Green : FColor::Red;
-	DrawDebugCapsule(GetWorld(), Preview.GetLocation(), 90, 28, Preview.GetRotation(), Color, false, 0, 0, 2);
-	DrawDebugDirectionalArrow(GetWorld(), Preview.GetLocation(), Preview.GetLocation() + Preview.GetRotation().GetForwardVector() * 100, 20, Color, false, 0, 0, 3);
+	UpdatePreview();
+	if (PreviewMesh)
+	{
+		PreviewMesh->SetVisibility(bPlacing);
+		PreviewMesh->SetWorldLocationAndRotation(Preview.GetLocation(), Preview.GetRotation());
+	}
 }
 void UCrosshairPlacementComponent::Confirm()
 {
 	ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner());
 	if (!bPlacing || !Player || !Player->CanAct()) return;
+	UpdatePreview();
 	if (!bValidPlacement) { Player->Notify(TEXT("Choose clear, supported ground")); return; }
 	if (GetLayout().Num() >= MaximumTargets) { Player->Notify(TEXT("Target limit reached; remove a target first")); return; }
-	GetWorld()->SpawnActor<ACrosshairDummy>(ACrosshairDummy::StaticClass(), Preview);
+	if (!TargetClass) { Player->Notify(TEXT("Target class is missing: check practice Blueprint setup")); return; }
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::DontSpawnIfColliding;
+	if (!GetWorld()->SpawnActor<ACrosshairDummy>(TargetClass, Preview, Spawn)) { Player->Notify(TEXT("Target could not be placed; choose clear ground")); return; }
 	bPlacing = false;
 	Player->Notify(TEXT("Target placed"));
 }
@@ -73,14 +106,14 @@ TArray<FTransform> UCrosshairPlacementComponent::GetLayout() const
 void UCrosshairPlacementComponent::RestoreLayout(const TArray<FTransform>& Layout)
 {
 	for (TActorIterator<ACrosshairDummy> It(GetWorld()); It; ++It) It->Destroy();
-	for (const FTransform& Transform : Layout) GetWorld()->SpawnActor<ACrosshairDummy>(ACrosshairDummy::StaticClass(), Transform);
+	for (const FTransform& Transform : Layout) if (TargetClass) GetWorld()->SpawnActor<ACrosshairDummy>(TargetClass, Transform);
 }
 
-void UCrosshairAttemptComponent::BeginPlay() { Super::BeginPlay(); StartTransform = GetOwner()->GetActorTransform(); }
+void UCrosshairAttemptComponent::BeginPlay() { Super::BeginPlay(); StartTransform = GetOwner()->GetActorTransform(); InitialStart = StartTransform; }
 void UCrosshairAttemptComponent::SaveStart()
 {
 	ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner());
-	if (!Player || !Player->CanAct() || !Player->GetCharacterMovement()->IsMovingOnGround())
+	if (!Player || Player->IsReplayPlayback() || !Player->GetCharacterMovement()->IsMovingOnGround())
 	{
 		if (Player) Player->Notify(TEXT("Stand on the ground before saving your start"));
 		return;
@@ -93,14 +126,31 @@ void UCrosshairAttemptComponent::ResetAttempt()
 {
 	ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner());
 	if (!Player || Player->IsReplayPlayback()) return;
+	if (Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->IsFinishing())
+	{
+		Player->Notify(TEXT("Finishing your successful replay; reset will be available shortly"));
+		return;
+	}
+	bSucceeded = false;
 	Player->StopActions();
 	Player->Placement->bPlacing = false;
 	Player->UnCrouch();
 	Player->GetCharacterMovement()->StopMovementImmediately();
 	FVector Position = StartTransform.GetLocation();
 	const FRotator Rotation(0, StartTransform.Rotator().Yaw, 0);
-	if (!GetWorld()->FindTeleportSpot(Player, Position, Rotation)) { Player->Notify(TEXT("Start position is blocked; choose a new start")); return; }
-	Player->SetActorLocationAndRotation(Position, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+	if (!GetWorld()->FindTeleportSpot(Player, Position, Rotation))
+	{
+		Position = InitialStart.GetLocation();
+		if (!GetWorld()->FindTeleportSpot(Player, Position, Rotation))
+		{
+			Player->Notify(TEXT("Start blocked. Move to clear ground and save a new start."));
+			return;
+		}
+		StartTransform = InitialStart;
+		Player->Notify(TEXT("Saved start blocked; restored original spawn."));
+	}
+	Player->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+	Player->SetActorLocationAndRotation(Position, FRotator(0, StartTransform.Rotator().Yaw, 0), false, nullptr, ETeleportType::TeleportPhysics);
 	if (Player->GetController()) Player->GetController()->SetControlRotation(StartTransform.Rotator());
 	Player->Inventory->ResetWeapons();
 	for (TActorIterator<ACrosshairDummy> It(GetWorld()); It; ++It) It->ResetTarget();

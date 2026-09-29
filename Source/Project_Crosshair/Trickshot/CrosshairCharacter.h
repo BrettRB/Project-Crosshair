@@ -7,6 +7,7 @@ class UCrosshairInventoryComponent;
 class UCrosshairPlacementComponent;
 class UCrosshairAttemptComponent;
 class UCrosshairInputConfig;
+class UCrosshairWeaponDefinition;
 class UAnimSequence;
 class ACrosshairDummy;
 
@@ -27,10 +28,11 @@ class PROJECT_CROSSHAIR_API ACrosshairCharacter : public AProject_CrosshairChara
 	GENERATED_BODY()
 public:
 	ACrosshairCharacter();
+	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void EndPlay(EEndPlayReason::Type Reason) override;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairInventoryComponent> Inventory;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairPlacementComponent> Placement;
@@ -39,6 +41,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float WalkSpeed = 450;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float SprintSpeed = 680;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float CrouchSpeed = 220;
+	/** Prototype tuning. Speeds use cm/s; jump and gravity remain in CharacterMovement. */
+	UPROPERTY(EditDefaultsOnly, Category="Loadout") TArray<TObjectPtr<UCrosshairWeaponDefinition>> DefaultLoadout;
+	UPROPERTY(EditDefaultsOnly, Category="Targets") TSubclassOf<ACrosshairDummy> TargetClass;
+	UPROPERTY(EditDefaultsOnly, Category="Presentation") TObjectPtr<UAnimSequence> IdleAnimation;
+	UPROPERTY(EditDefaultsOnly, Category="Presentation") TObjectPtr<UAnimSequence> ReloadAnimation;
 	UFUNCTION(BlueprintPure) bool CanAct() const;
 	bool IsReplayPlayback() const;
 	float GetAimAlpha() const { return AimAlpha; }
@@ -72,8 +79,6 @@ private:
 	void ResetPressed();
 	void MenuPressed();
 	UPROPERTY(Replicated) FCrosshairViewState RecordedView;
-	UPROPERTY() TObjectPtr<UAnimSequence> IdleAnimation;
-	UPROPERTY() TObjectPtr<UAnimSequence> ReloadAnimation;
 	bool bAimHeld = false;
 	bool bSprintHeld = false;
 	bool bArmsReloading = false;
