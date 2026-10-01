@@ -20,6 +20,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCapsuleComponent> Collision;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UStaticMeshComponent> Body;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UStaticMeshComponent> Head;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1")) float MaxHealth = 100.f;
+	UPROPERTY(Replicated, BlueprintReadOnly) float Health = 100.f;
+	bool IsHeadImpact(const FVector& Impact) const;
 	UPROPERTY(ReplicatedUsing=OnRep_Hit, BlueprintReadOnly) bool bHit = false;
 protected:
 	virtual void BeginPlay() override;

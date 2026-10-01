@@ -9,6 +9,7 @@
 #include "InputKeyEventArgs.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 ACrosshairGameMode::ACrosshairGameMode()
 {
@@ -31,6 +32,7 @@ void ACrosshairPlayerController::ToggleMenu()
 	FlushPressedKeys();
 	bMenuOpen = !bMenuOpen;
 	MenuSelection = 0;
+	if (bMenuOpen) MapChoice = GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Nuketown")) ? 1 : 0;
 	// Keep the world running: a successful replay must finish writing while the menu is open.
 	SetInputMode(FInputModeGameOnly());
 	bShowMouseCursor = false;
@@ -50,8 +52,8 @@ bool ACrosshairPlayerController::InputKey(const FInputKeyEventArgs& Params)
 	else if (Key == EKeys::Right || Key == EKeys::Gamepad_DPad_Right) AdjustSelection(1);
 	else if (Key == EKeys::Enter || Key == EKeys::Gamepad_FaceButton_Bottom) ActivateSelection();
 	else if (Key == EKeys::Gamepad_FaceButton_Right) ToggleMenu();
-	else if ((Key == EKeys::Delete || Key == EKeys::Gamepad_FaceButton_Left) && MenuSelection >= 13)
-		GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->DeleteSaved(MenuSelection - 13);
+	else if ((Key == EKeys::Delete || Key == EKeys::Gamepad_FaceButton_Left) && MenuSelection >= FirstReplayRow)
+		GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->DeleteSaved(MenuSelection - FirstReplayRow);
 	return true;
 }
 TArray<FString> ACrosshairPlayerController::GetMenuRows() const
@@ -70,6 +72,13 @@ TArray<FString> ACrosshairPlayerController::GetMenuRows() const
 		FString::Printf(TEXT("Continuous practice: %s"), S.bContinuousPractice ? TEXT("On (no auto replay)") : TEXT("Off (save hits)")),
 		TEXT("Save attempt start"), TEXT("Reset attempt"), TEXT("Remove aimed target"), TEXT("Clear all targets")
 	};
+	const auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn());
+	const auto* Current = PracticePawn ? PracticePawn->Inventory->GetCurrent() : nullptr;
+	Rows.Add(Replay->IsPlayback() ? TEXT("Weapon: unavailable during replay") :
+		TEXT("Weapon: ") + (Current && Current->Definition ? Current->Definition->DisplayName.ToString() : TEXT("Unavailable")));
+	Rows.Add(Replay->IsPlayback() || Replay->IsFinishing() ? TEXT("Map: unavailable during replay/save") :
+		FString::Printf(TEXT("Map: %s (Enter / A to load)"), MapChoice == 0 ? TEXT("Testing Map") : TEXT("Nuketown")));
+	Rows.Add(TEXT("Quit to Desktop"));
 	for (const auto& Entry : Replay->GetReplays()) Rows.Add(TEXT("Play: ") + Entry.RecordedAt);
 	return Rows;
 }
@@ -79,6 +88,18 @@ void ACrosshairPlayerController::AdjustSelection(int32 Direction)
 	FCrosshairSettings& S = Replay->GetSettings();
 	switch (MenuSelection)
 	{
+	case MapRow:
+		if (!Replay->IsPlayback() && !Replay->IsFinishing()) MapChoice = (MapChoice + Direction + 2) % 2;
+		return;
+	case WeaponRow:
+		if (!Replay->IsPlayback() && !Replay->IsFinishing())
+			if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn()))
+			{
+				FlushPressedKeys();
+				const int32 Count = PracticePawn->Inventory->Weapons.Num();
+				if (Count > 0) PracticePawn->Inventory->Equip((PracticePawn->Inventory->ActiveIndex + Direction + Count) % Count);
+			}
+		return;
 	case 1: S.StickYawSpeed += Direction * 30; break;
 	case 2: S.StickPitchSpeed += Direction * 30; break;
 	case 3: S.StickDeadZone += Direction * .01f; break;
@@ -97,10 +118,24 @@ void ACrosshairPlayerController::ActivateSelection()
 {
 	auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
 	const int32 Selected = MenuSelection;
+	if (Selected == QuitRow)
+	{
+		FlushPressedKeys();
+		Replay->SaveSettings();
+		UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
+		return;
+	}
+	if (Selected == MapRow)
+	{
+		FlushPressedKeys();
+		Replay->ChangePracticeMap(FName(MapChoice == 0 ? TEXT("/Game/Crosshair/Maps/L_Practice") : TEXT("/Game/Crosshair/Maps/L_Nuketown")));
+		return;
+	}
+	if (Selected == WeaponRow) { AdjustSelection(1); return; }
 	if (Selected > 0 && Selected < 9) { AdjustSelection(1); return; }
 	ToggleMenu();
 	if (Selected == 0) { if (Replay->IsPlayback()) Replay->ReturnToPractice(); return; }
-	if (Selected >= 13) { Replay->PlaySaved(Selected - 13); return; }
+	if (Selected >= FirstReplayRow) { Replay->PlaySaved(Selected - FirstReplayRow); return; }
 	if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn()))
 	{
 		switch (Selected)
@@ -138,8 +173,30 @@ void ACrosshairHUD::DrawHUD()
 			DrawText(Valid ? TEXT("CLEAR: Fire to place | Reload / D-pad Left: rotate | Aim: cancel") : TEXT("BLOCKED: aim at clear ground"), Valid ? FLinearColor::Green : FLinearColor::Red, 24, 100);
 		}
 		if (GetWorld()->GetTimeSeconds() < PracticePawn->NoticeUntil) DrawText(PracticePawn->Notice, Accent, 24, 124);
-		DrawLine(X - 8, Y, X - 3, Y, White); DrawLine(X + 3, Y, X + 8, Y, White);
-		DrawLine(X, Y - 8, X, Y - 3, White); DrawLine(X, Y + 3, X, Y + 8, White);
+		const auto* Current = PracticePawn->Inventory->GetCurrent();
+		const bool ScopeView = Current && Current->Definition && Current->Definition->AimStyle == ECrosshairAimStyle::Scope && PracticePawn->GetAimAlpha() >= .95f;
+		if (ScopeView)
+		{
+			const float Radius = FMath::Min(X, Y) * .9f;
+			const FLinearColor Black = FLinearColor::Black;
+			DrawRect(Black, 0, 0, Canvas->ClipX, Y - Radius);
+			DrawRect(Black, 0, Y + Radius, Canvas->ClipX, Y - Radius);
+			const float Band = 2.f;
+			for (float Row = -Radius; Row < Radius; Row += Band)
+			{
+				const float Edge = FMath::Max(FMath::Abs(Row), FMath::Abs(FMath::Min(Row + Band, Radius)));
+				const float HalfWidth = FMath::Sqrt(FMath::Max(0.f, Radius * Radius - Edge * Edge));
+				DrawRect(Black, 0, Y + Row, X - HalfWidth, FMath::Min(Band, Radius - Row));
+				DrawRect(Black, X + HalfWidth, Y + Row, X - HalfWidth, FMath::Min(Band, Radius - Row));
+			}
+			DrawLine(X - Radius, Y, X + Radius, Y, Black, 1.5f);
+			DrawLine(X, Y - Radius, X, Y + Radius, Black, 1.5f);
+		}
+		else if (PracticePawn->GetAimAlpha() < .95f)
+		{
+			DrawLine(X - 8, Y, X - 3, Y, White); DrawLine(X + 3, Y, X + 8, Y, White);
+			DrawLine(X, Y - 8, X, Y - 3, White); DrawLine(X, Y + 3, X, Y + 8, White);
+		}
 		if (GetWorld()->GetTimeSeconds() < PracticePawn->HitMarkerUntil)
 		{
 			DrawLine(X-14,Y-14,X-7,Y-7,Accent,2); DrawLine(X+7,Y+7,X+14,Y+14,Accent,2);

@@ -4,6 +4,7 @@
 #include "CrosshairPractice.h"
 #include "CrosshairReplaySubsystem.h"
 #include "CrosshairGame.h"
+#include "CrosshairDummy.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -13,6 +14,7 @@
 #include "InputActionValue.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/LocalPlayer.h"
+#include "GameFramework/PlayerInput.h"
 #include "Engine/DemoNetDriver.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -63,6 +65,19 @@ void ACrosshairCharacter::BeginPlay()
 	if (IsReplayPlayback()) return;
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
+		// Use raw mouse units in this practice controller; the game sensitivity is the sole scale.
+		if (PC->PlayerInput)
+		{
+			for (FKey Key : {EKeys::MouseX, EKeys::MouseY, EKeys::Mouse2D})
+			{
+				FInputAxisProperties Properties;
+				Properties.DeadZone = 0.f;
+				Properties.Sensitivity = 1.f;
+				Properties.Exponent = 1.f;
+				Properties.bInvert = false;
+				PC->PlayerInput->SetAxisProperties(Key, Properties);
+			}
+		}
 		if (ULocalPlayer* Local = PC->GetLocalPlayer())
 			if (auto* Input = Local->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>()) if (Inputs && Inputs->Mapping) Input->AddMappingContext(Inputs->Mapping, 10);
 	}
@@ -130,6 +145,7 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		// Attachment to a camera component is reconstructed explicitly for replay actors as well.
 		if (Weapon->GetRootComponent()->GetAttachParent() != Camera) Weapon->AttachToComponent(Camera, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		Weapon->UpdatePresentation(AimAlpha);
+		GetFirstPersonMesh()->SetVisibility(!(Weapon->Definition && Weapon->Definition->AimStyle == ECrosshairAimStyle::Scope && AimAlpha >= .95f));
 		if (Weapon->bReloading != bArmsReloading)
 		{
 			bArmsReloading = Weapon->bReloading;
@@ -162,7 +178,7 @@ void ACrosshairCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 void ACrosshairCharacter::Move(const FInputActionValue& Value)
 {
 	if (!CanAct()) return;
-	const FVector2D Axis = Value.Get<FVector2D>();
+	const FVector2D Axis = Value.Get<FVector2D>().GetClampedToMaxSize(1.f);
 	const FRotationMatrix Rotation(FRotator(0, GetControlRotation().Yaw, 0));
 	AddMovementInput(Rotation.GetUnitAxis(EAxis::X), Axis.Y);
 	AddMovementInput(Rotation.GetUnitAxis(EAxis::Y), Axis.X);
@@ -171,10 +187,10 @@ void ACrosshairCharacter::MouseAim(const FInputActionValue& Value)
 {
 	if (!CanAct()) return;
 	const auto& Settings = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
-	const FVector2D Axis = Value.Get<FVector2D>() * Settings.MouseSensitivity * FMath::Lerp(1.f, Settings.AimSensitivity, AimAlpha);
+	const FVector2D Axis = CrosshairRules::MouseDelta(Value.Get<FVector2D>(), Settings, AimAlpha);
 	FRotator Rotation = GetControlRotation();
 	Rotation.Yaw += Axis.X;
-	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) - Axis.Y, -85.f, 85.f);
+	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) + Axis.Y, -85.f, 85.f);
 	GetController()->SetControlRotation(Rotation);
 }
 void ACrosshairCharacter::StickAim(const FInputActionValue& Value)
@@ -217,6 +233,6 @@ void ACrosshairCharacter::TargetHit(ACrosshairDummy* Target)
 	++RecordedView.HitSequence;
 	PresentedHit = RecordedView.HitSequence;
 	HitMarkerUntil = GetWorld()->GetTimeSeconds() + 0.25f;
-	Attempt->HandleTargetHit(Target);
+	if (Target && Target->bHit) Attempt->HandleTargetHit(Target);
 }
 void ACrosshairCharacter::StopActions() { FireReleased(); bAimHeld = false; bSprintHeld = false; StopJumping(); }

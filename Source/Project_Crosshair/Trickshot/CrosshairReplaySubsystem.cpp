@@ -99,6 +99,30 @@ void UCrosshairReplaySubsystem::BeginAttempt()
 	Phase = Save->Settings.bContinuousPractice ? ECrosshairReplayPhase::Idle : ECrosshairReplayPhase::StartPending;
 	PhaseStarted = FPlatformTime::Seconds();
 }
+bool UCrosshairReplaySubsystem::ChangePracticeMap(FName Map)
+{
+	if (IsPlayback() || IsFinishing())
+	{
+		Report(TEXT("Return to practice and wait for replay saving before changing maps."));
+		return false;
+	}
+	if (!FPackageName::DoesPackageExist(Map.ToString()))
+	{
+		Report(TEXT("Map unavailable: the environment has not been installed."));
+		return false;
+	}
+	if (LivePlayer.IsValid()) LivePlayer->StopActions();
+	StopRecording(false);
+	SaveSettings();
+	bHaveSession = false;
+	ReturnTargets.Empty();
+	LivePlayer.Reset();
+	Phase = ECrosshairReplayPhase::Idle;
+	ReturnMap = Map.ToString();
+	Status.Empty();
+	UGameplayStatics::OpenLevel(GetGameInstance(), Map);
+	return true;
+}
 void UCrosshairReplaySubsystem::CompleteAttempt()
 {
 	if (Phase != ECrosshairReplayPhase::Recording || !GetWorld()->GetDemoNetDriver())

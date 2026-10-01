@@ -1,8 +1,10 @@
 """Run inside UnrealEditor-Cmd with -run=pythonscript -script=<this file>.
-Creates missing Crosshair assets only. Existing assets are validated, never reset.
+Creates missing Crosshair assets. Pass -CrosshairRepair to repair only practice axis mappings,
+movement accumulation, weapon aim presentation, and damage settings on existing assets.
 Blueprint defaults and weapon definitions remain editable in Unreal Editor.
 """
 import unreal as ue
+REPAIR = "-CrosshairRepair" in ue.SystemLibrary.get_command_line()
 
 ROOT = "/Game/Crosshair"
 tools = ue.AssetToolsHelpers.get_asset_tools()
@@ -54,12 +56,18 @@ for name in names:
         save(obj)
     actions[name] = obj
 context, new = asset(ROOT + "/Input/IMC_Practice", ue.InputMappingContext, ue.InputMappingContext_Factory())
-if new:
+if new or REPAIR:
     mappings = []
+    if not new:
+        owned = {"W", "S", "A", "D", "Gamepad_Left2D", "Mouse2D", "Gamepad_Right2D"}
+        mappings = [m for m in context.get_editor_property("default_key_mappings").get_editor_property("mappings")
+                    if str(m.get_editor_property("key").get_editor_property("key_name")) not in owned]
     def bind(name, key, swizzle=False, negate=False):
         key_value = ue.Key()
         key_value.set_editor_property("key_name", key)
-        mapping = context.map_key(actions[name], key_value)
+        mapping = ue.EnhancedActionKeyMapping()
+        mapping.set_editor_property("action", actions[name])
+        mapping.set_editor_property("key", key_value)
         modifiers = []
         if negate:
             mod = ue.InputModifierNegate(context)
@@ -91,11 +99,26 @@ if new:
         "SaveStart": ("K", "Gamepad_DPad_Right"), "Reset": ("T", "Gamepad_DPad_Down"),
         "Menu": ("Escape", "Gamepad_Special_Right")
     }
-    for name, key_list in keys.items():
-        for key in key_list:
-            bind(name, key)
-    context.set_editor_property("mappings", mappings)
+    if new:
+        for name, key_list in keys.items():
+            for key in key_list:
+                bind(name, key)
+    mapping_data = context.get_editor_property("default_key_mappings")
+    mapping_data.set_editor_property("mappings", mappings)
+    context.set_editor_property("default_key_mappings", mapping_data)
     save(context)
+    actions["Move"].set_editor_property("accumulation_behavior", ue.InputActionAccumulationBehavior.CUMULATIVE)
+    save(actions["Move"])
+    # Check the stored structs, including direction modifiers.
+    expected = {"W": (True, False), "S": (True, True), "A": (False, True), "D": (False, False)}
+    for m in context.get_editor_property("default_key_mappings").get_editor_property("mappings"):
+        key = str(m.get_editor_property("key").get_editor_property("key_name"))
+        if key in expected:
+            mods = m.get_editor_property("modifiers")
+            actual = (any(isinstance(x, ue.InputModifierSwizzleAxis) for x in mods),
+                      any(isinstance(x, ue.InputModifierNegate) for x in mods))
+            if actual != expected[key]:
+                raise RuntimeError("Movement modifiers were not persisted: " + key)
 config, new = data(ROOT + "/Input/DA_Input", ue.CrosshairInputConfig)
 if new:
     config.set_editor_property("mapping", context)
@@ -120,6 +143,13 @@ for name, automatic, magazine, interval, reload_time, ads, spread, recoil in [
                       aim_spread_degrees=0.0 if name == "Sniper" else .15, mesh=mesh, fire_sound=fire_sound)
         for key, value in values.items():
             definition.set_editor_property(key, value)
+        save(definition)
+    if new or REPAIR:
+        definition.set_editor_property("aim_style", ue.CrosshairAimStyle.SCOPE if name == "Sniper" else ue.CrosshairAimStyle.IRON_SIGHTS)
+        definition.set_editor_property("body_damage", 20.0 if name == "AR" else 100.0)
+        definition.set_editor_property("head_damage", 100.0 / 3.0 if name == "AR" else 100.0)
+        if name != "Sniper":
+            definition.set_editor_property("aim_offset", ue.Vector(65, 0, -22))
         save(definition)
     weapons.append(definition)
 

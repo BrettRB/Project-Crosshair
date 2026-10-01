@@ -11,12 +11,18 @@ class USkeletalMesh;
 class USoundBase;
 
 /** A weapon's editable design, separate from the changing state of an equipped weapon. */
+UENUM(BlueprintType)
+enum class ECrosshairAimStyle : uint8 { IronSights, Scope };
+
 UCLASS(BlueprintType)
 class PROJECT_CROSSHAIR_API UCrosshairWeaponDefinition : public UDataAsset
 {
 	GENERATED_BODY()
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) FText DisplayName;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Aiming") ECrosshairAimStyle AimStyle = ECrosshairAimStyle::IronSights;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage", meta=(ClampMin="0")) float BodyDamage = 100.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage", meta=(ClampMin="0")) float HeadDamage = 100.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) bool bAutomatic = false;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1")) int32 MagazineSize = 5;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.03")) float ShotInterval = 0.85f;
@@ -116,6 +122,16 @@ namespace CrosshairRules
 		const FVector2D Axis = FilterStick(Input, Settings.StickDeadZone, Settings.StickExponent);
 		const float Scale = DeltaSeconds * FMath::Lerp(1.f, Settings.AimSensitivity, AimAlpha);
 		return FVector2D(Axis.X * Settings.StickYawSpeed, Axis.Y * Settings.StickPitchSpeed) * Scale;
+	}
+	/** Raw mouse displacement is already integrated; never multiply by frame time. */
+	inline FVector2D MouseDelta(FVector2D Input, const FCrosshairSettings& Settings, float AimAlpha)
+	{
+		return Input * Settings.MouseSensitivity * FMath::Lerp(1.f, Settings.AimSensitivity, AimAlpha);
+	}
+	inline float RemainingHealth(float Health, float Damage)
+	{
+		const float Remaining = FMath::Max(0.f, Health - Damage);
+		return Remaining <= .001f ? 0.f : Remaining;
 	}
 	inline bool CanFire(int32 Ammo, bool bReloading, double Now, double NextShot)
 	{

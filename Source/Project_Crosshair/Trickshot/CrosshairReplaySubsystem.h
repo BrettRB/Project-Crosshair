@@ -24,6 +24,8 @@ public:
 	virtual UWorld* GetTickableGameObjectWorld() const override { return GetWorld(); }
 	void PracticeReady(ACrosshairCharacter* Player);
 	void BeginAttempt();
+	/** Discards the active unsaved attempt and starts fresh on another practice map. */
+	UFUNCTION(BlueprintCallable) bool ChangePracticeMap(FName Map);
 	void CompleteAttempt();
 	UFUNCTION(BlueprintCallable) void PlaySaved(int32 Index);
 	UFUNCTION(BlueprintCallable) void ReplayAgain();

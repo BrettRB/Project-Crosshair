@@ -26,11 +26,16 @@ public:
 	virtual void FlushPressedKeys() override;
 	UFUNCTION(BlueprintCallable) void ToggleMenu();
 	UPROPERTY(BlueprintReadOnly) bool bMenuOpen = false;
+	static constexpr int32 WeaponRow = 13;
+	static constexpr int32 MapRow = 14;
+	static constexpr int32 QuitRow = 15;
+	static constexpr int32 FirstReplayRow = 16;
 	int32 MenuSelection = 0;
 	TArray<FString> GetMenuRows() const;
 private:
 	void AdjustSelection(int32 Direction);
 	void ActivateSelection();
+	int32 MapChoice = 0;
 };
 
 /** Small native prototype HUD: packaged-build feedback without debug drawing. */

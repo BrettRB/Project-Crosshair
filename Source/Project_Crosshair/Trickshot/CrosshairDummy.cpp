@@ -1,4 +1,5 @@
 #include "CrosshairDummy.h"
+#include "CrosshairData.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -34,6 +35,7 @@ ACrosshairDummy::ACrosshairDummy()
 void ACrosshairDummy::BeginPlay()
 {
 	Super::BeginPlay();
+	if (HasAuthority()) Health = MaxHealth;
 	if (TargetMaterial) { Body->SetMaterial(0, TargetMaterial); Head->SetMaterial(0, TargetMaterial); }
 	OnRep_Hit();
 }
@@ -41,16 +43,26 @@ void ACrosshairDummy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ACrosshairDummy, bHit);
+	DOREPLIFETIME(ACrosshairDummy, Health);
 }
 float ACrosshairDummy::TakeDamage(float Amount, const FDamageEvent& Event, AController* EventInstigator, AActor* Causer)
 {
 	if (!HasAuthority() || bHit || Amount <= 0 || (GetWorld()->GetDemoNetDriver() && GetWorld()->GetDemoNetDriver()->IsPlaying())) return 0;
-	bHit = true;
+	Health = CrosshairRules::RemainingHealth(Health, Amount);
+	bHit = Health <= 0.f;
 	OnRep_Hit();
 	ForceNetUpdate();
 	return Amount;
 }
-void ACrosshairDummy::ResetTarget() { bHit = false; OnRep_Hit(); ForceNetUpdate(); }
+void ACrosshairDummy::ResetTarget() { Health = MaxHealth; bHit = false; OnRep_Hit(); ForceNetUpdate(); }
+bool ACrosshairDummy::IsHeadImpact(const FVector& Impact) const
+{
+	// Collision uses the enclosing capsule. Classify its contact against the visible head height.
+	const FVector LocalImpact = Collision->GetComponentTransform().InverseTransformPosition(Impact);
+	const FVector HeadCenter = Collision->GetComponentTransform().InverseTransformPosition(Head->GetComponentLocation());
+	const float HeadRadius = Head->Bounds.BoxExtent.Z / FMath::Max(.001f, Collision->GetComponentScale().Z);
+	return LocalImpact.Z >= HeadCenter.Z - HeadRadius;
+}
 void ACrosshairDummy::OnRep_Hit()
 {
 	const FLinearColor Color = bHit ? FLinearColor(1.f, 0.15f, 0.04f) : FLinearColor(0.05f, 0.7f, 0.85f);

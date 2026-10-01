@@ -6,6 +6,7 @@
 
 class UCrosshairWeaponDefinition;
 class USkeletalMeshComponent;
+class UStaticMeshComponent;
 class ACrosshairCharacter;
 
 UCLASS(Blueprintable)
@@ -24,6 +25,7 @@ public:
 	void ResetWeapon();
 	void UpdatePresentation(float AimAlpha);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<USkeletalMeshComponent> Mesh;
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Details;
 	UPROPERTY(ReplicatedUsing=OnRep_Definition, BlueprintReadOnly) TObjectPtr<UCrosshairWeaponDefinition> Definition;
 	UPROPERTY(Replicated, BlueprintReadOnly) int32 Ammo = 0;
 	UPROPERTY(Replicated, BlueprintReadOnly) bool bReloading = false;

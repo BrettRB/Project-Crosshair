@@ -662,3 +662,668 @@ Re-read AGENTS.md, checked that the log was absent and the working tree clean, a
 Created the course interaction log, backfilled 16 interactions, recorded automatic-log authorization, and reported that only the log changed and that it remains uncommitted.
 
 ---
+
+---
+## Interaction 17
+
+### Date / Record Status
+Recorded 2026-09-30T19:51:41.179984-05:00; planning messages backfilled from visible conversation.
+
+### User Prompt
+```text
+So the game functions work really well except for a few bugs.
+
+First, looking up and down on KBM in inversed and it really slow even with the sensitivity turned all the way up.
+2. While walking with KBM, you can only move to the right no matter what movement button you push.
+3. When scoping in with the weapon, you get zoomed into the gun stock and can't see anything.
+4. The pause menu doesn
+```
+
+### Interpretation
+Fix input and aiming; clarify menu issue.
+
+### Requirements / Acceptance Criteria
+- Fix input and aiming; clarify menu issue.
+
+### Actions Taken
+Read project instructions, source, asset script, tests and course log; clarified requirements and finalized approved plan. No root README exists.
+
+### Files Changed
+- docs/ai-interaction-log.md (planning record backfilled during implementation)
+
+### Verification
+- Read-only project and Git inspection. No runtime verification in Plan Mode.
+
+### Notes / Follow-up
+- Plan Mode prevented log writes; this record is backfilled. Structured responses retain available selections and exact user notes.
+
+### Response Summary
+Clarified requirements and included them in approved plan.
+
+---
+
+---
+## Interaction 18
+
+### Date / Record Status
+Recorded 2026-09-30T19:51:41.181989-05:00; planning messages backfilled from visible conversation.
+
+### User Prompt
+```text
+Structured clarification response: pause_bug
+Selection: None of the above
+User note: The pause menu is very basic and doesn't even include an option to close the application so the only way to close it is by pressing alt + f4
+```
+
+### Interpretation
+Add graceful Quit to Desktop.
+
+### Requirements / Acceptance Criteria
+- Add graceful Quit to Desktop.
+
+### Actions Taken
+Read project instructions, source, asset script, tests and course log; clarified requirements and finalized approved plan. No root README exists.
+
+### Files Changed
+- docs/ai-interaction-log.md (planning record backfilled during implementation)
+
+### Verification
+- Read-only project and Git inspection. No runtime verification in Plan Mode.
+
+### Notes / Follow-up
+- Plan Mode prevented log writes; this record is backfilled. Structured responses retain available selections and exact user notes.
+
+### Response Summary
+Clarified requirements and included them in approved plan.
+
+---
+
+---
+## Interaction 19
+
+### Date / Record Status
+Recorded 2026-09-30T19:51:41.181989-05:00; planning messages backfilled from visible conversation.
+
+### User Prompt
+```text
+Structured clarification response: ads_style
+Selection: Scope and iron sights (Recommended)
+User note: Give a scope for a snipe object and an iron sight for something like an AR. Also add the ability to switch weapons in the pause menu and make the sniper look more like a sniper. The AR should take 3-5 shot before reseting depending on headshots.
+
+Structured clarification response: menu_scope
+Selection: Add Quit to Desktop (Recommended)
+User note: Just add a way to close the game properly without having to force close it
+```
+
+### Interpretation
+Add weapon selection, sniper presentation, and AR damage.
+
+### Requirements / Acceptance Criteria
+- Add weapon selection, sniper presentation, and AR damage.
+
+### Actions Taken
+Read project instructions, source, asset script, tests and course log; clarified requirements and finalized approved plan. No root README exists.
+
+### Files Changed
+- docs/ai-interaction-log.md (planning record backfilled during implementation)
+
+### Verification
+- Read-only project and Git inspection. No runtime verification in Plan Mode.
+
+### Notes / Follow-up
+- Plan Mode prevented log writes; this record is backfilled. Structured responses retain available selections and exact user notes.
+
+### Response Summary
+Clarified requirements and included them in approved plan.
+
+---
+
+---
+## Interaction 20
+
+### Date / Record Status
+Recorded 2026-09-30T19:51:41.181989-05:00; planning messages backfilled from visible conversation.
+
+### User Prompt
+```text
+Structured clarification response: sniper_visual
+Selection: Provide a custom mesh
+User note: Just give it the classic sniper scope look
+
+Structured clarification response: damage_model
+Selection: Yes: 5 body, 3 head (Recommended)
+User note: The headshot should do like 33% and body should be around 20%
+```
+
+### Interpretation
+Clarify scope model needs and rounding.
+
+### Requirements / Acceptance Criteria
+- Clarify scope model needs and rounding.
+
+### Actions Taken
+Read project instructions, source, asset script, tests and course log; clarified requirements and finalized approved plan. No root README exists.
+
+### Files Changed
+- docs/ai-interaction-log.md (planning record backfilled during implementation)
+
+### Verification
+- Read-only project and Git inspection. No runtime verification in Plan Mode.
+
+### Notes / Follow-up
+- Plan Mode prevented log writes; this record is backfilled. Structured responses retain available selections and exact user notes.
+
+### Response Summary
+Clarified requirements and included them in approved plan.
+
+---
+
+---
+## Interaction 21
+
+### Date / Record Status
+Recorded 2026-09-30T19:51:41.181989-05:00; planning messages backfilled from visible conversation.
+
+### User Prompt
+```text
+Structured clarification response: scope_visual
+Selection: Scope view plus rifle details (Recommended)
+User note: That is exactly the style I was thinking of
+
+Structured clarification response: head_damage
+Selection: Three headshots (Recommended)
+User note: I just used 33% since that is roughly what the math works out to
+```
+
+### Interpretation
+Lock circular scope and local rifle details; three heads or five bodies.
+
+### Requirements / Acceptance Criteria
+- Lock circular scope and local rifle details; three heads or five bodies.
+
+### Actions Taken
+Read project instructions, source, asset script, tests and course log; clarified requirements and finalized approved plan. No root README exists.
+
+### Files Changed
+- docs/ai-interaction-log.md (planning record backfilled during implementation)
+
+### Verification
+- Read-only project and Git inspection. No runtime verification in Plan Mode.
+
+### Notes / Follow-up
+- Plan Mode prevented log writes; this record is backfilled. Structured responses retain available selections and exact user notes.
+
+### Response Summary
+Clarified requirements and included them in approved plan.
+
+---
+
+---
+## Interaction 22
+
+### Date / Record Status
+Recorded 2026-09-30T19:51:41.181989-05:00; planning messages backfilled from visible conversation.
+
+### User Prompt
+```text
+Implement the approved plan.
+```
+
+### Interpretation
+Implement approved source, asset repairs, and local verification.
+
+### Requirements / Acceptance Criteria
+- Implement approved source, asset repairs, and local verification.
+
+### Actions Taken
+Wrote input, aiming, health/damage, menu, and sniper-detail source changes; added explicit asset repair and regression/screenshot/quit test modes. Corrected initial compilation error. Gameplay sources compiled, but linking failed because UnrealEditor.exe PID 4124 holds the game DLL. Asked user to save/close editor.
+
+### Files Changed
+- Scripts/create_crosshair_assets.py
+- Source/Project_Crosshair/Trickshot/: CrosshairCharacter.cpp, CrosshairData.h, CrosshairDummy.cpp/.h, CrosshairGame.cpp/.h, CrosshairWeapon.cpp/.h
+- Source/Project_Crosshair/Trickshot/Tests/: CrosshairRulesTests.cpp, CrosshairSmokeTest.cpp
+- docs/ai-interaction-log.md
+
+### Verification
+- Local Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: first attempt found a compilation error, corrected; second compiled gameplay source but failed linking with LNK1104 (editor DLL lock).
+- git diff --check passed with line-ending notices.
+- Asset repair, automation, smoke, graceful quit, and screenshot checks pending editor closure.
+
+### Notes / Follow-up
+- Existing map, solution, Build/, and RiderLink changes preserved. No commits or external services used. Finish linking, repair assets, and run local tests after editor closes.
+
+### Response Summary
+Source edits are written; asset repair and verification remain blocked by the running editor.
+
+---
+
+---
+## Interaction 23
+
+### Date / Record Status
+Recorded 2026-09-30T20:23:31.315815-05:00; prior Plan Mode messages backfilled from visible conversation.
+
+### User Prompt
+```text
+I have Unreal open right now and nothing has been changed, do I need to reset it for it to be fixed
+```
+
+### Interpretation
+Explain how new compiled code becomes active.
+
+### Requirements / Acceptance Criteria
+- Complete the approved fixes and local verification; retain prior requests and unrelated user changes.
+
+### Actions Taken
+Explained no reset is needed; close the editor to release the DLL and reopen after compilation and asset updates. Session was in Plan Mode.
+
+### Files Changed
+No source changes; log entry backfilled now.
+
+### Verification
+- No additional runtime verification for this explanation.
+
+### Notes / Follow-up
+- No reset or deletion of generated directories required.
+
+### Response Summary
+Save/close editor; resume implementation mode.
+
+---
+
+---
+## Interaction 24
+
+### Date / Record Status
+Recorded 2026-09-30T20:23:31.316816-05:00; prior Plan Mode messages backfilled from visible conversation.
+
+### User Prompt
+```text
+closed
+```
+
+### Interpretation
+Confirm DLL release and validate the source while in Plan Mode.
+
+### Requirements / Acceptance Criteria
+- Complete the approved fixes and local verification; retain prior requests and unrelated user changes.
+
+### Actions Taken
+Checked processes. A new editor was running without the project; a sandbox temporary-lock permission failure initially looked like another active build. Cancelled our waiting build, reran with approved escalation, and completed local compilation and automation.
+
+### Files Changed
+Build artifacts and test reports under ignored directories; docs/ai-interaction-log.md backfilled now.
+
+### Verification
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: succeeded. UnrealEditor-Cmd -ExecCmds='Automation RunTests Crosshair.' -TestExit='Automation Test Queue Empty' -NullRHI: five tests succeeded (stick filtering/frame rate, mouse displacement, damage thresholds, supported placement surface, firing gates).
+
+### Notes / Follow-up
+- Plan Mode prevented asset changes and immediate log writes.
+
+### Response Summary
+Build and five unit tests pass; asset repair remains pending implementation mode.
+
+---
+
+---
+## Interaction 25
+
+### Date / Record Status
+Recorded 2026-09-30T20:23:31.316816-05:00; prior Plan Mode messages backfilled from visible conversation.
+
+### User Prompt
+```text
+I think I switch out of plan mode
+```
+
+### Interpretation
+Continue the authorized implementation, repair assets, and finish local gameplay/visual verification.
+
+### Requirements / Acceptance Criteria
+- Complete the approved fixes and local verification; retain prior requests and unrelated user changes.
+
+### Actions Taken
+Applied asset repairs through Unreal APIs. Initial gameplay test exposed a UE 5.8 mapping-script problem. Used debugging-code skill and Rider native LLDB to pause at CrosshairSmokeTest.cpp:130; debugger stack reached UCrosshairSmokeTest::Tick, and DefaultKeyMappings had 40 entries, duplicate keys, and empty modifiers. Corrected the script to write DefaultKeyMappings instead of the deprecated mappings property, then repaired the asset again. Runtime tests measure direction traveled; debugger at line 135 observed backward local displacement X=-34.5997 and Y approximately zero. Headless physical movement checks require a stable 60 FPS. Inspected rendered scope/iron-sight/hip/crouch/menu screenshots, and changed prototype details from checkerboard to dark metal. Removed all agent breakpoints and stopped all debug sessions.
+
+### Files Changed
+Scripts/create_crosshair_assets.py; Source/Project_Crosshair/Trickshot/CrosshairWeapon.cpp and Tests/CrosshairSmokeTest.cpp; Content/Crosshair/Input/IA_Move.uasset and IMC_Practice.uasset; Content/Crosshair/Weapons/DA_AR.uasset, DA_SMG.uasset, DA_Sniper.uasset; docs/ai-interaction-log.md. Earlier approved gameplay source edits remain part of this implementation.
+
+### Verification
+- Final local Build.bat editor Development build: succeeded. Asset commandlet: UnrealEditor-Cmd Project_Crosshair.uproject -run=pythonscript -script=Scripts/create_crosshair_assets.py -CrosshairRepair -unattended -NullRHI; CROSSHAIR_ASSETS_OK created=0 validated=26, 0 errors/warnings. Gameplay: UnrealEditor-Cmd Project_Crosshair.uproject /Game/Crosshair/Maps/L_Practice -game -CrosshairSmoke -unattended -NullRHI -nosound -nosplash -ExecCmds='t.MaxFPS 60'; all movement, damage, menu, fire/reload, target placement, immediate replay and reset checks passed, CROSSHAIR_SMOKE_OK. Quit test: same launch with -CrosshairQuitSmoke; menu quit invoked, normal Game engine shut down and log closure observed. Visual runs: -game -CrosshairSmoke -CrosshairVisual -RenderOffscreen -windowed -ResX=1280 -ResY=720 and requested 1920x1080; CROSSHAIR_VISUAL_OK, inspected actual 1280x720 and 888x500 viewports (engine clamped the second requested size). Separate -CrosshairSmokeSaved test loaded its saved catalog but timed out during restarted playback at frame 0; did not claim this test passed. git diff --check passed with line-ending notices; reviewed Git status and diffs.
+
+### Notes / Follow-up
+- Saved replay playback after process restart remains a follow-up: the separate test timed out, although immediate replay/reset passed. No unrelated replay subsystem changes made. Existing L_Practice.umap, Project_Crosshair.slnx, Build/, and Plugins/Developer/ changes preserved. No commits, remote CI, external services, or directory resets.
+
+### Response Summary
+Requested fixes and enhancements implemented and local core verification passed; reopen the project to use them. Explicitly disclose the saved-replay restart-test limitation.
+
+---
+
+---
+## Interaction 26
+
+### Date / Record Status
+Recorded 2026-09-30T20:30:18.994004-05:00.
+
+### User Prompt
+```text
+I feel like the sniper looks to much like a shot gun right now[@CrosshairSmokeTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp)
+```
+
+### Interpretation
+Make the sniper look more like a slender bolt-action sniper rifle, reducing its shotgun-like bulk.
+
+### Requirements / Acceptance Criteria
+- Replace the scoped prototype's bulky template silhouette with a distinct receiver, stock, long exposed barrel, compact scope with wider lens ends, and visible bolt handle.
+- Preserve the classic scoped view and weapon gameplay.
+- Build locally and inspect rendered screenshots before claiming visual verification.
+
+### Actions Taken
+Inspected weapon presentation, local assets, script settings, and current Git status. Changed the scoped prototype to use a composed bolt-action rifle silhouette with dark metal, olive stock parts, and a blue objective lens. Kept the automatic-weapon mesh and existing iron-sight geometry. New parts follow the rifle transform during recoil/reload. Attempted local build; source compiled, but the running Unreal Editor again locked the game DLL. Asked user to save and close the editor before linking and visual verification.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.cpp
+- docs/ai-interaction-log.md
+
+### Verification
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: CrosshairWeapon.cpp compiled; linking failed with LNK1104 because UnrealEditor.exe holds UnrealEditor-Project_Crosshair.dll.
+- git diff --check passed with line-ending notices.
+- Reviewed source and Git status; earlier authorized edits and unrelated user changes preserved.
+- Rendered visual verification remains pending successful linking.
+
+### Notes / Follow-up
+- Await user closing the project editor; rebuild and run the existing opt-in screenshot mode.
+- No asset migration or gameplay changes are required for this appearance revision.
+- No commit or external service used.
+
+### Response Summary
+A slimmer bolt-action sniper presentation is written, but is not active or visually verified yet because Unreal Editor is locking the DLL.
+
+---
+
+---
+## Interaction 27
+
+### Date / Record Status
+Recorded 2026-09-30T20:37:35.451367-05:00.
+
+### User Prompt
+```text
+closed[@CrosshairSmokeTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp)
+```
+
+### Interpretation
+Finish linking and visually verify the previously requested sniper silhouette revision after editor closure.
+
+### Requirements / Acceptance Criteria
+- Successfully build the new bolt-action prototype presentation.
+- Inspect its hip view, clear scoped view, and automatic-weapon sights in local rendered screenshots.
+- Run relevant local checks and disclose any failed verification.
+
+### Actions Taken
+Linked the new game DLL successfully. Ran the existing opt-in offscreen screenshot test and inspected CrosshairSniperHip.png, CrosshairSniperScope.png, and CrosshairARIron.png. Confirmed the new separate stock/receiver, long exposed barrel, compact scope, and visible bolt handle render, scoped view stays clear, and automatic-weapon sights retain their presentation. Ran the full gameplay smoke test; movement, mouse look, damage, menu, firing/reload, placement, successful sniper shot, and replay actor/camera restoration checks passed. Replay playback then stalled and the test timed out at step 50, consistent with the separately noted replay issue. No unrelated replay subsystem edits made.
+
+### Files Changed
+- docs/ai-interaction-log.md
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.cpp remains the appearance change from Interaction 26; no additional source edits this turn.
+
+### Verification
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: succeeded.
+- UnrealEditor-Cmd Project_Crosshair.uproject /Game/Crosshair/Maps/L_Practice -game -CrosshairSmoke -CrosshairVisual -RenderOffscreen -windowed -ResX=1280 -ResY=720 -unattended -nosound -nosplash -ExecCmds='t.MaxFPS 60': CROSSHAIR_VISUAL_OK, exit 0; PNGs inspected.
+- Same game launch with -CrosshairSmoke -NullRHI and 60 FPS: gameplay checks passed, but CROSSHAIR_SMOKE_FAIL step=50 Runtime test timed out during replay playback. Process exited after normal shutdown; wrapper reported 0, so log markers were used to identify failure.
+- git diff --check passed with line-ending notices; Git status/diff reviewed.
+
+### Notes / Follow-up
+- Appearance revision is built and ready on reopening Unreal.
+- Replay playback stall remains an unresolved follow-up; do not represent the full smoke test as passing.
+- No commits, external services, asset regeneration, or generated-directory resets.
+
+### Response Summary
+The new slimmer bolt-action sniper has been built and visually verified. Reopen Unreal to see it; gameplay checks passed up to the existing replay playback stall.
+
+---
+
+---
+## Interaction 28
+
+### Date / Record Status
+Recorded 2026-09-30.
+
+### User Prompt
+Now I want to be able to select between 2 maps, Highrise from MW2 and Nuketown from BO2, do I need to find those files or what[@CrosshairSmokeTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp)
+
+### Interpretation
+Explain how to obtain or create playable environments for a two-map selector before choosing the map asset approach.
+
+### Requirements / Acceptance Criteria
+- Explain whether original map files are needed and how Unreal levels fit into map selection.
+- Identify the choice between original inspired environments and compatible supplied assets.
+
+### Actions Taken
+Explained that original Call of Duty map files are not directly usable Unreal levels. Proposed original playable environments inspired by the requested layouts or importing Unreal-compatible environments the user has permission to use. No implementation or asset import performed pending the map approach.
+
+### Files Changed
+- docs/ai-interaction-log.md
+
+### Verification
+- Read the latest interaction log entries before appending.
+- git diff --check and git status reviewed after the documentation update.
+- No build or tests required for this informational response.
+
+### Notes / Follow-up
+- Choose prototype layouts built in this project or provide compatible map assets before implementing the two-map selector.
+
+### Response Summary
+Original files are unnecessary for inspired layouts; exact replicas require suitable permitted assets and conversion work. Proposed starting with playable prototype layouts and adding a map selector.
+---
+
+---
+## Interaction 29
+
+### Date / Record Status
+Recorded 2026-09-30.
+
+### User Prompt
+i found a nuketown map for unreal but couldnt find a highrise map. i downloaded a zip folder, where do I put that so it can work with this. I want to be able to select between the testing map and nuketown. I don't really know what is inside the zip folder[@CrosshairSmokeTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp)
+
+### Interpretation
+Inspect the downloaded archive, identify its import method, and work toward selection between the existing testing map and Nuketown.
+
+### Requirements / Acceptance Criteria
+- Inspect archive contents before importing unknown assets.
+- Use a compatible playable Nuketown level for a two-map selector.
+- Preserve the existing testing map and unrelated changes.
+
+### Actions Taken
+Located Downloads/nuketown_v10.zip and inspected its entries read-only. The archive contains a tdm_nuketown.map, a Lua file, tile/background BMP images, a sprite PNG, and a preview PNG. It contains no .uproject, .umap, .uasset, FBX, or OBJ files. Explained that this is not a usable Unreal map package and requested the download page to identify the intended Unreal download. Inspected existing native menu code; no imports or gameplay changes made because the required playable level is missing.
+
+### Files Changed
+- docs/ai-interaction-log.md
+
+### Verification
+- Listed ZIP entries via System.IO.Compression.ZipFile without extraction or execution.
+- Initial sandboxed Add-Type was blocked; read-only inspection succeeded with approved escalation.
+- Reviewed AGENTS.md and CrosshairGame menu code.
+- git status and git diff --check reviewed.
+- No builds or gameplay tests necessary for archive inspection.
+
+### Notes / Follow-up
+- Await the download page or correct Unreal asset package before integrating Nuketown and completing the map selector.
+- Keep the current ZIP outside Content; no usable Unreal level exists in this archive.
+
+### Response Summary
+The downloaded ZIP is a map for another game rather than an Unreal environment. Keep it in Downloads and provide the source page so the compatible download can be identified.
+---
+
+---
+## Interaction 30
+
+### Date / Record Status
+Recorded 2026-09-30.
+
+### User Prompt
+https://www.unrealsoftware.de/files_show.php?file=13991&goto=151338
+
+Here is the link for the folder I downloaded[@CrosshairSmokeTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp)
+
+### Interpretation
+Verify the archive source and clarify whether it provides a usable Unreal Engine Nuketown environment.
+
+### Requirements / Acceptance Criteria
+- Check the supplied source rather than relying on the website name.
+- Explain compatibility and the next step for testing-map/Nuketown selection.
+
+### Actions Taken
+Attempted to open the supplied page and variants; the web tool could not access that file page. Verified the official Unreal Software homepage identifies it as the developer of CS2D and the Stranded series. Its official CS2D page describes a top-down shooter with a map editor and Lua support. Combined with the previously inspected .map/Lua/tile-image archive, inferred this is a CS2D map rather than an Unreal Engine level. No assets imported or gameplay code modified. Proposed either finding a compatible Unreal/3D environment or building an original playable Nuketown-inspired prototype before completing the map selector.
+
+### Files Changed
+- docs/ai-interaction-log.md
+
+### Verification
+- Web: supplied file page inaccessible; official https://unrealsoftware.de/ and https://www.unrealsoftware.de/game_cs2d.php verified.
+- git diff --check and git status reviewed.
+- No build or gameplay tests required for source verification.
+
+### Notes / Follow-up
+- Two-map implementation still requires a compatible level or the user's choice to build a prototype environment.
+- No downloads, imports, external paid services, or commits.
+
+### Response Summary
+Unreal Software and Unreal Engine are different products; the inspected download appears to target CS2D. It cannot supply the requested 3D level directly. Offered an original playable prototype as an alternative.
+---
+
+---
+## Interaction 31
+
+### Date / Record Status
+Recorded 2026-09-30.
+
+### User Prompt
+I was trying to use to ArtStation but it says 503 Service Temporaily Unavailable but here is the link for it. 
+https://www.artstation.com/marketplace/p/l0MN8/nuketown-from-black-ops-unreal-engine-5-remake[@CrosshairSmokeTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp)
+
+### Interpretation
+Verify the ArtStation Nuketown listing and identify acquisition/import steps despite the user's 503 error.
+
+### Requirements / Acceptance Criteria
+- Verify advertised engine version, files, and dependencies.
+- Explain how to obtain the actual project without replacing this game's project.
+- Continue toward testing-map/Nuketown selection once files are available.
+
+### Actions Taken
+Read the supplied ArtStation listing successfully through the web tool. It advertises a free Unreal Engine 5.3 project, requires Ultra Dynamic Sky for lighting and some Megascans assets, and lists only Nuketown.txt (993 bytes) as the marketplace file. Inferred that the text file likely contains instructions or a separate download link; contents are not available yet. Checked local Downloads: only the previously rejected nuketown_v10.zip matches Nuketown names. Explained that the 503 is a website availability error and does not call for resetting Unreal. Advised downloading the listing's text file/project into a separate Downloads folder for inspection before any migration. No assets acquired, purchases, imports, or source changes performed.
+
+### Files Changed
+- docs/ai-interaction-log.md
+
+### Verification
+- ArtStation listing retrieved: https://www.artstation.com/marketplace/p/l0MN8/nuketown-from-black-ops-unreal-engine-5-remake.
+- Local Downloads matching file inventory checked.
+- git diff --check and git status reviewed.
+- No build or gameplay tests required for listing inspection.
+
+### Notes / Follow-up
+- Obtain Nuketown.txt and the actual environment archive before dependency/UE 5.8 compatibility inspection and map-selection implementation.
+- No additional purchases authorized or required at this stage; inspect lighting dependencies before deciding how to integrate.
+
+### Response Summary
+This listing advertises a real UE 5.3 project. Download Nuketown.txt when ArtStation is available, follow its project-download instructions if present, and keep the resulting files separate from Project_Crosshair for inspection and migration.
+---
+
+---
+## Interaction 32
+
+### Date / Record Status
+Recorded 2026-09-30, America/Chicago.
+
+### User Prompt
+I got the Nuketown.txt file downloaded[@CrosshairSmokeTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp)
+
+### Interpretation
+Continue the authorized integration of the downloaded Nuketown environment and selection between it and the existing testing map.
+
+### Requirements / Acceptance Criteria
+- Inspect the text file and actual map archives before importing assets.
+- Preserve the existing testing map, controls, loadout, and unrelated edits.
+- Add keyboard/controller selection between Testing Map and Nuketown.
+- Verify playable spawn/collision, movement, firing, target placement, reset, and map travel locally.
+- Document missing dependencies and visual limitations honestly.
+
+### Actions Taken
+Read Downloads/Nuketown.txt. Retrieved the author-linked Nuketown.rar (656 MB) and Surfaces_Mats.rar (about 5 MB) into Downloads/CrosshairMapImport. Validated archive paths before extraction. Inspected the source UE 5.3 environment in an isolated UE 5.8 inspection project; it contains a real BlackOps_NukeTown_V2 level but omits Ultra Dynamic Sky/Weather and 103 referenced packages including Megascans textures/plants. Imported only new nonconflicting environment Content folders and the original map while retaining package paths; incoming project/config/caches/developer assets were not imported.
+
+Added a reproducible Unreal Python setup script. Created a separate L_Nuketown playable level, converted inch-based transforms to centimeters, rebased the scene above the existing fall-reset boundary, added complex collision to 3115 imported meshes, replaced 609 missing surface-material slots with explicit local fallbacks, removed promotional cameras/sequences, and configured the existing practice GameMode, daylight, and player start. Enabled Nanite on a new map-specific fallback parent material without modifying the existing target material.
+
+Added the Map menu row: arrows/D-pad cycle the choice and Enter/A loads it. Travel saves settings, stops/discards the active unsaved recording, clears return-session state and stale status messages, and starts a fresh map attempt. Playback/finalization block changes. Added both levels to packaging map entries and an opt-in CrosshairMapSmoke round-trip test. Preserved prior authorized bug fixes, the user's testing-map changes, solution edits, Build folder, and RiderLink files.
+
+Initial runtime checks found blocked spawn positions. Used the debugging-code skill with Rider's native LLDB attach, pausing at CrosshairSmokeTest.cpp:114 with Tick at the top of the stack. Inspected the possessed practice pawn through controller fields after optimized local values proved unreliable; StartTransform was at the fallback origin (0,0,-198.345), and RecordedView was below the map (-1457.378 Z). Engine logs reported no positively rated player start. Focused overlap/ground probes identified imported props blocking candidate starts. Selected the proven clear final spawn (2000,-2000,190), yaw 180. Removed both agent breakpoints, preserved all eight user exception-breakpoint states, detached the debugger, and stopped only the agent-launched debug test process after it retained a DLL lock. Rebuilt successfully.
+
+### Files Changed
+- Config/DefaultGame.ini
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h
+- Source/Project_Crosshair/Trickshot/CrosshairReplaySubsystem.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairReplaySubsystem.h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp
+- Scripts/setup_nuketown.py
+- docs/nuketown-import.md
+- docs/ai-interaction-log.md
+- Content/Crosshair/Maps/L_Nuketown.umap
+- Content/Crosshair/Maps/NuketownMaterials/ (map-specific parent and 13 fallback material instances)
+- Content/ArchViz/, Content/BlackOPSIK/, Content/Colorama/, Content/EasyFog/, Content/MDL/, Content/MSPresets/, Content/Megascans/, Content/BlackOps_NukeTown_V2.umap (new imported assets; binaries copied or saved through Unreal, never text-edited)
+
+### Verification
+- Author-linked MediaFire download pages inspected through local HTTPS after web-tool access failed; archives downloaded successfully. Sandbox networking/assembly restrictions required approved escalations.
+- Isolated inspect_nuketown.py commandlet: NUKETOWN_INSPECT_OK; source actor classes/dependency inventory inspected.
+- setup_nuketown.py commandlet: NUKETOWN_SETUP_OK meshes=3115 fallback_slots=609, exit 0.
+- Start-position and Nanite material repair commandlets: succeeded; final material repair logged NUKETOWN_MATERIAL_FIX_OK.
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: final build succeeded. One intermediate link failed because the detached agent debug process retained the DLL; released that process and rebuilt successfully.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairMapSmoke -NullRHI -unattended -nosound -ExecCmds='t.MaxFPS 60': CROSSHAIR_MAP_SMOKE_OK after resolving spawn placement.
+- Same map test with -CrosshairMapVisual -RenderOffscreen -windowed -ResX=1280 -ResY=720: final CROSSHAIR_MAP_SMOKE_OK; inspected final CrosshairNuketown.png. Verified initialized pawn/loadout/input, ground, movement, firing, placement/reset, map target-layout isolation, settings persistence, and keyboard/controller round-trip selection.
+- UnrealEditor-Cmd -ExecCmds='Automation RunTests Crosshair.' -TestExit='Automation Test Queue Empty' -NullRHI: all five Crosshair tests succeeded, exit 0.
+- Reviewed Git status/diffs. Source/config diff check passed; full diff check reports one existing trailing space in Interaction 31's verbatim user prompt, retained to preserve the exact prompt, plus line-ending notices.
+
+### Notes / Follow-up
+- This supplied environment is the Black Ops 1 Nuketown remake, not BO2's Nuketown 2025.
+- Missing Megascans texture/plant and sky dependencies mean the level uses simpler daylight/materials and omits some foliage. Two supplied furniture/lattice materials still fail SM6 compilation and use the default material.
+- No extra purchases, commits, remote CI, or unrelated project-setting replacement.
+- Packaging entries are configured; a packaged build/cook has not been verified.
+- The prior replay playback stall remains outside this map task and is not represented as fixed.
+
+### Response Summary
+Nuketown has been integrated and the Testing Map/Nuketown menu selector is ready. Reopen the project, use Escape/Start, select Map with arrows/D-pad, and press Enter/A to load. Build, five automated tests, and final rendered round-trip gameplay checks passed; explain the missing visual dependencies and BO1 map version.
+---
+
+---
+## Interaction 33
+
+### Date / Record Status
+Recorded 2026-09-30, America/Chicago.
+
+### User Prompt
+everything works well, i just spawn outside the map on nuketown for now, it can be left and worked on later[@CrosshairSmokeTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp)
+
+### Interpretation
+The user confirms gameplay works and explicitly defers correcting Nuketown's spawn outside the intended playable map.
+
+### Requirements / Acceptance Criteria
+- Leave gameplay and the current spawn unchanged.
+- Record the spawn placement as known follow-up work rather than treating prior ground/collision checks as proof of correct placement within the intended play area.
+
+### Actions Taken
+Acknowledged the user's reported outside-map spawn and decision to address it later. No gameplay, assets, or test changes made. Recorded that the previous runtime checks established supported collision and working mechanics but did not establish an appropriate start inside the intended Nuketown play area.
+
+### Files Changed
+- docs/ai-interaction-log.md
+
+### Verification
+- User reports that everything works well except spawning outside the intended map.
+- Git status and documentation diff reviewed; no build or gameplay test needed for this deferred issue.
+
+### Notes / Follow-up
+- Deferred by user: relocate Nuketown PlayerStart inside the intended playable map and visually verify boundaries and entry view.
+- Do not resume this spawn correction without a subsequent user request.
+
+### Response Summary
+Leave the current implementation as-is and keep the outside-map Nuketown spawn recorded for later correction.
+---

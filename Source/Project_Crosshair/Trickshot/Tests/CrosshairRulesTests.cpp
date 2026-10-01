@@ -37,4 +37,34 @@ bool FCrosshairSurfaceTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Ceiling rejected"), UCrosshairPlacementComponent::IsSupportedSurface(-FVector::UpVector));
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairMouseTest, "Crosshair.Input.MouseDisplacement", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairMouseTest::RunTest(const FString& Parameters)
+{
+    FCrosshairSettings Settings;
+    const FVector2D Raw(100, 50);
+    const FVector2D Hip = CrosshairRules::MouseDelta(Raw, Settings, 0);
+    TestTrue(TEXT("Raw displacement uses only game sensitivity"), Hip.Equals(FVector2D(12,6), .001));
+    TestTrue(TEXT("Positive mouse Y looks up"), Hip.Y > 0);
+    TestTrue(TEXT("ADS scales both axes"), CrosshairRules::MouseDelta(Raw, Settings, 1).Equals(Hip * Settings.AimSensitivity, .001));
+    Settings.MouseSensitivity *= 2;
+    TestTrue(TEXT("Sensitivity doubles displacement"), CrosshairRules::MouseDelta(Raw, Settings, 0).Equals(Hip * 2, .001));
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairDamageTest, "Crosshair.Target.DamageThresholds", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairDamageTest::RunTest(const FString& Parameters)
+{
+    float Health = 100;
+    for (int32 i=0; i<4; ++i) Health = CrosshairRules::RemainingHealth(Health,20);
+    TestTrue(TEXT("Four body hits survive"), Health > 0);
+    TestEqual(TEXT("Five body hits defeat"), CrosshairRules::RemainingHealth(Health,20), 0.f);
+    Health = CrosshairRules::RemainingHealth(CrosshairRules::RemainingHealth(100,100.f/3),100.f/3);
+    TestTrue(TEXT("Two head hits survive"), Health > 0);
+    TestEqual(TEXT("Three head hits defeat despite rounding"), CrosshairRules::RemainingHealth(Health,100.f/3), 0.f);
+    Health = CrosshairRules::RemainingHealth(CrosshairRules::RemainingHealth(100,100.f/3),100.f/3);
+    TestTrue(TEXT("Two heads plus one body survive"), CrosshairRules::RemainingHealth(Health,20) > 0);
+    TestEqual(TEXT("Two heads plus two bodies defeat"), CrosshairRules::RemainingHealth(CrosshairRules::RemainingHealth(Health,20),20),0.f);
+    TestEqual(TEXT("Sniper single hit defeats"),CrosshairRules::RemainingHealth(100,100),0.f);
+    return true;
+}
 #endif
