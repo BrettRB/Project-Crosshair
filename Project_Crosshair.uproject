@@ -44,6 +44,20 @@
 			"TargetAllowList": [
 				"Editor"
 			]
+		},
+		{
+			"Name": "GameInputWindows",
+			"Enabled": true,
+			"PlatformAllowList": [
+				"Win64"
+			]
+		},
+		{
+			"Name": "XInputDevice",
+			"Enabled": false,
+			"PlatformAllowList": [
+				"Win64"
+			]
 		}
 	]
 }

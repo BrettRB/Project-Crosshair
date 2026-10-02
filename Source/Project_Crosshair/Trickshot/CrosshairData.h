@@ -8,7 +8,20 @@
 class UInputAction;
 class UInputMappingContext;
 class USkeletalMesh;
+class UStaticMesh;
 class USoundBase;
+class UMaterialInterface;
+
+/** Cosmetic-only material overrides; an empty list keeps the authored mesh materials. */
+USTRUCT(BlueprintType)
+struct FCrosshairWeaponSkin
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadOnly) FName Id;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly) FText DisplayName;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<TObjectPtr<UMaterialInterface>> Materials;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly) FLinearColor StockColor = FLinearColor(.055f,.075f,.045f);
+};
 
 /** A weapon's editable design, separate from the changing state of an equipped weapon. */
 UENUM(BlueprintType)
@@ -35,6 +48,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="10", ClampMax="110")) float AimFOV = 35.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.01")) float AimSeconds = 0.25f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) TObjectPtr<USkeletalMesh> Mesh;
+	/** Optional rigid model, in camera axes (X forward, Z up), with the grip at the origin. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Appearance") TObjectPtr<UStaticMesh> PresentationMesh;
+	/** Disable when an authored model includes its own sights, scope and stock. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Appearance") bool bUsePrototypeGeometry = true;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Appearance") TArray<FCrosshairWeaponSkin> Skins;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) TObjectPtr<USoundBase> FireSound;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) FVector HipOffset = FVector(45, 16, -16);
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) FVector AimOffset = FVector(45, 0, -9);
@@ -84,6 +102,11 @@ struct FCrosshairSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float AimSensitivity = 0.45f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float FieldOfView = 90.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bContinuousPractice = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bInvertControllerHorizontal = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bInvertControllerVertical = false;
+	/** Hardware axis direction learned by the explicit Controls calibration. */
+	UPROPERTY() FVector2D ControllerAxisDirection = FVector2D(1, 1);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) TMap<FName, FName> WeaponSkins;
 };
 
 USTRUCT(BlueprintType)
@@ -119,9 +142,10 @@ namespace CrosshairRules
 	/** Stick rate integrates over time, so the same input turns equally at different frame rates. */
 	inline FVector2D StickDelta(FVector2D Input, const FCrosshairSettings& Settings, float AimAlpha, float DeltaSeconds)
 	{
-		const FVector2D Axis = FilterStick(Input, Settings.StickDeadZone, Settings.StickExponent);
+		const FVector2D Axis = FilterStick(Input * Settings.ControllerAxisDirection, Settings.StickDeadZone, Settings.StickExponent);
 		const float Scale = DeltaSeconds * FMath::Lerp(1.f, Settings.AimSensitivity, AimAlpha);
-		return FVector2D(Axis.X * Settings.StickYawSpeed, Axis.Y * Settings.StickPitchSpeed) * Scale;
+		return FVector2D(Axis.X * Settings.StickYawSpeed * (Settings.bInvertControllerHorizontal ? -1.f : 1.f),
+			Axis.Y * Settings.StickPitchSpeed * (Settings.bInvertControllerVertical ? -1.f : 1.f)) * Scale;
 	}
 	/** Raw mouse displacement is already integrated; never multiply by frame time. */
 	inline FVector2D MouseDelta(FVector2D Input, const FCrosshairSettings& Settings, float AimAlpha)

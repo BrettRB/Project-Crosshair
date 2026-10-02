@@ -10,6 +10,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 ACrosshairGameMode::ACrosshairGameMode()
 {
@@ -22,9 +23,33 @@ ACrosshairPlayerController::ACrosshairPlayerController()
 {
 	bShouldPerformFullTickWhenPaused = true;
 }
+void ACrosshairPlayerController::BeginPlay()
+{
+	Super::BeginPlay();
+	if (IsLocalController()) ApplyGameplayInputMode();
+}
+void ACrosshairPlayerController::ApplyGameplayInputMode()
+{
+	bShowMouseCursor = false;
+	bEnableClickEvents = false;
+	bEnableMouseOverEvents = false;
+	FInputModeGameOnly Mode;
+	Mode.SetConsumeCaptureMouseDown(false);
+	SetInputMode(Mode);
+}
+void ACrosshairPlayerController::UpdateRotation(float DeltaTime)
+{
+	Super::UpdateRotation(DeltaTime);
+	if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn()))
+		PracticePawn->ApplyLookInput(PendingMouse, HeldStick, DeltaTime);
+	PendingMouse = FVector2D::ZeroVector;
+}
 void ACrosshairPlayerController::FlushPressedKeys()
 {
 	if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn())) PracticePawn->StopActions();
+	PendingMouse = HeldStick = FVector2D::ZeroVector;
+	ControllerCalibrationStep = 0;
+	CalibrationAxis = FVector2D::ZeroVector;
 	Super::FlushPressedKeys();
 }
 void ACrosshairPlayerController::ToggleMenu()
@@ -32,10 +57,25 @@ void ACrosshairPlayerController::ToggleMenu()
 	FlushPressedKeys();
 	bMenuOpen = !bMenuOpen;
 	MenuSelection = 0;
+	MenuTab = 0;
+	if (bMenuOpen)
+		if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn())) PracticePawn->GetCharacterMovement()->StopMovementImmediately();
 	if (bMenuOpen) MapChoice = GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Nuketown")) ? 1 : 0;
 	// Keep the world running: a successful replay must finish writing while the menu is open.
-	SetInputMode(FInputModeGameOnly());
-	bShowMouseCursor = false;
+	if (bMenuOpen)
+	{
+		FInputModeGameAndUI Mode;
+		Mode.SetHideCursorDuringCapture(false);
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(Mode);
+	}
+	else ApplyGameplayInputMode();
+	if (bMenuOpen)
+	{
+		bShowMouseCursor = true;
+		bEnableClickEvents = true;
+		bEnableMouseOverEvents = true;
+	}
 	if (!bMenuOpen) GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->SaveSettings();
 }
 bool ACrosshairPlayerController::InputKey(const FInputKeyEventArgs& Params)
@@ -43,11 +83,33 @@ bool ACrosshairPlayerController::InputKey(const FInputKeyEventArgs& Params)
 	const FKey Key = Params.Key;
 	const bool Pressed = Params.Event == IE_Pressed;
 	if (Pressed && (Key == EKeys::Escape || Key == EKeys::Gamepad_Special_Right)) { ToggleMenu(); return true; }
-	if (!bMenuOpen) return Super::InputKey(Params);
+	if (bMenuOpen && ControllerCalibrationStep && Params.Event == IE_Axis && (Key == EKeys::Gamepad_RightX || Key == EKeys::Gamepad_RightY))
+	{
+		CalibrateAxis(Key, Params.AmountDepressed);
+		return true;
+	}
+	if (!bMenuOpen)
+	{
+		// Read the physical axis before Enhanced Input/legacy modifiers, keeping both
+		// input devices active. Mouse is a displacement; the stick is a held rate.
+		if (Params.Event == IE_Axis && FMath::IsFinite(Params.AmountDepressed))
+		{
+			if (Key == EKeys::MouseX) { PendingMouse.X += Params.AmountDepressed; return true; }
+			if (Key == EKeys::MouseY) { PendingMouse.Y += Params.AmountDepressed; return true; }
+			if (Key == EKeys::Gamepad_RightX) { HeldStick.X = FMath::Clamp(Params.AmountDepressed, -1.f, 1.f); return true; }
+			if (Key == EKeys::Gamepad_RightY) { HeldStick.Y = FMath::Clamp(Params.AmountDepressed, -1.f, 1.f); return true; }
+		}
+		return Super::InputKey(Params);
+	}
+	if (Key == EKeys::LeftMouseButton) return Super::InputKey(Params);
 	if (!Pressed) return true;
-	const int32 Count = GetMenuRows().Num();
-	if (Key == EKeys::Up || Key == EKeys::Gamepad_DPad_Up) MenuSelection = (MenuSelection + Count - 1) % Count;
-	else if (Key == EKeys::Down || Key == EKeys::Gamepad_DPad_Down) MenuSelection = (MenuSelection + 1) % Count;
+	const TArray<int32> Visible = GetVisibleMenuRows();
+	const int32 Count = Visible.Num();
+	const int32 Index = FMath::Max(0, Visible.IndexOfByKey(MenuSelection));
+	if (Key == EKeys::Tab || Key == EKeys::Gamepad_RightShoulder || Key == EKeys::E) SetMenuTab(MenuTab + 1);
+	else if (Key == EKeys::Gamepad_LeftShoulder || Key == EKeys::Q) SetMenuTab(MenuTab - 1);
+	else if (Key == EKeys::Up || Key == EKeys::Gamepad_DPad_Up) MenuSelection = Visible[(Index + Count - 1) % Count];
+	else if (Key == EKeys::Down || Key == EKeys::Gamepad_DPad_Down) MenuSelection = Visible[(Index + 1) % Count];
 	else if (Key == EKeys::Left || Key == EKeys::Gamepad_DPad_Left) AdjustSelection(-1);
 	else if (Key == EKeys::Right || Key == EKeys::Gamepad_DPad_Right) AdjustSelection(1);
 	else if (Key == EKeys::Enter || Key == EKeys::Gamepad_FaceButton_Bottom) ActivateSelection();
@@ -70,7 +132,7 @@ TArray<FString> ACrosshairPlayerController::GetMenuRows() const
 		FString::Printf(TEXT("Aim sensitivity: %.2f"), S.AimSensitivity),
 		FString::Printf(TEXT("Field of view: %.0f"), S.FieldOfView),
 		FString::Printf(TEXT("Continuous practice: %s"), S.bContinuousPractice ? TEXT("On (no auto replay)") : TEXT("Off (save hits)")),
-		TEXT("Save attempt start"), TEXT("Reset attempt"), TEXT("Remove aimed target"), TEXT("Clear all targets")
+		TEXT("Save position   [K / D-pad Right]"), TEXT("Reset to saved position   [T / D-pad Down]"), TEXT("Remove aimed target"), TEXT("Clear all targets")
 	};
 	const auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn());
 	const auto* Current = PracticePawn ? PracticePawn->Inventory->GetCurrent() : nullptr;
@@ -79,8 +141,81 @@ TArray<FString> ACrosshairPlayerController::GetMenuRows() const
 	Rows.Add(Replay->IsPlayback() || Replay->IsFinishing() ? TEXT("Map: unavailable during replay/save") :
 		FString::Printf(TEXT("Map: %s (Enter / A to load)"), MapChoice == 0 ? TEXT("Testing Map") : TEXT("Nuketown")));
 	Rows.Add(TEXT("Quit to Desktop"));
+	Rows.Add(FString::Printf(TEXT("Invert controller horizontal: %s"), S.bInvertControllerHorizontal ? TEXT("On") : TEXT("Off")));
+	Rows.Add(FString::Printf(TEXT("Invert controller vertical: %s"), S.bInvertControllerVertical ? TEXT("On") : TEXT("Off")));
+		for (int32 Index=-1; Index<2; ++Index)
+	{
+		const bool Available = Current && Current->Definition && (Index < 0 || Current->Definition->Skins.IsValidIndex(Index));
+		const FName Id = Available && Index >= 0 ? Current->Definition->Skins[Index].Id : NAME_None;
+		const FString Name = Index < 0 ? TEXT("Original") : (Available ? Current->Definition->Skins[Index].DisplayName.ToString() : TEXT("Unavailable"));
+		Rows.Add(TEXT("Camo: ") + Name + (Available && Current->SkinId == Id ? TEXT("  [Equipped]") : TEXT("")));
+	}
+	static const TCHAR* CalibrationLabels[] = {TEXT("Calibrate controller direction (Enter / A)"), TEXT("Push RIGHT stick RIGHT"), TEXT("Release right stick to center"), TEXT("Push RIGHT stick UP"), TEXT("Release right stick to save")};
+	Rows.Add(CalibrationLabels[ControllerCalibrationStep]);
 	for (const auto& Entry : Replay->GetReplays()) Rows.Add(TEXT("Play: ") + Entry.RecordedAt);
 	return Rows;
+}
+void ACrosshairPlayerController::CalibrateAxis(FKey Key, float Value)
+{
+	if (!FMath::IsFinite(Value)) return;
+	if (Key == EKeys::Gamepad_RightX) CalibrationAxis.X = Value;
+	else CalibrationAxis.Y = Value;
+	if (ControllerCalibrationStep == 1 && FMath::Abs(CalibrationAxis.X) > .65f && FMath::Abs(CalibrationAxis.Y) < .3f)
+	{
+		CalibrationDirection.X = FMath::Sign(CalibrationAxis.X);
+		ControllerCalibrationStep = 2;
+	}
+	else if (ControllerCalibrationStep == 2 && CalibrationAxis.Size() < .2f) ControllerCalibrationStep = 3;
+	else if (ControllerCalibrationStep == 3 && FMath::Abs(CalibrationAxis.Y) > .65f && FMath::Abs(CalibrationAxis.X) < .3f)
+	{
+		CalibrationDirection.Y = FMath::Sign(CalibrationAxis.Y);
+		ControllerCalibrationStep = 4;
+	}
+	else if (ControllerCalibrationStep == 4 && CalibrationAxis.Size() < .2f)
+	{
+		auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+		auto& Settings = Replay->GetSettings();
+		Settings.ControllerAxisDirection = CalibrationDirection;
+		Settings.bInvertControllerHorizontal = Settings.bInvertControllerVertical = false;
+		Replay->SaveSettings();
+		ControllerCalibrationStep = 0;
+		if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn())) PracticePawn->Notify(TEXT("Controller direction saved: right turns right, up looks up."));
+	}
+}
+TArray<int32> ACrosshairPlayerController::GetVisibleMenuRows() const
+{
+	switch (MenuTab)
+	{
+	case 1: return {1, 2, InvertHorizontalRow, InvertVerticalRow, CalibrationRow, 3, 4, 5, 6};
+	case 2: return {7};
+	case 3: return {11, 12};
+	case 5: return {WeaponRow, SkinRow, WoodlandRow, DesertRow};
+	case 4:
+	{
+		TArray<int32> Rows = {0};
+		for (int32 i = FirstReplayRow; i < GetMenuRows().Num(); ++i) Rows.Add(i);
+		return Rows;
+	}
+	default: return {0, 9, 10, 8, WeaponRow, MapRow, QuitRow};
+	}
+}
+void ACrosshairPlayerController::SetMenuTab(int32 Tab)
+{
+	ControllerCalibrationStep = 0;
+	MenuTab = (Tab + MenuTabCount) % MenuTabCount;
+	MenuSelection = GetVisibleMenuRows()[0];
+}
+void ACrosshairPlayerController::ActivateMenuRow(int32 Row)
+{
+	if (!bMenuOpen || !GetVisibleMenuRows().Contains(Row)) return;
+	MenuSelection = Row;
+	ActivateSelection();
+}
+void ACrosshairPlayerController::AdjustMenuRow(int32 Row, int32 Direction)
+{
+	if (!bMenuOpen || !GetVisibleMenuRows().Contains(Row)) return;
+	MenuSelection = Row;
+	AdjustSelection(Direction);
 }
 void ACrosshairPlayerController::AdjustSelection(int32 Direction)
 {
@@ -100,6 +235,8 @@ void ACrosshairPlayerController::AdjustSelection(int32 Direction)
 				if (Count > 0) PracticePawn->Inventory->Equip((PracticePawn->Inventory->ActiveIndex + Direction + Count) % Count);
 			}
 		return;
+	case InvertHorizontalRow: S.bInvertControllerHorizontal = !S.bInvertControllerHorizontal; break;
+	case InvertVerticalRow: S.bInvertControllerVertical = !S.bInvertControllerVertical; break;
 	case 1: S.StickYawSpeed += Direction * 30; break;
 	case 2: S.StickPitchSpeed += Direction * 30; break;
 	case 3: S.StickDeadZone += Direction * .01f; break;
@@ -131,7 +268,26 @@ void ACrosshairPlayerController::ActivateSelection()
 		Replay->ChangePracticeMap(FName(MapChoice == 0 ? TEXT("/Game/Crosshair/Maps/L_Practice") : TEXT("/Game/Crosshair/Maps/L_Nuketown")));
 		return;
 	}
-	if (Selected == WeaponRow) { AdjustSelection(1); return; }
+	if (Selected >= SkinRow && Selected <= DesertRow)
+	{
+		if (!Replay->IsPlayback() && !Replay->IsFinishing())
+			if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn()))
+				if (auto* Current = PracticePawn->Inventory->GetCurrent())
+				{
+					const int32 Index = Selected - SkinRow - 1;
+					if (Index < 0) Current->SetSkin(NAME_None);
+					else if (Current->Definition && Current->Definition->Skins.IsValidIndex(Index)) Current->SetSkin(Current->Definition->Skins[Index].Id);
+				}
+		return;
+	}
+	if (Selected == CalibrationRow)
+	{
+		const bool Cancel = ControllerCalibrationStep != 0;
+		FlushPressedKeys();
+		if (!Cancel) ControllerCalibrationStep = 1;
+		return;
+	}
+	if (Selected == WeaponRow || Selected == InvertHorizontalRow || Selected == InvertVerticalRow) { AdjustSelection(1); return; }
 	if (Selected > 0 && Selected < 9) { AdjustSelection(1); return; }
 	ToggleMenu();
 	if (Selected == 0) { if (Replay->IsPlayback()) Replay->ReturnToPractice(); return; }
@@ -205,16 +361,81 @@ void ACrosshairHUD::DrawHUD()
 	}
 	DrawText(TEXT("WASD / Left stick: move | Mouse / Right stick: look | Space / A: jump | Shift / L3: sprint | C / B: crouch"), White, 24, Canvas->ClipY - 55);
 	DrawText(TEXT("LMB / RT: fire | RMB / LT: aim | R / X: reload | Q / Y: switch | P / D-pad Up: target | K / D-pad Right: save start"), White, 24, Canvas->ClipY - 32);
+
 	if (PC && PC->bMenuOpen)
 	{
+		const float Scale = FMath::Min(Canvas->ClipX / 1280.f, Canvas->ClipY / 720.f);
+		const float Left = (Canvas->ClipX - 1000.f * Scale) * .5f;
+		const float Top = (Canvas->ClipY - 560.f * Scale) * .5f;
+		const FLinearColor Panel(.022f, .03f, .045f, .99f), Muted(.48f, .55f, .65f);
+		auto Rect = [&](FLinearColor Color, float RX, float RY, float W, float H)
+		{ DrawRect(Color, Left + RX * Scale, Top + RY * Scale, W * Scale, H * Scale); };
+		auto Text = [&](const FString& Label, FLinearColor Color, float TX, float TY, float Size = 1.f)
+		{ DrawText(Label, Color, Left + TX * Scale, Top + TY * Scale, nullptr, Size * Scale); };
+		auto HitBox = [&](FName Name, float HX, float HY, float W, float H)
+		{ AddHitBox(FVector2D(Left + HX * Scale, Top + HY * Scale), FVector2D(W * Scale, H * Scale), Name, true); };
+		DrawRect(FLinearColor(0, 0, 0, .72f), 0, 0, Canvas->ClipX, Canvas->ClipY);
+		Rect(Panel, 0, 0, 1000, 560);
+		Rect(Accent, 0, 0, 1000, 3);
+		Text(TEXT("CROSSHAIR"), Accent, 28, 22, 1.7f);
+		Text(Replay->IsPlayback() ? TEXT("Replay menu") : TEXT("Practice menu"), White, 28, 52, 1.1f);
+		Text(TEXT("Esc / Start to resume"), Muted, 755, 34);
+		Rect(FLinearColor(.07f, .09f, .12f), 0, 88, 1000, 1);
+		const TCHAR* Tabs[] = {TEXT("Practice"), TEXT("Controls"), TEXT("Display"), TEXT("Targets"), TEXT("Replays"), TEXT("Camos")};
+		for (int32 Tab = 0; Tab < ACrosshairPlayerController::MenuTabCount; ++Tab)
+		{
+			const float TY = 108 + Tab * 54;
+			const bool Selected = PC->MenuTab == Tab;
+			if (Selected) { Rect(FLinearColor(.07f, .16f, .21f), 16, TY, 178, 44); Rect(Accent, 16, TY, 3, 44); }
+			Text(Tabs[Tab], Selected ? Accent : Muted, 34, TY + 12, 1.15f);
+			HitBox(FName(*FString::Printf(TEXT("Tab_%d"), Tab)), 16, TY, 178, 44);
+		}
 		const TArray<FString> Rows = PC->GetMenuRows();
-		PC->MenuSelection = FMath::Clamp(PC->MenuSelection, 0, Rows.Num()-1);
-		const int32 Visible = FMath::Max(1, FMath::FloorToInt((Canvas->ClipY - 220) / 26));
-		const int32 First = FMath::Max(0, PC->MenuSelection - Visible + 1);
-		DrawRect(FLinearColor(0.025f, .035f, .05f, .97f), 18, 92, FMath::Min(Canvas->ClipX-36, 740.f), Canvas->ClipY - 190);
-		DrawText(TEXT("PRACTICE MENU | D-pad / arrows: select & adjust | A / Enter: activate"), Accent, 32, 104);
-		DrawText(TEXT("B / Esc: close | X / Delete: delete selected replay"), White, 32, 128);
-		for (int32 i = First; i < FMath::Min(Rows.Num(), First + Visible); ++i)
-			DrawText((i == PC->MenuSelection ? TEXT("> ") : TEXT("  ")) + Rows[i], i == PC->MenuSelection ? Accent : White, 32, 157 + (i-First)*26);
+		const TArray<int32> Visible = PC->GetVisibleMenuRows();
+		int32 Index = Visible.IndexOfByKey(PC->MenuSelection);
+		if (Index == INDEX_NONE) { PC->MenuSelection = Visible[0]; Index = 0; }
+		const int32 PageSize = PC->MenuTab == 1 ? 9 : 7;
+		const float RowPitch = PC->MenuTab == 1 ? 34.f : 44.f;
+		const float RowHeight = RowPitch - 4.f;
+		const int32 First = FMath::Max(0, Index - PageSize + 1);
+		Text(Tabs[PC->MenuTab], White, 224, 104, 1.4f);
+		if (PC->MenuTab == 4 && Visible.Num() == 1) Text(TEXT("No saved replays yet. Land a shot to record an attempt."), Muted, 224, 176);
+		for (int32 i = First; i < FMath::Min(Visible.Num(), First + PageSize); ++i)
+		{
+			const int32 Row = Visible[i];
+			const float RY = 146 + (i - First) * RowPitch;
+			const bool Selected = Row == PC->MenuSelection;
+			Rect(Selected ? FLinearColor(.085f, .16f, .21f) : FLinearColor(.04f, .055f, .075f), 216, RY, 756, RowHeight);
+			Text(Rows[Row], Selected ? Accent : White, 232, RY + 11, 1.05f);
+			HitBox(FName(*FString::Printf(TEXT("Row_%d"), Row)), 216, RY, 650, RowHeight);
+			if ((Row >= 1 && Row <= 8) || Row == PC->WeaponRow || Row == PC->MapRow || Row == PC->InvertHorizontalRow || Row == PC->InvertVerticalRow)
+			{
+				Text(TEXT("<"), Muted, 895, RY + 10, 1.2f);
+				Text(TEXT(">"), Muted, 941, RY + 10, 1.2f);
+				HitBox(FName(*FString::Printf(TEXT("Less_%d"), Row)), 876, RY, 42, RowHeight);
+				HitBox(FName(*FString::Printf(TEXT("More_%d"), Row)), 924, RY, 48, RowHeight);
 	}
+}
+		if (PC->MenuTab == 0) Text(TEXT("Save your spot on a balcony or platform, then reset for each attempt."), Muted, 224, 468);
+		if (PC->MenuTab == 1) Text(TEXT("Left / Right adjusts settings. Aim sensitivity applies while aiming."), Muted, 224, 468);
+		if (PC->MenuTab == 5) Text(TEXT("Enter / A or click a camo to equip it. Saved separately for each weapon."), Muted, 224, 468);
+		if (PC->MenuTab == 3) Text(TEXT("Place targets in game with P / D-pad Up, then Fire to confirm."), Muted, 224, 468);
+		if (PC->MenuTab == 4) Text(TEXT("X / Delete removes the selected replay."), Muted, 224, 468);
+		Rect(FLinearColor(.07f, .09f, .12f), 20, 504, 960, 1);
+		Text(TEXT("Q / E, Tab or LB / RB: tabs    |    Arrows / D-pad: select    |    Enter / A: activate"), Muted, 28, 526);
+	}
+}
+void ACrosshairHUD::NotifyHitBoxClick(FName BoxName)
+{
+	Super::NotifyHitBoxClick(BoxName);
+	auto* PC = Cast<ACrosshairPlayerController>(PlayerOwner);
+	if (!PC || !PC->bMenuOpen) return;
+	const FString Name = BoxName.ToString();
+	FString Kind, Value;
+	if (!Name.Split(TEXT("_"), &Kind, &Value)) return;
+	const int32 Index = FCString::Atoi(*Value);
+	if (Kind == TEXT("Tab")) PC->SetMenuTab(Index);
+	else if (Kind == TEXT("Row")) PC->ActivateMenuRow(Index);
+	else if (Kind == TEXT("Less")) PC->AdjustMenuRow(Index, -1);
+	else if (Kind == TEXT("More")) PC->AdjustMenuRow(Index, 1);
 }

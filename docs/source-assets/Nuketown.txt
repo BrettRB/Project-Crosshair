@@ -1,0 +1,32 @@
+
+Download link https://www.mediafire.com/file/fqv9jgltmwgb9o6/Nuketown.rar/file
+You need Ultra Dynamic Sky for lighting
+You need this megascans assets:
+Surface:
+Brick_Wall_xevtfjz
+Concrete_Pavement_vh3ndge
+Concrete_Slab_sdvpbeka
+Concrete_Slabs_vkmeebc
+Dry_Sand_xfgqfgo
+Fine_Asphalt_victbde
+Flagstone_Wall_vkmeddz
+Fresh_Plaster_ti1nebpfw
+Leather_sjqecg1c
+Old_Decorative_Wallpaper_umridamn
+Old_Metal_Panels_vjwmabafw
+Old_Wallpaper_ufimeaady
+Painted_Wooden_Planks_wdskfjhs
+Plush_Carpet_umonbbqdy
+Rippled_Sand_xd0mda1
+Roof_Tiles_tlikdfofw
+Stone_Wall_vlswfjc
+White_Marble_Tiles_vetldicv
+Wild_Grass_vbomebkg
+Wooden_Floor_whnfeb2
+3D Plants:
+Boston_Fern_rhDrC
+Boxwood_wfypfa3ha
+
+megascans materials download link: https://www.mediafire.com/file/lgqzwytpkdkhoru/Surfaces_Mats.rar/file (extract to project megascans foled)
+
+Based on this rip from CS:GO https://p3dm.ru/files/architecture/other_architecture/18220-nuketown-black-ops-1.html of remake of Nuketown by ValenQpr

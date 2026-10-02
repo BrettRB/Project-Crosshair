@@ -46,6 +46,7 @@ public:
 	void HandleTargetHit(ACrosshairDummy* Target);
 	UPROPERTY(BlueprintReadOnly) FTransform StartTransform;
 	UPROPERTY(BlueprintReadOnly) bool bSucceeded = false;
+	UPROPERTY(BlueprintReadOnly) bool bHasSavedStart = false;
 private:
 	FTransform InitialStart;
 };

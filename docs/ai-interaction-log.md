@@ -1327,3 +1327,383 @@ Acknowledged the user's reported outside-map spawn and decision to address it la
 ### Response Summary
 Leave the current implementation as-is and keep the outside-map Nuketown spawn recorded for later correction.
 ---
+
+
+---
+## Interaction 34
+
+### Date / Record Status
+2026-10-01, approximately 20:13 America/Chicago.
+
+### User Prompt
+I have a couple issues I need you to fix for the project. They are listed below
+
+1. Fix the spawn point on Nuketown so that the user spawns in the middle of the map between the bus and truck preferably.
+2. Add a save position button for a user could place themself on a balcony for instance and keep resetting to that point for attempts.
+3. I tried playing with a wireless controller and it would not work. I even tried reconnecting the controller thinking it was a windows issue but it didn't work. The control does work cause I got it to work with a steam game.
+4. The hand placement on the weapons is off and I would like the hands to follow the path of the weapon specifically when scoping in.
+5. Fix the pause menu and make it look cleaner and more professional. Add seperate tabs for different item catagories.
+
+Overall, I feel like it is really good so far and there are only a couple more changes I would like to make to the game but those can all be done at a later date. Also, for these changes, I do not need to approve them since I know what you are going to be doing.[@CrosshairSmokeTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp)
+
+### Interpretation
+Correct Nuketown's previously deferred spawn, expose saved attempt positions, address native wireless gamepad input, align weapon hands during aiming, and reorganize/polish the menu. User authorizes implementation without a design approval step.
+
+### Requirements / Acceptance Criteria
+- Spawn on supported clear ground in the central street between the school bus and moving truck.
+- Provide a discoverable Save position button and repeated resets preserving elevated location and view direction.
+- Configure the native Windows gamepad path and verify actual gameplay mappings; distinguish simulated input from unverified physical hardware.
+- Make hands follow weapon ADS/recoil/reload presentation and exclude obstructing body geometry.
+- Provide clean Practice, Controls, Display, Targets, and Replays categories with mouse, keyboard, and controller navigation.
+- Build/test locally, preserve unrelated assets/settings, append this log, review Git status/diff, and make no commits.
+
+### Actions Taken
+Read AGENTS.md and relevant source/docs; no project README exists. Initial Git status was clean using read-only LFS-filter bypass (normal Git status requires LFS temporary writes in this restricted workspace). Inspected Nuketown mesh bounds through a temporary Unreal commandlet and standing-capsule/floor traces in an opt-in runtime probe. Identified the school bus at approximately (-803,1692,58) and moving truck at (-193,1086,216); relocated only the playable PlayerStart to (-600,1300,180), yaw 0 through Unreal APIs. Updated fresh-import setup and retained a targeted repair script.
+
+Reused the existing attempt component and input actions. Promoted Save position and Reset to saved position into the Practice tab, added clear shortcut/notification text, tracked whether a start was saved, and rejected crouched/airborne/replay-finalization saves. Added deterministic elevated-platform integration coverage with repeated location/view resets.
+
+Enabled bundled GameInputWindows, configured its per-object Windows settings to process standard gamepad readings, selected GameInput as the preferred API, and disabled the overlapping XInputDevice plugin. Runtime evidence confirmed GameInput 3.5.270.0 initialization and a Gamepad connection callback rather than the initially empty Unknown input-kind mask. No controller was present in Windows' device inventory; asked asynchronously for controller model and Bluetooth/adapter connection, but no answer arrived. Physical controller compatibility remains unverified.
+
+Aligned animated grip position to weapon transform after finalized bone evaluation, correcting idle breathing drift while retaining reload free-hand animation. Used the debugging-code skill with Rider's native LLDB attach to agent-launched PID 28984. Paused at CrosshairCharacter.cpp:179 in UpdateArmsPresentation, captured its delegate call path and actual bone/component transforms. Observed arms translation (30.418,-0.143,-156.794), right-hand component position (-17.111,7.397,139.908), and head component position (-5.869,-3.235,158.705): the full mannequin's head/body moved into the camera view when the hands were aligned. Hid head/legs and created dedicated arms-only material copies with reference-pose masking; corrected shader-stage interpolation after rendered checks caught a pixel-stage PreSkinnedPosition compile failure. Original mannequin materials/meshes were preserved. Removed the agent breakpoint, preserved all eight user exception-breakpoint states (five enabled), stopped the debug session, and terminated only the owned hidden debug process.
+
+Rebuilt the native HUD as a centered, resolution-scaled category panel with clear selected rows, footer hints, mouse hit boxes, separate adjustment buttons, and controller bumper/tab navigation. Opening it flushes held actions and stops movement; recording finalization can continue. Added visual shader-readiness gates and removed both temporary inspection scripts/runtime spawn probe.
+
+### Files Changed
+- Config/DefaultInput.ini
+- Project_Crosshair.uproject
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h
+- Source/Project_Crosshair/Trickshot/CrosshairPractice.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairPractice.h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp
+- Scripts/setup_nuketown.py
+- Scripts/repair_nuketown_spawn.py
+- Scripts/create_first_person_arm_materials.py
+- Content/Crosshair/Maps/L_Nuketown.umap
+- Content/Crosshair/Player/BP_PracticeCharacter.uasset
+- Content/Crosshair/Player/Arms/M_FirstPersonArms.uasset
+- Content/Crosshair/Player/Arms/MI_FirstPersonArms_01.uasset
+- Content/Crosshair/Player/Arms/MI_FirstPersonArms_02.uasset
+- docs/nuketown-import.md
+- docs/gameplay-controls.md
+- docs/ai-interaction-log.md
+
+### Verification
+- Local Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: final build succeeded. Fixed an intermediate compiler diagnostic for shadowing APlayerController::Player.
+- UnrealEditor-Cmd -run=pythonscript -script=Scripts/repair_nuketown_spawn.py -unattended -NullRHI: NUKETOWN_SPAWN_REPAIR_OK, exit 0; only playable map start changed.
+- UnrealEditor-Cmd -run=pythonscript -script=Scripts/create_first_person_arm_materials.py -unattended -NullRHI: final CROSSHAIR_ARMS_MATERIALS_OK, exit 0. Fixed intermediate expression-pin names and the vertex/pixel-stage hookup.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairPolishSmoke -unattended -NullRHI -nosound -ExecCmds='t.MaxFPS 60': CROSSHAIR_POLISH_SMOKE_OK, exit 0. Movement/look/menu/setting/save/elevated repeated resets/D-pad reset/trigger ADS/final animated grip passed. Initial fixture relied on same-frame Enhanced Input dispatch; changed it to the real Save position menu callback and an explicit platform fixture.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairQuitSmoke -unattended -NullRHI -ExecCmds='t.MaxFPS 60': CROSSHAIR_QUIT_SMOKE, normal menu quit, exit 0; WASD, damage thresholds, weapon/menu actions passed.
+- UnrealEditor-Cmd -ExecCmds='Automation RunTests Crosshair.' -TestExit='Automation Test Queue Empty' -unattended -NullRHI: five tests passed, exit 0 (DeadZoneAndFrameRate, MouseDisplacement, DamageThresholds, SupportedSurface, FireGates).
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairVisual -unattended -UnattendedInput -RenderOffscreen -windowed -ResX=1280 -ResY=720 -ExecCmds='t.MaxFPS 60': final CROSSHAIR_VISUAL_OK, exit 0. Reviewed final sniper hip/scope, AR iron/crouch, and menu screenshots; no arms shader compile errors. The correct hardware-input flag is UnattendedInput, not AllowUnattendedInput.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairMapSmoke -CrosshairMapVisual -unattended -RenderOffscreen -windowed -ResX=1280 -ResY=720 -ExecCmds='t.MaxFPS 60': final shader-ready CROSSHAIR_MAP_SMOKE_OK, exit 0. Verified central XY position (-600,1300), supported ground, walking, firing, target placement/reset, keyboard/controller map selection, settings persistence, and target-layout isolation. Reviewed final CrosshairNuketown.png with finished vehicle materials.
+- Git status/diffs reviewed; source/config/script diff check passed. Prior interaction text remains verbatim, including existing whitespace.
+
+### Notes / Follow-up
+- Controller software support and simulated mapping tests are verified; real wireless input/reconnect still needs the user's controller model and a connected-device test. Unconfigured generic HID devices that Steam remaps are not represented as verified native GameInput devices.
+- Saved position lasts for the current practice map session; no cross-launch save-position persistence was requested.
+- Existing missing Nuketown dependencies/material warnings remain as previously documented. No packaged-build/cook or full replay playback regression was performed.
+- Managed read-only workspace permissions required tool-level execution approvals for edits/builds/commandlets; no extra design approval was requested.
+- No external/paid services, remote CI, unrelated regeneration, or commits.
+
+### Response Summary
+Report the central Nuketown spawn, discoverable Save position/reset shortcuts, updated Windows controller input, hands following weapon aiming, and polished five-tab mouse/controller menu. Build, five automation tests, new integration test, gameplay/menu regression, and final rendered map/weapon/menu checks passed. Clearly state that physical wireless-controller validation remains outstanding.
+---
+
+---
+## Interaction 35
+
+Date/time: 2026-10-01T20:57:53-05:00
+
+### User Prompt
+I noticed a few more issues after the last things were done. 
+1. The grass, not the floor but the item standing off the ground, on the Nuketown map has collision making it impossible to walk around to the back side of the houses.
+2. The controlls for a controller are inverted. Looking at this, I would like to add a setting to optionally turn on inverted controlls for both side to side and up and down looking but I would like them to be seperate but turned off by default since that is how games ship but I know some people like to use it that way.
+3. I would like the weapon models update to be more realistic and possibly a way to either unlock or have camos/skins for them like COD does. This task doesn't have to be done right now though but it is something I would like to at least have started on tonight.[@CrosshairCharacter.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp)
+
+### Interpretation
+Remove movement-blocking raised grass in playable Nuketown, provide independently saved horizontal/vertical controller-look inversion with normal defaults, and begin modular weapon model/camo work tonight without requiring the full art/progression update.
+
+### Requirements / Acceptance Criteria
+- Raised decorative grass cannot block the player; ground, houses, and other structural collision remain.
+- Right/up stick input turns right/looks up by default. Horizontal and vertical inversion are separate, default Off, and persist without changing mouse look or movement.
+- Start weapon appearance work with selectable, saved finishes and an authored-model rendering path; identify unfinished realistic art and progression.
+- Build/test locally, inspect changes, and append this engineering record without a commit.
+
+### Actions Taken
+Read current gameplay/map documentation and relevant input, settings, weapon, menu, test, and import code; the project still has no README. Preserved the prior request's uncommitted changes.
+
+Inspected the playable map through Unreal Python. Four instanced ArchViz raised-grass components used QueryAndPhysics because the importer applied BlockAll to imported meshes indiscriminately. Set NoCollision only on those four components, saved/reloaded the playable map, and verified persistence. Updated the fresh import to exclude the same exact raised-grass path. Source map, ground, grass mesh assets, and other vegetation were preserved.
+
+Inspected the saved stick action and paired mapping: neither had inversion modifiers. GameInput's local source supplies positive right/up stick values, and the practice look helper expects that direction. Explicitly normalized right-stick X/Y/2D axis properties alongside existing raw mouse normalization to avoid inherited device inversion, duplicate dead zones, or sensitivity. Added independent default-false controller inversion fields to the persisted settings, applied them in StickDelta, and exposed them in Controls. The simulated physical-key integration test confirmed normal right/up direction and all four inversion combinations in both directions. This establishes the software input path; the reported physical device's inversion cause was not independently reproduced. Asked for the controller model and affected axes.
+
+Added data-driven cosmetic skin catalogs, replicated skin IDs, per-definition saved selections, original-material restoration, rejection of unknown IDs, and a Weapons tab. Created local Woodland/Desert procedural camo materials and configured the three practice weapon definitions. Sniper stock/fore-end and rifle mesh surfaces receive the chosen finish without changing damage, ammo, firing, or reset behavior. Added bUsePrototypeGeometry so complete authored models can display without primitive prototype pieces. No external assets or purchases. Documented the remaining realistic-model and progression work.
+
+Added automated and runtime regression coverage. Rendered and inspected Desert sniper, Woodland AR, Weapons tab, and Controls tab screenshots. Expanded Controls to fit all eight rows after the first rendered pass showed Aim sensitivity below the visible rows. Corrected the material graph's World Position/unnamed Saturate pin connections and avoided absent-asset LoadAsset error logs. Removed the temporary inspection script and reviewed source formatting/diffs.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairData.h
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairRulesTests.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp
+- Scripts/setup_nuketown.py
+- Scripts/repair_nuketown_grass.py
+- Scripts/create_weapon_finishes.py
+- Content/Crosshair/Maps/L_Nuketown.umap
+- Content/Crosshair/Weapons/DA_Sniper.uasset
+- Content/Crosshair/Weapons/DA_AR.uasset
+- Content/Crosshair/Weapons/DA_SMG.uasset
+- Content/Crosshair/Weapons/Finishes/M_Camo.uasset
+- Content/Crosshair/Weapons/Finishes/MI_Woodland.uasset
+- Content/Crosshair/Weapons/Finishes/MI_Desert.uasset
+- docs/gameplay-controls.md
+- docs/nuketown-import.md
+- docs/weapon-appearance.md
+- docs/ai-interaction-log.md
+
+### Verification
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: final local build succeeded, including source review.
+- UnrealEditor-Cmd -run=pythonscript -script=Scripts/repair_nuketown_grass.py -unattended -NullRHI: NUKETOWN_GRASS_REPAIR_OK count=4, exit 0; save/reload verified.
+- UnrealEditor-Cmd -run=pythonscript -script=Scripts/create_weapon_finishes.py -unattended -NullRHI: final CROSSHAIR_FINISH_ASSETS_OK, exit 0, no commandlet errors; idempotent rerun passed. Intermediate graph pin/absent-asset errors were fixed.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairFollowupSmoke -unattended -NullRHI -nosound -nosplash -ExecCmds='t.MaxFPS 60': final CROSSHAIR_FOLLOWUP_SMOKE_OK, exit 0. Both-axis physical key direction, all independent inversion combinations, menu toggles, disk save, finish selection/unknown rejection, stock material, unchanged ammo, real-model flag, switching/reset, map travel, all four grass types, solid ground, and Original restoration passed.
+- UnrealEditor-Cmd -unattended -NullRHI -nosound -ExecCmds='Automation RunTests Crosshair.' -TestExit='Automation Test Queue Empty': all six tests succeeded, exit 0. Includes new IndependentControllerInversion and existing mouse/dead-zone/frame-rate/fire/damage/surface tests.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairPolishSmoke -unattended -NullRHI -nosound -ExecCmds='t.MaxFPS 60': CROSSHAIR_POLISH_SMOKE_OK, exit 0; saved-position/elevated reset, grip, ADS, and controller/mouse category regression passed with six tabs.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairFollowupSmoke -CrosshairFollowupVisual -unattended -UnattendedInput -RenderOffscreen -windowed -ResX=1280 -ResY=720 -nosound -ExecCmds='t.MaxFPS 60': final CROSSHAIR_FOLLOWUP_SMOKE_OK, exit 0. Inspected final Controls screenshot with all eight settings, Weapons tab, Desert sniper and Woodland AR; new camo shaders rendered. Existing two imported Nuketown material failures remain.
+- Git status/diff reviewed; source/config/scripts/new gameplay docs diff check passed. Prior prompt whitespace in the append-only interaction log is preserved.
+
+### Notes / Follow-up
+- Realistic replacement meshes, detailed authored textures, and unlock progression are future work; the initial finish system and model rendering/configuration path are implemented now.
+- Physical controller verification remains outstanding; model/affected-axis clarification was requested. Tests injected physical key events through the actual mapping and pawn, not a connected hardware controller.
+- No packaged build/cook or full replay playback regression. Cosmetic state replicates, but recorded finish playback has not been reverified.
+- Existing imported Nuketown dependency/material limitations remain. No changes to external services, CI, unrelated assets, generated files, or commits.
+- Managed read-only permissions required tool-level approvals for project edits/builds/commandlets.
+
+### Response Summary
+Report nonblocking raised grass, separate default-Off saved controller inversion toggles in Controls, and the Weapons tab with saved Original/Woodland/Desert finishes. State that realistic model replacement/unlocks remain future work. Local build, six automation tests, integration/menu regression, and rendered checks passed; physical controller validation remains outstanding.
+---
+
+---
+## Interaction 36
+
+Date/time: 2026-10-01T21:26:44-05:00
+
+### User Prompt
+The controller inverted controlls were not fixed and now I can't using my mouse to move the camera but WASD still work. I won't both to be able to work for people that prefer that. You can also start implementing the camos and and a new section in the pause menu for camos[@CrosshairCharacter.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp)
+
+### Interpretation
+The previous input changes did not solve the user's physical controller inversion, and mouse camera movement now fails while WASD works. Repair both look devices without forcing a device preference, preserve separate controller inversion settings, and provide a dedicated Camos section.
+
+### Requirements / Acceptance Criteria
+- Mouse and right-stick look work independently and can compose in the same frame.
+- Default controller right/up input turns right/looks up; horizontal/vertical toggles stay independent and do not invert mouse look.
+- Returning from the pause menu restores mouse capture; focus/menu transitions clear stale look input.
+- Camos are directly selectable in their own pause-menu category, with saved per-weapon choices.
+- Build/test locally, preserve prior uncommitted work, review status/diff, and append the interaction record.
+
+### Actions Taken
+Read current docs/source and used the debugging-code skill. Inspected local Unreal input routing and GameInput axis delivery. The baseline quit smoke completed before an attempted debugger attach to PID 35464; it did not reproduce the physical issue. Launched a persistent hidden practice process PID 27668, attached Rider native LLDB, and paused at CrosshairCharacter.cpp:150. The reported top stack frame was ACrosshairCharacter::Tick(float), and concrete values showed the practice pawn, camera at FOV 90 with bUsePawnControlRotation=1, AimAlpha=0, and equipped sniper Ammo=5/SkinId=None. The hardware failure was not reproduced. Windows' targeted controller inventory returned no matching controller, and clarification was requested for model/connection/affected axes and whether mouse fails immediately or after the menu. No root cause specific to the user's device is claimed.
+
+Removed the pawn's paired Enhanced Input look bindings and axis-property normalization. ACrosshairPlayerController::InputKey now captures native MouseX/MouseY displacement and held Gamepad_RightX/Gamepad_RightY values before legacy/Enhanced Input modifiers. UpdateRotation combines them once through Character::ApplyLookInput, retaining the existing sensitivity/dead-zone/inversion math. Mouse displacement is consumed each frame; controller input integrates over time. WASD, left-stick movement, and action buttons stay on existing Enhanced Input bindings. Menu/focus flushing clears both look buffers.
+
+Added explicit local-player GameOnly input mode on startup and on menu close, with cursor/click flags cleared first and CapturePermanently_IncludingInitialMouseDown. This removes the previous reliance on implicit startup capture and generic menu-close mode. The menu continues to block both look devices.
+
+Converted Weapons to a dedicated Camos tab with a weapon selector and direct Original/Woodland/Desert rows, each showing Equipped when active. Enter/A or clicking equips a camo without closing the menu. Existing materials and per-weapon persistence are reused; no art/model assets regenerated. Updated direct-camo regression checks and docs.
+
+Removed four agent-owned breakpoints, stopped the debugger session, and stopped only the owned process after checking PID/executable/InputDebug.log command line. All eight user exception breakpoints remained unchanged, with five enabled; final debugger sessions were empty.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp
+- docs/gameplay-controls.md
+- docs/weapon-appearance.md
+- docs/ai-interaction-log.md
+
+### Verification
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: local build succeeded, including expanded regression tests.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairFollowupSmoke -unattended -NullRHI -nosound -ExecCmds='t.MaxFPS 60': CROSSHAIR_FOLLOWUP_SMOKE_OK, exit 0. New coverage deliberately sets stale legacy inversion/sensitivity/dead-zone properties and verifies mouse alone, one-time displacement, mouse/stick composition in the same frame, controller inversion not affecting mouse, menu suppression/clearing, permanent mouse capture restoration, and mouse after menu close. Existing eight directional inversion cases, camo selection/material/persistence/reset/map travel, and grass checks also passed.
+- Same follow-up test with -CrosshairFollowupVisual -UnattendedInput -RenderOffscreen -windowed -ResX=1280 -ResY=720: CROSSHAIR_FOLLOWUP_SMOKE_OK, exit 0. Reviewed the final rendered Camos tab with Original/Woodland/Desert choices and Desert Equipped. Existing two imported Nuketown material warnings remain.
+- UnrealEditor-Cmd -unattended -NullRHI -ExecCmds='Automation RunTests Crosshair.' -TestExit='Automation Test Queue Empty': all six automation tests succeeded, exit 0.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairPolishSmoke -unattended -NullRHI -ExecCmds='t.MaxFPS 60': CROSSHAIR_POLISH_SMOKE_OK, exit 0; movement/menu/save/reset/ADS/grip regression passed.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairQuitSmoke -unattended -NullRHI -ExecCmds='t.MaxFPS 60': CROSSHAIR_QUIT_SMOKE, normal menu quit, exit 0; WASD, weapon/damage/menu regression passed after repair.
+- Final Git status/diff reviewed; targeted diff check passed. Prior work remains uncommitted and preserved.
+
+### Notes / Follow-up
+- Tests exercise the actual player-controller axis entry path and camera update, but no matching physical controller was available. User-specific physical inversion and real mouse capture still need confirmation in their game session.
+- No claim that the previous physical bug was reproduced or that a device-specific sign convention is known. The new path removes legacy/paired-mapping inversion from the game look path and establishes standard right/up defaults.
+- Model replacement and progression unlocks remain later work. Original/Woodland/Desert camos are available now.
+- No external services, CI, commits, generated-file changes, or unrelated asset regeneration. Managed read-only permissions required tool-level approvals.
+
+### Response Summary
+Report independent mouse/controller look handling, explicit startup/menu capture restoration, and the dedicated Camos tab with direct saved selections. Local build, six automation tests, expanded headless/rendered integration, controller/menu regression, and WASD/weapon quit regression passed. Physical controller behavior remains unverified pending device information.
+---
+
+---
+## Interaction 37
+
+Date/time: 2026-10-01T22:05:29-05:00
+
+### User Prompt
+I feel like the guns look to blocky still. Make them look more realistic and make sure the model for the SMG and AR. Also make sure the camo realism is increased. Plus, the controller is still inverted.[@CrosshairCharacter.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp)
+
+### Interpretation
+Replace the remaining block-like/shared weapon presentation with more realistic, distinct sniper, AR and SMG models; improve the starter camo surfaces; revisit the user's unresolved controller inversion without claiming a hardware fix from simulated input alone.
+
+### Requirements / Acceptance Criteria
+- AR and SMG use separate models; all three weapons have rounded/tapered surfaces and recognizable weapon details rather than the primitive sniper or shared template rifle.
+- Camos use layered subdued colors and surface detail, while metal, rubber and optics retain appropriate separate finishes.
+- Existing camo IDs, per-weapon persistence, weapon behavior and scope/ADS presentation continue to work.
+- Controller look supports separate optional inversion flags defaulting Off, plus an explicit way to correct reversed physical device axes while leaving mouse direction independent.
+- Build and test locally, preserve prior uncommitted work, inspect Git status/diff and append this record. Physical controller confirmation remains an outstanding part of the reported issue.
+
+### Actions Taken
+Read AGENTS.md, current gameplay/weapon documentation, relevant source, asset generators and tests. No project README was present at initial inspection. Inspected the available rifle/pistol/grenade-launcher template assets; AR and SMG shared the rifle mesh and the sniper used primitive components. No external services or downloaded assets were used.
+
+Added optional PresentationMesh data and a collision-free rigid-model component under the existing weapon transform. Static models use camera axes and are counter-rotated into the template grip basis. Existing hands, ADS, recoil and reload continue to share the root transform. Authored presentation suppresses the template mesh/primitive details; sniper scope view hides the model as before. The previous skeletal/primitive path remains a fallback.
+
+Authored three original centimeter-scale meshes with locally generated editable OBJ sources, imported only through Unreal APIs. AR: rounded upper receiver, chamfered lower receiver, vented handguard/rail, curved magazine, open adjustable stock, sights, ejection port and pins. SMG: compact cylindrical receiver, ribbed handguard, curved magazine, sliding stock rails and sights. Sniper: rounded/tapered stock and fore-end, cheek pad, bolt handle, barrel, scope mounts/rings/turrets/lenses. Refined viewing offsets and removed prototype display labels; damage, ammunition, firing and reload timings were not changed.
+
+Rebuilt project-owned finish materials with four subdued camo colors, irregular layered patches, sparse coating chips, grain, subtle normal detail and roughness variation. Metal, rubber and glass have separate physical surface materials. Stable Woodland/Desert instance paths and skin IDs were preserved; only Paint slots receive camo. Original restores authored slot materials. Initial imports had degenerate UVs on caps and an initial material-slot update left checkerboard metal; corrected face-plane UV projection and copied/reassigned imported slot structs, verified actual material paths and reviewed final renders. A Python profile-read attempt was rejected by reflection protection; removed it from the asset script and read the profile through the runtime C++ test instead.
+
+Windows' targeted controller inventory returned no matching controller; no Unreal game/editor process was running during process inspection. The actual normal user profile was read without modification and logged horizontal=0, vertical=0. Requested controller model, connection and affected axes; no answer was available during work. Source inspection and simulated input did not establish a device-specific cause, so no blind sign reversal was applied.
+
+Added Controls -> Calibrate controller direction. The player pushes right stick RIGHT, centers it, pushes UP, then centers it again. The native axis entry path records each hardware sign, saves the correction only after completing both steps, and resets optional inversion flags Off. Normalization runs before dead-zone/sensitivity/user inversion; mouse remains independent. Menu close, focus flush, tab change or reactivating the row cancels incomplete calibration. Correction is local-profile-wide, not a per-device-ID catalog. Defaults remain positive right/up. Expanded Controls layout fits all nine rows.
+
+Added hardware normalization automation and expanded runtime tests for reversed-axis calibration, actual camera direction, mouse independence, persistence, cancellation, restored standard directions, distinct meshes, scoped visibility, material assignments and preserved metal. Extended screenshots to show both AR/SMG hip and ADS views. Updated project docs and source provenance. No commits were created; previous unrelated/uncommitted changes were preserved.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairData.h
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.h
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h
+- Source/Project_Crosshair/Trickshot/CrosshairReplaySubsystem.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairRulesTests.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp
+- Scripts/create_weapon_models.py
+- Scripts/create_weapon_finishes.py
+- ContentSource/Weapons/SM_AR.obj, SM_SMG.obj, SM_Sniper.obj, Crosshair.mtl and README.md
+- Content/Crosshair/Weapons/Models/SM_AR.uasset, SM_SMG.uasset and SM_Sniper.uasset
+- Content/Crosshair/Weapons/DA_AR.uasset, DA_SMG.uasset and DA_Sniper.uasset
+- Content/Crosshair/Weapons/Finishes/M_Woodland.uasset, M_Desert.uasset, M_PaintedWeapon.uasset, M_WeaponMetal.uasset, M_WeaponRubber.uasset, M_OpticGlass.uasset, MI_Woodland.uasset and MI_Desert.uasset
+- docs/weapon-appearance.md
+- docs/gameplay-controls.md
+- docs/ai-interaction-log.md
+
+### Verification
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: succeeded, including final calibration/camera tests.
+- UnrealEditor-Cmd -run=pythonscript -script=Scripts/create_weapon_models.py -unattended -NullRHI -nosound: final run exit 0, CROSSHAIR_AUTHORED_MODELS_OK, no degenerate tangent warnings after UV repair. Three distinct assets and semantic slot names verified.
+- UnrealEditor-Cmd -run=pythonscript -script=Scripts/create_weapon_finishes.py -unattended -NullRHI -nosound: final run exit 0, CROSSHAIR_REALISTIC_FINISHES_OK. All Paint/Metal/Rubber/Glass material paths verified after save.
+- UnrealEditor-Cmd -unattended -NullRHI -ExecCmds='Automation RunTests Crosshair.' -TestExit='Automation Test Queue Empty': all seven Crosshair tests succeeded, exit 0, including HardwareDirectionCalibration.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairFollowupSmoke -CrosshairFollowupVisual -UnattendedInput -unattended -RenderOffscreen -windowed -ResX=1280 -ResY=720 -ExecCmds='t.MaxFPS 60': CROSSHAIR_FOLLOWUP_SMOKE_OK, exit 0. Reversed axes turned the actual camera right/up after calibration; mouse, independent inversion, disk persistence, cancellation, model/camo/reset/switch/travel and grass checks passed. Reviewed final sniper/AR/SMG hip views, both automatic ADS views and Controls/Camos menu screenshots. Existing Nuketown missing leather/material warnings remain.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairPolishSmoke -unattended -NullRHI -ExecCmds='t.MaxFPS 60': CROSSHAIR_POLISH_SMOKE_OK, exit 0; controller movement, menu, elevated save/reset, ADS and aligned grip regression passed.
+- UnrealEditor-Cmd L_Practice -game -CrosshairSmoke -CrosshairQuitSmoke -unattended -NullRHI -ExecCmds='t.MaxFPS 60': CROSSHAIR_QUIT_SMOKE, normal menu quit, exit 0; keyboard movement, weapon/damage/menu regression passed.
+- Git status/diff reviewed. Targeted C++ diff --check passed. Source models and docs retained in the repository; screenshots/logs generated under ignored Saved. No binary assets edited as text.
+
+### Notes / Follow-up
+- No physical controller was available. The device-specific inversion was not reproduced or proven fixed automatically. The new explicit calibration provides a saved correction for either raw-axis convention and was verified with simulated reversed input through the real camera path. User should complete the four stick prompts once on their actual controller, with separate optional inversion settings remaining available.
+- Calibration is per local profile; repeat when using a controller/driver with different raw signs. Normal user profile was inspected only, not rewritten by tests.
+- The models are original detailed game meshes, not scanned production art. Further artistic/finger-pose polish and bespoke weapon animations can be added through the same presentation path.
+- Unlock progression, packaged/cooked rendering and full cosmetic replay playback remain unverified/deferred. Existing imported Nuketown material dependency limitations remain.
+- Managed read-only permissions required tool-level approvals for project writes, imports, local builds and tests.
+
+### Response Summary
+Report distinct, rounder sniper/AR/SMG models and improved layered camo with separate physical materials. Explain Controls -> Calibrate controller direction (right, center, up, center), saved independently from mouse, and be explicit that physical-controller confirmation remains outstanding. Local build, seven automation tests, rendered integration, polish and weapon/keyboard exit checks passed.
+---
+
+---
+## Interaction 38
+
+Date/time: 2026-10-01T22:16:07-05:00
+
+### User Prompt
+i still have the files for nuketown in my downloads folder, is it ok for me to delete these files if they are moved inot the project folder and if they are not, please move them to the correct spot so i can delete them from my downloads folder[@CrosshairCharacter.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp)
+
+### Interpretation
+Check the original Nuketown downloads/staging data against the integrated project, preserve any needed files in the correct project location, and identify which Downloads items the user can remove without breaking the game.
+
+### Requirements / Acceptance Criteria
+- All supplied Nuketown runtime assets have project counterparts at their correct package paths.
+- Preserve existing modified project assets; do not replace them with old downloaded copies.
+- Preserve needed original instructions/provenance before the user removes Downloads copies.
+- Verify the integrated map locally and identify the exact relevant items safe to delete.
+- Leave unrelated Downloads and prior project changes alone; append the interaction record and review Git status/diff.
+
+### Actions Taken
+Read AGENTS.md and docs/nuketown-import.md. Inventoried Downloads/CrosshairMapImport, the extracted Nuketown project, Nuketown.txt and nuketown_v10.zip. Enumerated both RAR archives with Windows tar and checked every asset path in project Content. Nuketown.rar supplies 4,316 assets and Surfaces_Mats.rar supplies 35; all 4,351 project counterparts exist, so no binary assets needed copying or moving. Compared extracted source files to project counterparts using size and SHA-256; 1,236 were identical and 3,115 differed. Existing integration changes were preserved rather than overwritten by pristine/source versions.
+
+Inspected the small nuketown_v10.zip contents: a separate 2D pack with gfx, sprites, tiles, Lua and .map files, not this Unreal map. Searched Config/Scripts for Downloads/staging references; none were found. Source Config/project files, caches and diagnostic helpers are not runtime dependencies.
+
+Copied the original 993-byte Nuketown.txt byte-for-byte to docs/source-assets/Nuketown.txt and verified matching SHA-256. Documented the cleanup audit and exact project/source relationship. Did not delete or move the Downloads originals; they remain for the user's requested cleanup. Did not modify game source or Unreal assets.
+
+### Files Changed
+- docs/source-assets/Nuketown.txt (new preserved original instructions)
+- docs/nuketown-import.md (appended Downloads cleanup audit)
+- docs/ai-interaction-log.md (this record)
+
+### Verification
+- Bundled Python pathlib/hashlib comparison of extracted Nuketown/Content against project Content: 4,351 source files, zero missing counterparts, 1,236 identical, 3,115 differing existing versions; no exclusions needed.
+- Windows tar -tf on Nuketown.rar and Surfaces_Mats.rar with path existence checks: 4,316 plus 35 archive asset files, zero missing in project.
+- Python zipfile inventory of nuketown_v10.zip: separate 2D map pack confirmed.
+- rg for Downloads/CrosshairMapImport/archive names in Config/Scripts: no runtime/script staging references; only documentation mentions the old staging location.
+- Get-FileHash -Algorithm SHA256 on original and copied Nuketown.txt: identical 7CEC828D226F2D08F1D5A84055F7760E3BF0F8A52157AC033EDB75D017E27C0D.
+- UnrealEditor-Cmd Project_Crosshair.uproject L_Practice -game -CrosshairSmoke -CrosshairMapSmoke -unattended -NullRHI -nosound -nosplash -ExecCmds='t.MaxFPS 60' -abslog=Saved/Logs/NuketownDownloadsAudit.log: exit 0, CROSSHAIR_MAP_SMOKE_OK. Verified Nuketown load, central spawn, supported floor, walking, firing, target placement/reset, return travel, settings and isolated map layouts using project assets.
+- Git status and documentation diff inspected. No build required because no code/assets changed. Existing imported missing texture/material warnings remain unchanged.
+
+### Notes / Follow-up
+- Downloads/CrosshairMapImport, Downloads/Nuketown.txt and the unrelated Downloads/nuketown_v10.zip may be removed without affecting this project. Keep project Content and its imported dependency folders.
+- Removing original archives discards the convenient pristine-source backup, but does not remove integrated project assets. No files were deleted by the agent.
+- Unrelated Downloads items such as Project Crosshair.zip and Windows were not assessed for deletion.
+- Managed read-only permissions required tool-level approval for documentation copy/appends and the local map test.
+
+### Response Summary
+Confirm the map assets are already inside the project, original instructions are now preserved there, and Nuketown's local load/gameplay test passed. Name CrosshairMapImport, Nuketown.txt and nuketown_v10.zip as the relevant Downloads items safe to delete, while keeping project Content.
+---
+
+---
+## Interaction 39
+
+Date: 2026-10-01 (America/Chicago)
+
+### User Prompt
+I would also like to add more camos to the game at a later date. My favorite camo of all time is tiger red so adding something similar to that would be awesome. Adding more basic stuff like arctic and stuff would also be important to other possible users. I would also like the target models and hit boxes to look and behave more like COD game hit boxes. I also need the ability to shoot out and climb through the windows in nuketown but also in other future maps. Adding more movement stuff like mantling would also make it feel more like COD. But that can all be done later just listing things down now so you can start working on them next time I boot this up to work on it[@CrosshairCharacter.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp)
+
+### Interpretation
+Record requested future cosmetics, target/hitbox improvements, destructible traversable windows and mantling for the next development session. The user explicitly deferred implementation.
+
+### Requirements / Acceptance Criteria
+- Persist all requested items in repository documentation so a future session can pick them up.
+- Identify red tiger as the user's favorite named camo and include arctic/basic finishes.
+- Capture target/hitbox feel, shooting out/climbing through Nuketown and future-map windows, and mantle movement.
+- Keep implementation deferred; distinguish proposed sequencing/checks from confirmed design decisions.
+- Preserve prior work, append the interaction record and review Git status/diff.
+
+### Actions Taken
+Reviewed existing docs and searched for a backlog/roadmap; no dedicated current backlog existed. Created docs/backlog.md with the five feature groups, proposed acceptance checks, suggested sequencing, unresolved implementation choices and links to current foundations. Included the exact original request. Linked the backlog from gameplay-controls documentation for discoverability. No game code, assets, dependencies or settings were changed; no background work was scheduled.
+
+### Files Changed
+- docs/backlog.md (new)
+- docs/gameplay-controls.md (backlog link)
+- docs/ai-interaction-log.md (this record)
+
+### Verification
+- Read current AGENTS/docs and searched docs for existing backlog/mantle/camo references.
+- Checked that all five requested feature groups and the exact prompt are present, and linked foundation documents exist.
+- Reviewed Git status/diff; documentation-only change. No build or runtime tests needed because implementation was explicitly deferred.
+
+### Notes / Follow-up
+- Resume from docs/backlog.md when the user returns for the next development session.
+- Target regions/damage rules, additional camo catalog/unlocks, glass penetration/reset behavior and mantle tuning remain design choices for implementation.
+- Future implementation should use reusable systems for windows/mantling and preserve input, quick resets and replay behavior.
+
+### Response Summary
+Confirm that the requested future changes are saved in docs/backlog.md, naming red tiger/arctic camos, target/hitbox improvements, shootable traversable windows and mantling. Implementation is deferred to the next session as requested.
+---

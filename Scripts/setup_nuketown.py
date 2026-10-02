@@ -50,7 +50,10 @@ for actor in all_actors:
         mesh = component.static_mesh
         if not mesh:
             continue
-        if mesh.get_path_name().startswith(('/Game/BlackOPSIK/', '/Game/MDL/', '/Game/ArchViz/')):
+        if mesh.get_path_name().startswith('/Game/ArchViz/Grass/Grass_grass_'):
+            component.set_collision_profile_name('NoCollision')
+            component.set_collision_enabled(ue.CollisionEnabled.NO_COLLISION)
+        elif mesh.get_path_name().startswith(('/Game/BlackOPSIK/', '/Game/MDL/', '/Game/ArchViz/')):
             component.set_collision_profile_name('BlockAll')
             component.set_collision_enabled(ue.CollisionEnabled.QUERY_AND_PHYSICS)
             if mesh.get_path_name() not in changed_meshes:
@@ -89,8 +92,8 @@ sky.light_component.set_editor_property('mobility', ue.ComponentMobility.MOVABLE
 sky.light_component.set_editor_property('intensity', 1.0)
 sky.light_component.set_editor_property('real_time_capture', True)
 actors.spawn_actor_from_class(ue.SkyAtmosphere, ue.Vector())
-# Clear ground beside the house; verify floor and free capsule in the runtime test.
-start = actors.spawn_actor_from_class(ue.PlayerStart, ue.Vector(2000, -2000, 190), ue.Rotator(0, 180, 0))
+# Central street between the school bus and moving truck; runtime-verified capsule clearance.
+start = actors.spawn_actor_from_class(ue.PlayerStart, ue.Vector(-600, 1300, 180), ue.Rotator(0, 0, 0))
 start.set_actor_label('Crosshair Nuketown start')
 game = assets.load_asset('/Game/Crosshair/Player/BP_PracticeGameMode')
 world.get_world_settings().set_editor_property('default_game_mode', game.generated_class())

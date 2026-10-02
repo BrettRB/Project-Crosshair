@@ -113,13 +113,20 @@ void UCrosshairAttemptComponent::BeginPlay() { Super::BeginPlay(); StartTransfor
 void UCrosshairAttemptComponent::SaveStart()
 {
 	ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner());
-	if (!Player || Player->IsReplayPlayback() || !Player->GetCharacterMovement()->IsMovingOnGround())
+	if (!Player || Player->IsReplayPlayback()) return;
+	if (Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->IsFinishing())
 	{
-		if (Player) Player->Notify(TEXT("Stand on the ground before saving your start"));
+		Player->Notify(TEXT("Wait for the successful replay to finish before saving a position"));
+		return;
+	}
+	if (Player->bIsCrouched || !Player->GetCharacterMovement()->IsMovingOnGround())
+	{
+		if (Player) Player->Notify(TEXT("Stand upright on a floor or platform before saving your position"));
 		return;
 	}
 	StartTransform = FTransform(Player->GetControlRotation(), Player->GetActorLocation());
-	Player->Notify(TEXT("Attempt start saved"));
+	bHasSavedStart = true;
+	Player->Notify(TEXT("Position saved. T / D-pad Down resets here."));
 	ResetAttempt();
 }
 void UCrosshairAttemptComponent::ResetAttempt()
@@ -147,6 +154,7 @@ void UCrosshairAttemptComponent::ResetAttempt()
 			return;
 		}
 		StartTransform = InitialStart;
+		bHasSavedStart = false;
 		Player->Notify(TEXT("Saved start blocked; restored original spawn."));
 	}
 	Player->GetCharacterMovement()->SetMovementMode(MOVE_Falling);

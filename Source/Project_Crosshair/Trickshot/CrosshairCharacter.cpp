@@ -61,23 +61,28 @@ void ACrosshairCharacter::PostInitializeComponents()
 void ACrosshairCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	if (IdleAnimation) GetFirstPersonMesh()->PlayAnimation(IdleAnimation, true);
+	if (IdleAnimation)
+	{
+		auto* Arms = GetFirstPersonMesh();
+		for (int32 i=0; i<FirstPersonArmMaterials.Num(); ++i)
+			if (FirstPersonArmMaterials[i]) Arms->SetMaterial(i, FirstPersonArmMaterials[i]);
+		// This template mesh includes a full body; keep the head and legs out of the viewmodel.
+		Arms->HideBoneByName(TEXT("neck_01"), PBO_None);
+		Arms->HideBoneByName(TEXT("thigh_l"), PBO_None);
+		Arms->HideBoneByName(TEXT("thigh_r"), PBO_None);
+		Arms->PlayAnimation(IdleAnimation, true);
+		Arms->TickAnimation(0.f, false);
+		Arms->RefreshBoneTransforms();
+		// The rifle and mannequin use the same mesh basis. The socket's rotation
+		// belongs to the template attachment convention; only its grip position is needed.
+		if (Arms->DoesSocketExist(TEXT("HandGrip_R")))
+			ArmsFromGrip = FTransform(-Arms->GetSocketTransform(TEXT("HandGrip_R"), RTS_Component).GetLocation());
+		ArmsPoseHandle = Arms->RegisterOnBoneTransformsFinalizedDelegate(
+			FOnBoneTransformsFinalizedMultiCast::FDelegate::CreateUObject(this, &ACrosshairCharacter::UpdateArmsPresentation));
+	}
 	if (IsReplayPlayback()) return;
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
-		// Use raw mouse units in this practice controller; the game sensitivity is the sole scale.
-		if (PC->PlayerInput)
-		{
-			for (FKey Key : {EKeys::MouseX, EKeys::MouseY, EKeys::Mouse2D})
-			{
-				FInputAxisProperties Properties;
-				Properties.DeadZone = 0.f;
-				Properties.Sensitivity = 1.f;
-				Properties.Exponent = 1.f;
-				Properties.bInvert = false;
-				PC->PlayerInput->SetAxisProperties(Key, Properties);
-			}
-		}
 		if (ULocalPlayer* Local = PC->GetLocalPlayer())
 			if (auto* Input = Local->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>()) if (Inputs && Inputs->Mapping) Input->AddMappingContext(Inputs->Mapping, 10);
 	}
@@ -88,6 +93,7 @@ void ACrosshairCharacter::BeginPlay()
 }
 void ACrosshairCharacter::EndPlay(EEndPlayReason::Type Reason)
 {
+	GetFirstPersonMesh()->UnregisterOnBoneTransformsFinalizedDelegate(ArmsPoseHandle);
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 		if (ULocalPlayer* Local = PC->GetLocalPlayer())
 			if (auto* Input = Local->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
@@ -145,6 +151,7 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		// Attachment to a camera component is reconstructed explicitly for replay actors as well.
 		if (Weapon->GetRootComponent()->GetAttachParent() != Camera) Weapon->AttachToComponent(Camera, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		Weapon->UpdatePresentation(AimAlpha);
+		GetFirstPersonMesh()->SetRelativeTransform(ArmsFromGrip * Weapon->Mesh->GetRelativeTransform());
 		GetFirstPersonMesh()->SetVisibility(!(Weapon->Definition && Weapon->Definition->AimStyle == ECrosshairAimStyle::Scope && AimAlpha >= .95f));
 		if (Weapon->bReloading != bArmsReloading)
 		{
@@ -153,14 +160,23 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		}
 	}
 }
+void ACrosshairCharacter::UpdateArmsPresentation()
+{
+	auto* Weapon = Inventory->GetCurrent();
+	auto* Arms = GetFirstPersonMesh();
+	if (!Weapon || !Arms->DoesSocketExist(TEXT("HandGrip_R"))) return;
+	// Correct idle breathing after the animated pose is evaluated. Reload keeps the
+	// idle grip reference so its free-hand movement is preserved.
+	if (!Weapon->bReloading)
+		ArmsFromGrip = FTransform(-Arms->GetSocketTransform(TEXT("HandGrip_R"), RTS_Component).GetLocation());
+	Arms->SetRelativeTransform(ArmsFromGrip * Weapon->Mesh->GetRelativeTransform());
+}
 void ACrosshairCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 {
 	// The base template binds its own input assets; this mode supplies a complete independent mapping.
 	UEnhancedInputComponent* Enhanced = Cast<UEnhancedInputComponent>(Input);
 	if (!Enhanced || !Inputs || !Inputs->IsComplete()) { UE_LOG(LogTemp, Error, TEXT("Crosshair input assets are missing. Run Scripts/create_crosshair_assets.py.")); return; }
 	Enhanced->BindAction(Inputs->Move, ETriggerEvent::Triggered, this, &ACrosshairCharacter::Move);
-	Enhanced->BindAction(Inputs->MouseLook, ETriggerEvent::Triggered, this, &ACrosshairCharacter::MouseAim);
-	Enhanced->BindAction(Inputs->StickLook, ETriggerEvent::Triggered, this, &ACrosshairCharacter::StickAim);
 #define BIND_START(Field, Method) Enhanced->BindAction(Inputs->Field, ETriggerEvent::Started, this, &ACrosshairCharacter::Method)
 #define BIND_END(Field, Method) Enhanced->BindAction(Inputs->Field, ETriggerEvent::Completed, this, &ACrosshairCharacter::Method); Enhanced->BindAction(Inputs->Field, ETriggerEvent::Canceled, this, &ACrosshairCharacter::Method)
 	BIND_START(Jump, JumpPressed); BIND_END(Jump, JumpReleased);
@@ -183,21 +199,14 @@ void ACrosshairCharacter::Move(const FInputActionValue& Value)
 	AddMovementInput(Rotation.GetUnitAxis(EAxis::X), Axis.Y);
 	AddMovementInput(Rotation.GetUnitAxis(EAxis::Y), Axis.X);
 }
-void ACrosshairCharacter::MouseAim(const FInputActionValue& Value)
+void ACrosshairCharacter::ApplyLookInput(FVector2D MouseDelta, FVector2D StickAxis, float DeltaSeconds)
 {
 	if (!CanAct()) return;
 	const auto& Settings = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
-	const FVector2D Axis = CrosshairRules::MouseDelta(Value.Get<FVector2D>(), Settings, AimAlpha);
-	FRotator Rotation = GetControlRotation();
-	Rotation.Yaw += Axis.X;
-	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) + Axis.Y, -85.f, 85.f);
-	GetController()->SetControlRotation(Rotation);
-}
-void ACrosshairCharacter::StickAim(const FInputActionValue& Value)
-{
-	if (!CanAct()) return;
-	const auto& Settings = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
-	const FVector2D Delta = CrosshairRules::StickDelta(Value.Get<FVector2D>(), Settings, AimAlpha, GetWorld()->GetDeltaSeconds());
+	// Native viewport mouse displacement and standard gamepad axes are independent.
+	// Compose them once; controller inversion never reaches the mouse path.
+	const FVector2D Delta = CrosshairRules::MouseDelta(MouseDelta, Settings, AimAlpha)
+		+ CrosshairRules::StickDelta(StickAxis, Settings, AimAlpha, DeltaSeconds);
 	FRotator Rotation = GetControlRotation();
 	Rotation.Yaw += Delta.X;
 	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) + Delta.Y, -85.f, 85.f);

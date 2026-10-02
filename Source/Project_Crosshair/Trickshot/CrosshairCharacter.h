@@ -9,6 +9,7 @@ class UCrosshairAttemptComponent;
 class UCrosshairInputConfig;
 class UCrosshairWeaponDefinition;
 class UAnimSequence;
+class UMaterialInterface;
 class ACrosshairDummy;
 
 USTRUCT()
@@ -46,20 +47,21 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category="Targets") TSubclassOf<ACrosshairDummy> TargetClass;
 	UPROPERTY(EditDefaultsOnly, Category="Presentation") TObjectPtr<UAnimSequence> IdleAnimation;
 	UPROPERTY(EditDefaultsOnly, Category="Presentation") TObjectPtr<UAnimSequence> ReloadAnimation;
+	/** Arms-only masks preserve the mannequin materials without showing its torso. */
+	UPROPERTY(EditDefaultsOnly, Category="Presentation") TArray<TObjectPtr<UMaterialInterface>> FirstPersonArmMaterials;
 	UFUNCTION(BlueprintPure) bool CanAct() const;
 	bool IsReplayPlayback() const;
 	float GetAimAlpha() const { return AimAlpha; }
 	void ApplyRecoil(float Degrees);
 	void TargetHit(ACrosshairDummy* Target);
 	void StopActions();
+	void ApplyLookInput(FVector2D MouseDelta, FVector2D StickAxis, float DeltaSeconds);
 	void Notify(const FString& Text);
 	FString Notice;
 	float NoticeUntil = 0;
 	float HitMarkerUntil = 0;
 private:
 	void Move(const FInputActionValue& Value);
-	void MouseAim(const FInputActionValue& Value);
-	void StickAim(const FInputActionValue& Value);
 	void JumpPressed();
 	void JumpReleased();
 	void SprintPressed();
@@ -82,6 +84,9 @@ private:
 	bool bAimHeld = false;
 	bool bSprintHeld = false;
 	bool bArmsReloading = false;
+	FTransform ArmsFromGrip = FTransform::Identity;
+	FDelegateHandle ArmsPoseHandle;
+	void UpdateArmsPresentation();
 	float AimAlpha = 0;
 	int32 PresentedHit = 0;
 };

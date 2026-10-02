@@ -2,6 +2,9 @@
 #include "CrosshairCharacter.h"
 #include "CrosshairData.h"
 #include "CrosshairDummy.h"
+#include "CrosshairReplaySubsystem.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -22,6 +25,10 @@ ACrosshairWeapon::ACrosshairWeapon()
 	SetRootComponent(Mesh);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Mesh->SetCastShadow(false);
+	PresentationMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Authored weapon model"));
+	PresentationMesh->SetupAttachment(Mesh);
+	PresentationMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	PresentationMesh->SetCastShadow(false);
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere"));
@@ -48,11 +55,13 @@ void ACrosshairWeapon::BeginPlay()
 			if (UMaterialInstanceDynamic* Metal = Detail->CreateAndSetMaterialInstanceDynamic(0))
 				Metal->SetVectorParameterValue(TEXT("Color"), i >= 6 && i <= 8 ? FLinearColor(.055f,.075f,.045f) : (i == 18 ? FLinearColor(.025f,.10f,.16f) : FLinearColor(.025f,.03f,.04f)));
 		}
+	OnRep_Skin();
 }
 void ACrosshairWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ACrosshairWeapon, Definition);
+	DOREPLIFETIME(ACrosshairWeapon, SkinId);
 	DOREPLIFETIME(ACrosshairWeapon, Ammo);
 	DOREPLIFETIME(ACrosshairWeapon, bReloading);
 	DOREPLIFETIME(ACrosshairWeapon, bEquipped);
@@ -63,12 +72,69 @@ void ACrosshairWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 void ACrosshairWeapon::Initialize(UCrosshairWeaponDefinition* InDefinition)
 {
 	Definition = InDefinition;
+	if (Definition)
+		SkinId = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().WeaponSkins.FindRef(Definition->GetFName());
 	OnRep_Definition();
 	ResetWeapon();
 }
 void ACrosshairWeapon::OnRep_Definition()
 {
-	if (Definition) Mesh->SetSkeletalMesh(Definition->Mesh);
+	if (Definition)
+	{
+		Mesh->SetSkeletalMesh(Definition->Mesh);
+		PresentationMesh->SetStaticMesh(Definition->PresentationMesh);
+		PresentationMesh->SetRelativeRotation(Definition->MeshRotation.Quaternion().Inverse());
+	}
+	OnRep_Skin();
+}
+void ACrosshairWeapon::OnRep_Skin()
+{
+	if (!Definition) return;
+	const FCrosshairWeaponSkin* Skin = Definition->Skins.FindByPredicate([this](const FCrosshairWeaponSkin& Item) { return Item.Id == SkinId; });
+	if (Definition->Mesh)
+		for (int32 i=0; i<Definition->Mesh->GetMaterials().Num(); ++i)
+			Mesh->SetMaterial(i, Skin && Skin->Materials.IsValidIndex(i) && Skin->Materials[i] ? Skin->Materials[i].Get() : Definition->Mesh->GetMaterials()[i].MaterialInterface.Get());
+	if (Definition->PresentationMesh)
+		for (int32 i=0; i<Definition->PresentationMesh->GetStaticMaterials().Num(); ++i)
+			PresentationMesh->SetMaterial(i, Skin && Skin->Materials.IsValidIndex(i) && Skin->Materials[i] ? Skin->Materials[i].Get() : Definition->PresentationMesh->GetStaticMaterials()[i].MaterialInterface.Get());
+	for (int32 i=6; i<=8; ++i)
+	{
+		// Stock/fore-end surfaces on the prototype use the same camo as authored models.
+		if (Skin && !Skin->Materials.IsEmpty() && Skin->Materials[0])
+			Details[i]->SetMaterial(0, Skin->Materials[0]);
+		else if (auto* Base = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Crosshair/Targets/M_Target.M_Target")))
+		{
+			auto* Material = UMaterialInstanceDynamic::Create(Base, this);
+			Material->SetVectorParameterValue(TEXT("Color"), Skin ? Skin->StockColor : FLinearColor(.055f,.075f,.045f));
+			Details[i]->SetMaterial(0, Material);
+		}
+	}
+}
+bool ACrosshairWeapon::SetSkin(FName Id)
+{
+	if (!HasAuthority() || !Definition || (GetWorld()->GetDemoNetDriver() && GetWorld()->GetDemoNetDriver()->IsPlaying())) return false;
+	if (!Id.IsNone() && !Definition->Skins.ContainsByPredicate([Id](const FCrosshairWeaponSkin& Item) { return Item.Id == Id; })) return false;
+	SkinId = Id;
+	OnRep_Skin();
+	auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+	Replay->GetSettings().WeaponSkins.Add(Definition->GetFName(), SkinId);
+	Replay->SaveSettings();
+	ForceNetUpdate();
+	return true;
+}
+void ACrosshairWeapon::CycleSkin(int32 Direction)
+{
+	if (!Definition) return;
+	int32 Index = Definition->Skins.IndexOfByPredicate([this](const FCrosshairWeaponSkin& Item) { return Item.Id == SkinId; }) + 1;
+	const int32 Count = Definition->Skins.Num() + 1; // zero is the original finish
+	Index = (Index + Direction % Count + Count) % Count;
+	SetSkin(Index == 0 ? NAME_None : Definition->Skins[Index-1].Id);
+}
+FText ACrosshairWeapon::GetSkinName() const
+{
+	if (Definition)
+		if (const auto* Skin = Definition->Skins.FindByPredicate([this](const FCrosshairWeaponSkin& Item) { return Item.Id == SkinId; })) return Skin->DisplayName;
+	return FText::FromString(TEXT("Original"));
 }
 void ACrosshairWeapon::SetEquipped(bool Equipped)
 {
@@ -172,8 +238,10 @@ void ACrosshairWeapon::UpdatePresentation(float AimAlpha)
 	Mesh->SetRelativeLocationAndRotation(Offset, Rotation);
 	const bool Scoped = Definition->AimStyle == ECrosshairAimStyle::Scope;
 	const bool ScopeView = Scoped && AimAlpha >= .95f;
-	// The scoped prototype has its own bolt-action silhouette; automatic weapons retain their mesh.
-	Mesh->SetVisibility(!Scoped);
+	// Authored models share the root transform with the hands; scope view hides the model.
+	const bool Authored = Definition->PresentationMesh != nullptr;
+	Mesh->SetVisibility(!Authored && (!Scoped || !Definition->bUsePrototypeGeometry));
+	PresentationMesh->SetVisibility(Authored && bEquipped && !ScopeView);
 	// Dimensions below are in centimetres before conversion to the template mesh's local axes.
 	const FVector SniperPositions[] = {
 		FVector(-2,0,9), FVector(54,0,1),
@@ -193,7 +261,7 @@ void ACrosshairWeapon::UpdatePresentation(float AimAlpha)
 	for (int32 i = 0; i < Details.Num(); ++i)
 	{
 		const bool IronSight = i >= 2 && i <= 4;
-		const bool Visible = bEquipped && !ScopeView && (IronSight ? !Scoped && AimAlpha >= .95f && !bReloading : Scoped);
+		const bool Visible = !Authored && Definition->bUsePrototypeGeometry && bEquipped && !ScopeView && (IronSight ? !Scoped && AimAlpha >= .95f && !bReloading : Scoped);
 		Details[i]->SetVisibility(Visible);
 		const FVector LocalOffset = IronSight ? IronPositions[i-2] - Offset : SniperPositions[i];
 		Details[i]->SetRelativeLocation(Definition->MeshRotation.UnrotateVector(LocalOffset));

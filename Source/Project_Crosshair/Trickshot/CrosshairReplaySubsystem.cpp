@@ -44,6 +44,8 @@ void UCrosshairReplaySubsystem::SaveSettings()
 {
 	if (!Save) return;
 	FCrosshairSettings& S = Save->Settings;
+	S.ControllerAxisDirection.X = S.ControllerAxisDirection.X < 0 ? -1 : 1;
+	S.ControllerAxisDirection.Y = S.ControllerAxisDirection.Y < 0 ? -1 : 1;
 	S.StickYawSpeed = FMath::Clamp(S.StickYawSpeed, 60.f, 1080.f);
 	S.StickPitchSpeed = FMath::Clamp(S.StickPitchSpeed, 60.f, 720.f);
 	S.StickDeadZone = FMath::Clamp(S.StickDeadZone, 0.f, 0.4f);
