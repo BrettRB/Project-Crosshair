@@ -199,7 +199,7 @@ if not assets.does_asset_exist(map_path):
     block("Cover for obstruction checks", (800, -500, 100), (1, 8, 2))
     actors.spawn_actor_from_class(ue.PlayerStart, ue.Vector(-750, 0, 310))
     for y in (-500, 0, 500):
-        actors.spawn_actor_from_class(dummy.generated_class(), ue.Vector(1800, y, 94), ue.Rotator(0, 180, 0))
+        actors.spawn_actor_from_class(dummy.generated_class(), ue.Vector(1800, y, 94), ue.Rotator(pitch=0, yaw=180, roll=0))
     sun = actors.spawn_actor_from_class(ue.DirectionalLight, ue.Vector(0, 0, 1000), ue.Rotator(-45, -30, 0))
     sun.light_component.set_editor_property("intensity", 3.0)
     actors.spawn_actor_from_class(ue.SkyLight, ue.Vector(0, 0, 500))

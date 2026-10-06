@@ -63,6 +63,9 @@ public:
 	UFUNCTION(BlueprintPure) ACrosshairWeapon* GetCurrent() const;
 	UFUNCTION(BlueprintCallable) void Equip(int32 Index);
 	void Cycle();
+ void EquipSlot(int32 Slot);
+ void ApplyClass();
+ int32 PrimaryIndex=0,SecondaryIndex=1;
 	void ResetWeapons();
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<TObjectPtr<UCrosshairWeaponDefinition>> Loadout;
 	UPROPERTY(Replicated, BlueprintReadOnly) TArray<TObjectPtr<ACrosshairWeapon>> Weapons;

@@ -23,6 +23,9 @@ struct FCrosshairWeaponSkin
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) FLinearColor StockColor = FLinearColor(.055f,.075f,.045f);
 };
 
+UENUM(BlueprintType)
+enum class ECrosshairLethalType : uint8 { Frag, Tomahawk };
+
 /** A weapon's editable design, separate from the changing state of an equipped weapon. */
 UENUM(BlueprintType)
 enum class ECrosshairAimStyle : uint8 { IronSights, Scope };
@@ -36,6 +39,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Aiming") ECrosshairAimStyle AimStyle = ECrosshairAimStyle::IronSights;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage", meta=(ClampMin="0")) float BodyDamage = 100.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage", meta=(ClampMin="0")) float HeadDamage = 100.f;
+	/** Thin-wall penetration measures each solid's entry-to-exit distance in cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Penetration", meta=(ClampMin="0")) float PenetrationDepth = 40.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Penetration", meta=(ClampMin="0", ClampMax="4")) int32 PenetrationLayers = 2;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Penetration", meta=(ClampMin="0", ClampMax="1")) float PenetrationDamageScale = .75f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) bool bAutomatic = false;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1")) int32 MagazineSize = 5;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.03")) float ShotInterval = 0.85f;
@@ -91,11 +98,21 @@ public:
 };
 
 USTRUCT(BlueprintType)
+struct FCrosshairClass
+{
+ GENERATED_BODY()
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FString Name=TEXT("Custom class");
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Primary=0;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Secondary=1;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) ECrosshairLethalType Lethal=ECrosshairLethalType::Frag;
+};
+
+USTRUCT(BlueprintType)
 struct FCrosshairSettings
 {
 	GENERATED_BODY()
-	UPROPERTY(EditAnywhere, BlueprintReadWrite) float StickYawSpeed = 360.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite) float StickPitchSpeed = 240.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) float StickYawSpeed = 720.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) float StickPitchSpeed = 540.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float StickDeadZone = 0.12f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float StickExponent = 1.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) float MouseSensitivity = 0.12f;
@@ -107,6 +124,11 @@ struct FCrosshairSettings
 	/** Hardware axis direction learned by the explicit Controls calibration. */
 	UPROPERTY() FVector2D ControllerAxisDirection = FVector2D(1, 1);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TMap<FName, FName> WeaponSkins;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) ECrosshairLethalType LethalType = ECrosshairLethalType::Frag;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) TArray<FCrosshairClass> Classes;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 ActiveClass=0;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bSandboxTargets=false;
+ UPROPERTY() int32 ControlPresetVersion=0;
 };
 
 USTRUCT(BlueprintType)
@@ -116,6 +138,7 @@ struct FCrosshairReplayEntry
 	UPROPERTY(BlueprintReadOnly) FString Name;
 	UPROPERTY(BlueprintReadOnly) FString Map;
 	UPROPERTY(BlueprintReadOnly) FString RecordedAt;
+ UPROPERTY() FString ImportedMapId;
 	UPROPERTY(BlueprintReadOnly) float HitSeconds = 0.f;
 	UPROPERTY(BlueprintReadOnly) int32 FormatVersion = 1;
 };

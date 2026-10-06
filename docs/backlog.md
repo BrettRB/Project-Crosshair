@@ -1,6 +1,6 @@
-﻿# Future gameplay backlog
+﻿# Gameplay backlog
 
-Recorded 2026-10-01. These items are planned for a later development session, at the user's request. Recording this list does not implement the features or schedule unattended work. Read this backlog when resuming development and review the existing implementation before making changes.
+Recorded 2026-10-01. Originally deferred at the user's request. Implementation began on 2026-10-02 when the user asked to start these features. The original request remains below; no unattended work is scheduled.
 
 ## Requested features
 
@@ -12,11 +12,20 @@ Recorded 2026-10-01. These items are planned for a later development session, at
 | Shootable, traversable windows | Shoot out window glass and climb through the resulting openings on Nuketown; support the same mechanic in future maps. | Shots break designated glass, broken glass stops obstructing the player, and the opening can be traversed when it fits the player. Window frames and surrounding walls retain collision. Glass state restores appropriately when repeating attempts; future maps can use reusable window setup. |
 | Mantling and further movement polish | Add mantling to reach suitable ledges and help window traversal feel closer to COD movement. | Contextual ledge detection and traversal, clear landing/capsule space, smooth movement, and reliable keyboard/mouse and controller activation. Block traversal into solid geometry; preserve jumping, sprinting, crouching and saved-position resets. Additional movement mechanics are not specified yet. |
 
+## First implementation (2026-10-02)
+
+- Red Tiger and Arctic are immediately selectable on sniper, AR and SMG, alongside Original/Woodland/Desert. Camos uses the weapon catalog for additional entries. Existing material-slot behavior and saved IDs are retained.
+- Targets and placement previews use the existing humanoid mannequin in an idle pose. Visibility shots hit the animated physics bodies and report their bone; head damage requires the head body, all other bodies retain existing body damage. Health/damage values are unchanged.
+- All 48 designated house glass panes in playable Nuketown are reusable breakable-window actors. The breaking shot can continue through glass; solid frames/walls remain collision geometry. Attempt reset restores the panes, and replay return preserves the captured broken state until the next reset.
+- Contextual Jump mantles onto collision-tested ledges or through sufficiently large broken windows. Automatic crouching handles low openings. Coyote time and landing jump buffering are included. See [setup and verification](traversal-and-targets.md).
+
+Further work: extra basic patterns, optional unlock progression, custom target art/animations, per-limb damage tuning if requested, bespoke mantle/hand animations and any additional specifically requested movement mechanics. These are not implemented by this first pass.
+
 ## Suggested implementation sequence
 
 Start with red tiger and arctic camos, then target presentation/hit regions, followed by reusable breakable windows and mantling together. This is a suggested order, not a user-mandated priority. Review any remaining physical-controller direction issue when a controller is available.
 
-## Decisions for the implementation session
+## Original implementation questions
 
 - Pick the target model/pose and specific reference feel; confirm which hit regions and damage rules are desired before changing current weapon damage or target health.
 - Determine the new camo names and whether they are immediately available or unlocked. Existing finishes are immediate; the earlier unlock concept remains undecided.

@@ -5,6 +5,8 @@
 #include "CrosshairReplaySubsystem.h"
 #include "CrosshairGame.h"
 #include "CrosshairDummy.h"
+#include "CrosshairTraversal.h"
+#include "CrosshairThrowable.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -28,7 +30,9 @@ ACrosshairCharacter::ACrosshairCharacter()
 	SetNetUpdateFrequency(120);
 	SetMinNetUpdateFrequency(60);
 	Inventory = CreateDefaultSubobject<UCrosshairInventoryComponent>(TEXT("Inventory"));
+	Lethals = CreateDefaultSubobject<UCrosshairLethalComponent>(TEXT("Lethals"));
 	Placement = CreateDefaultSubobject<UCrosshairPlacementComponent>(TEXT("Placement"));
+	Traversal = CreateDefaultSubobject<UCrosshairTraversalComponent>(TEXT("Traversal"));
 	Attempt = CreateDefaultSubobject<UCrosshairAttemptComponent>(TEXT("Attempt"));
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
 	GetCharacterMovement()->SetCrouchedHalfHeight(58.f);
@@ -88,7 +92,8 @@ void ACrosshairCharacter::BeginPlay()
 	}
 	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
 	{
-		GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->PracticeReady(this);
+		Inventory->ApplyClass();
+        GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->PracticeReady(this);
 	}));
 }
 void ACrosshairCharacter::EndPlay(EEndPlayReason::Type Reason)
@@ -115,10 +120,14 @@ bool ACrosshairCharacter::CanAct() const
 	const ACrosshairPlayerController* PC = Cast<ACrosshairPlayerController>(GetController());
 	return !IsReplayPlayback() && PC && !PC->bMenuOpen && !Attempt->bSucceeded;
 }
+void ACrosshairCharacter::SelectWeaponSlot(int32 Slot)
+{ if (CanAct() && !Lethals->IsBusy()) { bAimHeld=false; if (Slot<0) Inventory->Cycle(); else Inventory->EquipSlot(Slot); } }
+void ACrosshairCharacter::ControllerSprintPressed() { if (CanAct()) { bControllerSprint=!bControllerSprint; bSprintHeld=bControllerSprint; } }
 void ACrosshairCharacter::Notify(const FString& Text) { Notice = Text; NoticeUntil = GetWorld()->GetTimeSeconds() + 4; }
 void ACrosshairCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+ if (bControllerSprint && (GetLastMovementInputVector().IsNearlyZero() || bIsCrouched)) { bControllerSprint=false; bSprintHeld=false; }
 	UCameraComponent* Camera = GetFirstPersonCameraComponent();
 	ACrosshairWeapon* Weapon = Inventory->GetCurrent();
 	if (IsReplayPlayback())
@@ -127,13 +136,14 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		Camera->SetWorldLocationAndRotation(RecordedView.Location, RecordedView.Rotation);
 		Camera->SetFieldOfView(RecordedView.FOV);
 		AimAlpha = RecordedView.AimAlpha;
-		if (RecordedView.HitSequence != PresentedHit) { PresentedHit = RecordedView.HitSequence; HitMarkerUntil = GetWorld()->GetTimeSeconds() + 0.25f; }
+		if (RecordedView.HitSequence != PresentedHit) { PresentedHit = RecordedView.HitSequence; bLastHitHeadshot = RecordedView.bHeadshot; bLastHitWallbang = RecordedView.bWallbang;
+	HitMarkerUntil = GetWorld()->GetTimeSeconds() + (bLastHitHeadshot ? 0.4f : 0.25f); }
 	}
 	else
 	{
 		const FCrosshairSettings& Settings = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
 		const float AimSeconds = Weapon && Weapon->Definition ? Weapon->Definition->AimSeconds : 0.2f;
-		const bool bWantsAim = bAimHeld && CanAct() && !Placement->bPlacing && Weapon && !Weapon->bReloading;
+		const bool bWantsAim = bAimHeld && CanAct() && !Placement->bPlacing && !Lethals->IsBusy() && Weapon && !Weapon->bReloading;
 		AimAlpha = FMath::FInterpConstantTo(AimAlpha, bWantsAim ? 1.f : 0.f, DeltaSeconds, 1.f / FMath::Max(0.01f, AimSeconds));
 		Camera->SetFieldOfView(FMath::Lerp(Settings.FieldOfView, Weapon && Weapon->Definition ? Weapon->Definition->AimFOV : Settings.FieldOfView, AimAlpha));
 		const float EyeZ = bIsCrouched ? 30.f : 64.f;
@@ -148,6 +158,7 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 	}
 	if (Weapon)
 	{
+		Weapon->SetActorHiddenInGame(Lethals->IsHolding());
 		// Attachment to a camera component is reconstructed explicitly for replay actors as well.
 		if (Weapon->GetRootComponent()->GetAttachParent() != Camera) Weapon->AttachToComponent(Camera, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		Weapon->UpdatePresentation(AimAlpha);
@@ -193,7 +204,7 @@ void ACrosshairCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 }
 void ACrosshairCharacter::Move(const FInputActionValue& Value)
 {
-	if (!CanAct()) return;
+	if (!CanAct() || Traversal->bMantling) return;
 	const FVector2D Axis = Value.Get<FVector2D>().GetClampedToMaxSize(1.f);
 	const FRotationMatrix Rotation(FRotator(0, GetControlRotation().Yaw, 0));
 	AddMovementInput(Rotation.GetUnitAxis(EAxis::X), Axis.Y);
@@ -212,17 +223,17 @@ void ACrosshairCharacter::ApplyLookInput(FVector2D MouseDelta, FVector2D StickAx
 	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) + Delta.Y, -85.f, 85.f);
 	GetController()->SetControlRotation(Rotation);
 }
-void ACrosshairCharacter::JumpPressed() { if (CanAct()) Jump(); }
-void ACrosshairCharacter::JumpReleased() { StopJumping(); }
-void ACrosshairCharacter::SprintPressed() { if (CanAct()) bSprintHeld = true; }
-void ACrosshairCharacter::SprintReleased() { bSprintHeld = false; }
+void ACrosshairCharacter::JumpPressed() { if (CanAct()) Traversal->RequestJump(); }
+void ACrosshairCharacter::JumpReleased() { Traversal->ReleaseJump(); }
+void ACrosshairCharacter::SprintPressed() { if (CanAct()) { bControllerSprint=false; bSprintHeld = true; } }
+void ACrosshairCharacter::SprintReleased() { bSprintHeld = false; bControllerSprint=false; }
 void ACrosshairCharacter::CrouchPressed() { if (CanAct()) { if (bIsCrouched) UnCrouch(); else Crouch(); } }
-void ACrosshairCharacter::FirePressed() { if (!CanAct()) return; bSprintHeld = false; if (Placement->bPlacing) Placement->Confirm(); else if (auto* W = Inventory->GetCurrent()) W->StartFire(); }
+void ACrosshairCharacter::FirePressed() { if (!CanAct() || Lethals->IsBusy()) return; bSprintHeld = false; bControllerSprint=false; if (Placement->bPlacing) Placement->Confirm(); else if (auto* W = Inventory->GetCurrent()) W->StartFire(); }
 void ACrosshairCharacter::FireReleased() { if (auto* W = Inventory->GetCurrent()) W->StopFire(); }
-void ACrosshairCharacter::AimPressed() { if (!CanAct()) return; if (Placement->bPlacing) Placement->Toggle(); else { bAimHeld = true; bSprintHeld = false; } }
+void ACrosshairCharacter::AimPressed() { if (!CanAct() || Lethals->IsBusy()) return; if (Placement->bPlacing) Placement->Toggle(); else { bAimHeld = true; bSprintHeld = false; bControllerSprint=false; } }
 void ACrosshairCharacter::AimReleased() { bAimHeld = false; }
-void ACrosshairCharacter::ReloadPressed() { if (CanAct()) { if (Placement->bPlacing) Placement->Rotate(); else if (auto* W = Inventory->GetCurrent()) W->Reload(); } }
-void ACrosshairCharacter::SwitchPressed() { if (CanAct()) { bAimHeld = false; Inventory->Cycle(); } }
+void ACrosshairCharacter::ReloadPressed() { if (CanAct() && !Lethals->IsBusy()) { if (Placement->bPlacing) Placement->Rotate(); else if (auto* W = Inventory->GetCurrent()) W->Reload(); } }
+void ACrosshairCharacter::SwitchPressed() { if (CanAct() && !Lethals->IsBusy()) { bAimHeld = false; Inventory->Cycle(); } }
 void ACrosshairCharacter::PlacementPressed() { Placement->Toggle(); }
 void ACrosshairCharacter::RotatePressed() { Placement->Rotate(); }
 void ACrosshairCharacter::RemovePressed() { Placement->RemoveAimedTarget(); }
@@ -237,11 +248,15 @@ void ACrosshairCharacter::ApplyRecoil(float Degrees)
 	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) + Degrees, -85.f, 85.f);
 	GetController()->SetControlRotation(Rotation);
 }
-void ACrosshairCharacter::TargetHit(ACrosshairDummy* Target)
+void ACrosshairCharacter::TargetHit(ACrosshairDummy* Target, bool bHeadshot, bool bWallbang)
 {
+	RecordedView.bHeadshot = bHeadshot; RecordedView.bWallbang = bWallbang;
 	++RecordedView.HitSequence;
 	PresentedHit = RecordedView.HitSequence;
-	HitMarkerUntil = GetWorld()->GetTimeSeconds() + 0.25f;
+	bLastHitHeadshot = bHeadshot; bLastHitWallbang = bWallbang;
+	HitMarkerUntil = GetWorld()->GetTimeSeconds() + (bHeadshot ? 0.4f : 0.25f);
 	if (Target && Target->bHit) Attempt->HandleTargetHit(Target);
 }
-void ACrosshairCharacter::StopActions() { FireReleased(); bAimHeld = false; bSprintHeld = false; StopJumping(); }
+void ACrosshairCharacter::StopActions() { Lethals->Cancel(); Traversal->CancelMantle(); FireReleased(); bAimHeld = false; bSprintHeld = false; bControllerSprint=false; StopJumping(); }
+
+bool ACrosshairCharacter::CanJumpWhileFalling() const { return Traversal && Traversal->AllowsCoyoteJump(); }

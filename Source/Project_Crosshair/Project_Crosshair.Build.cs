@@ -18,6 +18,8 @@ public class Project_Crosshair : ModuleRules
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
+            "ProceduralMeshComponent",
+            "Json",
 			"Slate"
 		});
 

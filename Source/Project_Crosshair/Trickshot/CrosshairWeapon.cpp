@@ -1,7 +1,10 @@
 #include "CrosshairWeapon.h"
+#include "CrosshairThrowable.h"
 #include "CrosshairCharacter.h"
 #include "CrosshairData.h"
 #include "CrosshairDummy.h"
+#include "CrosshairWindow.h"
+#include "CrosshairBallistics.h"
 #include "CrosshairReplaySubsystem.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
@@ -194,24 +197,29 @@ void ACrosshairWeapon::TryFire()
 	const FVector Start = Camera->GetComponentLocation();
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairShot), true, Player);
 	Params.AddIgnoredActor(this);
-	FHitResult CameraHit;
 	const FVector TraceEnd = Start + Direction * Definition->Range;
-	GetWorld()->LineTraceSingleByChannel(CameraHit, Start, TraceEnd, ECC_Visibility, Params);
-	const FVector AimPoint = CameraHit.bBlockingHit ? CameraHit.ImpactPoint : TraceEnd;
-	// Trace from the visible gun as well: the camera must not shoot around an obstructed barrel.
-	const FVector Muzzle = Start + Camera->GetForwardVector() * 40.f + Camera->GetRightVector() * 10.f - Camera->GetUpVector() * 10.f;
-	FHitResult MuzzleHit;
-	FHitResult NearHit;
-	const bool bNearBlocked = GetWorld()->LineTraceSingleByChannel(NearHit, Start, Muzzle, ECC_Visibility, Params);
-	const bool bMuzzleBlocked = GetWorld()->LineTraceSingleByChannel(MuzzleHit, Muzzle, AimPoint, ECC_Visibility, Params);
-	const FHitResult& Hit = bNearBlocked ? NearHit : (bMuzzleBlocked ? MuzzleHit : CameraHit);
+	const FVector Muzzle = Start + Camera->GetForwardVector()*40 + Camera->GetRightVector()*10 - Camera->GetUpVector()*10;
+	FHitResult CameraHit,NearHit,MuzzleHit;
+	const bool NearBlocked=GetWorld()->LineTraceSingleByChannel(NearHit,Start,Muzzle,ECC_Visibility,Params);
+	GetWorld()->LineTraceSingleByChannel(CameraHit,Start,TraceEnd,ECC_Visibility,Params);
+	float PreviewScale=1; int32 PreviewLayers=0;
+	// Resolve camera aim without breaking panes, then verify the actual barrel
+	// path. A close pane must not deflect the muzzle ray away from the target.
+	if (!NearBlocked) CameraHit=CrosshairBallistics::ContinueShot(GetWorld(),CameraHit,Direction,TraceEnd,Params,Definition,true,PreviewScale,PreviewLayers,true);
+	const FVector AimPoint=CameraHit.bBlockingHit ? CameraHit.ImpactPoint : TraceEnd;
+	const bool MuzzleBlocked=GetWorld()->LineTraceSingleByChannel(MuzzleHit,Muzzle,AimPoint,ECC_Visibility,Params);
+	FHitResult Hit=NearBlocked ? NearHit : (MuzzleBlocked ? MuzzleHit : CameraHit);
+	const FVector BulletDirection=(AimPoint-Muzzle).GetSafeNormal();
+	float DamageScale=1; int32 PenetratedLayers=0;
+	Hit=CrosshairBallistics::ContinueShot(GetWorld(),Hit,NearBlocked ? Direction : BulletDirection,
+		Muzzle+BulletDirection*Definition->Range,Params,Definition,!NearBlocked,DamageScale,PenetratedLayers);
 	LastImpact = Hit.bBlockingHit ? Hit.ImpactPoint : AimPoint;
 	++ShotSequence;
 	OnRep_Shot();
 	Player->ApplyRecoil(Definition->RecoilDegrees);
 	if (ACrosshairDummy* Dummy = Cast<ACrosshairDummy>(Hit.GetActor()))
 	{
-		if (UGameplayStatics::ApplyPointDamage(Dummy, Dummy->IsHeadImpact(Hit.ImpactPoint) ? Definition->HeadDamage : Definition->BodyDamage, Direction, Hit, Player->GetController(), this, nullptr) > 0) Player->TargetHit(Dummy);
+		if (UGameplayStatics::ApplyPointDamage(Dummy, (Dummy->IsHeadHit(Hit) ? Definition->HeadDamage : Definition->BodyDamage)*DamageScale, Direction, Hit, Player->GetController(), this, nullptr) > 0) Player->TargetHit(Dummy,Dummy->IsHeadHit(Hit),PenetratedLayers>0);
 	}
 	ForceNetUpdate();
 }
@@ -298,7 +306,7 @@ void UCrosshairInventoryComponent::BeginPlay()
 		Weapon->SetEquipped(false);
 		Weapons.Add(Weapon);
 	}
-	Equip(0);
+	ApplyClass();
 }
 ACrosshairWeapon* UCrosshairInventoryComponent::GetCurrent() const { return Weapons.IsValidIndex(ActiveIndex) ? Weapons[ActiveIndex].Get() : nullptr; }
 void UCrosshairInventoryComponent::Equip(int32 Index)
@@ -308,5 +316,18 @@ void UCrosshairInventoryComponent::Equip(int32 Index)
 	ActiveIndex = Index;
 	GetCurrent()->SetEquipped(true);
 }
-void UCrosshairInventoryComponent::Cycle() { if (!Weapons.IsEmpty()) Equip((ActiveIndex + 1) % Weapons.Num()); }
+void UCrosshairInventoryComponent::Cycle() { EquipSlot(ActiveIndex==PrimaryIndex ? 1 : 0); }
+void UCrosshairInventoryComponent::EquipSlot(int32 Slot) { Equip(Slot==0 ? PrimaryIndex : SecondaryIndex); }
+void UCrosshairInventoryComponent::ApplyClass()
+{
+ auto* Player=Cast<ACrosshairCharacter>(GetOwner());
+ if (!Player || Player->IsReplayPlayback()) return;
+ auto* Replay=Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+ auto& S=Replay->GetSettings();
+ if (!S.Classes.IsValidIndex(S.ActiveClass)) return;
+ Player->StopActions();
+ const auto& C=S.Classes[S.ActiveClass]; PrimaryIndex=C.Primary; SecondaryIndex=C.Secondary;
+ Player->Lethals->Selected=C.Lethal; S.LethalType=C.Lethal;
+ ResetWeapons(); Player->Lethals->Reset(); EquipSlot(0);
+}
 void UCrosshairInventoryComponent::ResetWeapons() { for (ACrosshairWeapon* Weapon : Weapons) if (Weapon) Weapon->ResetWeapon(); }

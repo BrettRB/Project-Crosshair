@@ -1,6 +1,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 #include "../CrosshairData.h"
+#include "../CrosshairMapLibrary.h"
 #include "../CrosshairPractice.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairStickTest, "Crosshair.Input.DeadZoneAndFrameRate", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
@@ -104,6 +105,23 @@ bool FCrosshairInversionTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Mouse does not inherit controller inversion"), CrosshairRules::MouseDelta(Raw, Settings, 0).Equals(Raw * Settings.MouseSensitivity, .001));
 	}
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairObjTest, "Crosshair.Map.OBJValidation", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairObjTest::RunTest(const FString& Parameters)
+{
+ FCrosshairMapMesh Mesh; FString Error;
+ TestTrue(TEXT("Scaled negative-index quad imports"),UCrosshairMapLibrary::ParseObj(TEXT("v 0 0 0\nv 10 0 0\nv 10 10 0\nv 0 10 0\nf -4 -3 -2 -1\n"),2,Mesh,Error));
+ TestEqual(TEXT("Quad becomes two triangles"),Mesh.Triangles.Num(),6);
+ TestTrue(TEXT("Centimeter scale applied"),Mesh.Vertices.Contains(FVector(20,20,0)));
+ TestTrue(TEXT("Upward shading normal retained"),Mesh.Normals[0].Z>.99);
+ TestTrue(TEXT("Collision winding converted for upward floor"),FVector::CrossProduct(Mesh.Vertices[2]-Mesh.Vertices[0],Mesh.Vertices[1]-Mesh.Vertices[0]).Z>0);
+ TestFalse(TEXT("Missing vertex rejected"),UCrosshairMapLibrary::ParseObj(TEXT("v 0 0 0\nf 1 2 3\n"),1,Mesh,Error));
+ TestTrue(TEXT("Failed parsing leaves no partial geometry"),Mesh.Vertices.IsEmpty());
+ TestFalse(TEXT("Nonfinite position rejected"),UCrosshairMapLibrary::ParseObj(TEXT("v nan 0 0\n"),1,Mesh,Error));
+ TestFalse(TEXT("Zero scale rejected"),UCrosshairMapLibrary::ParseObj(TEXT("v 0 0 0\n"),0,Mesh,Error));
+ TestFalse(TEXT("Empty geometry rejected"),UCrosshairMapLibrary::ParseObj(TEXT("# no faces\n"),1,Mesh,Error));
+ return true;
 }
 
 #endif

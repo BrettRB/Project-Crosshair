@@ -4,7 +4,7 @@
 #include "CrosshairPractice.generated.h"
 
 class ACrosshairDummy;
-class UStaticMeshComponent;
+class USkeletalMeshComponent;
 
 UCLASS(ClassGroup=(Crosshair), meta=(BlueprintSpawnableComponent))
 class PROJECT_CROSSHAIR_API UCrosshairPlacementComponent : public UActorComponent
@@ -32,7 +32,7 @@ UPROPERTY(EditAnywhere, Category="Targets") TSubclassOf<ACrosshairDummy> TargetC
 	void RestoreLayout(const TArray<FTransform>& Layout);
 	static bool IsSupportedSurface(const FVector& Normal) { return Normal.Z >= 0.7f; }
 private:
-	UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> PreviewMesh;
+	UPROPERTY(Transient) TObjectPtr<USkeletalMeshComponent> PreviewMesh;
 };
 
 UCLASS(ClassGroup=(Crosshair), meta=(BlueprintSpawnableComponent))

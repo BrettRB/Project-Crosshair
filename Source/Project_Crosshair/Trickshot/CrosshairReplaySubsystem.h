@@ -39,6 +39,7 @@ public:
 	bool IsRecording() const { return Phase == ECrosshairReplayPhase::Recording; }
 	FString Status;
 private:
+	TMap<FName,bool> ReturnBrokenWindows;
 	void CaptureSession();
 	void StopRecording(bool bKeep);
 	void StartPlayback(const FCrosshairReplayEntry& Entry);

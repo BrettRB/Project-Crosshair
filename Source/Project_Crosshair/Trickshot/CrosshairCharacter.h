@@ -4,6 +4,8 @@
 #include "CrosshairCharacter.generated.h"
 
 class UCrosshairInventoryComponent;
+class UCrosshairLethalComponent;
+class UCrosshairTraversalComponent;
 class UCrosshairPlacementComponent;
 class UCrosshairAttemptComponent;
 class UCrosshairInputConfig;
@@ -21,6 +23,8 @@ struct FCrosshairViewState
 	UPROPERTY() float FOV = 90;
 	UPROPERTY() float AimAlpha = 0;
 	UPROPERTY() int32 HitSequence = 0;
+	UPROPERTY() bool bHeadshot = false;
+	UPROPERTY() bool bWallbang = false;
 };
 
 UCLASS(Blueprintable)
@@ -32,10 +36,13 @@ public:
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual bool CanJumpWhileFalling() const override;
 	virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void EndPlay(EEndPlayReason::Type Reason) override;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairInventoryComponent> Inventory;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairLethalComponent> Lethals;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairTraversalComponent> Traversal;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairPlacementComponent> Placement;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairAttemptComponent> Attempt;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) TObjectPtr<UCrosshairInputConfig> Inputs;
@@ -53,13 +60,17 @@ public:
 	bool IsReplayPlayback() const;
 	float GetAimAlpha() const { return AimAlpha; }
 	void ApplyRecoil(float Degrees);
-	void TargetHit(ACrosshairDummy* Target);
+	void TargetHit(ACrosshairDummy* Target, bool bHeadshot = false, bool bWallbang = false);
 	void StopActions();
+ void SelectWeaponSlot(int32 Slot);
+ void ControllerSprintPressed();
 	void ApplyLookInput(FVector2D MouseDelta, FVector2D StickAxis, float DeltaSeconds);
 	void Notify(const FString& Text);
 	FString Notice;
 	float NoticeUntil = 0;
 	float HitMarkerUntil = 0;
+	bool bLastHitHeadshot = false;
+	bool bLastHitWallbang = false;
 private:
 	void Move(const FInputActionValue& Value);
 	void JumpPressed();
@@ -83,6 +94,7 @@ private:
 	UPROPERTY(Replicated) FCrosshairViewState RecordedView;
 	bool bAimHeld = false;
 	bool bSprintHeld = false;
+ bool bControllerSprint=false;
 	bool bArmsReloading = false;
 	FTransform ArmsFromGrip = FTransform::Identity;
 	FDelegateHandle ArmsPoseHandle;

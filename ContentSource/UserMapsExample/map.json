@@ -1,0 +1,12 @@
+{
+  "name": "Frontend test map",
+  "mesh": "map.obj",
+  "scale": 1,
+  "spawn": [
+    0,
+    0,
+    100
+  ],
+  "yaw": 0,
+  "texture": "checker.png"
+}

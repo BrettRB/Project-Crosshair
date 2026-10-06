@@ -6,7 +6,7 @@ import unreal as ue
 assets=ue.EditorAssetLibrary; editing=ue.MaterialEditingLibrary; tools=ue.AssetToolsHelpers.get_asset_tools()
 ROOT='/Game/Crosshair/Weapons/Finishes'
 
-def build(name, colors, metallic, roughness, camo=False):
+def build(name, colors, metallic, roughness, camo=False, tiger=False):
     path=ROOT+'/'+name
     m=assets.load_asset(path) if assets.does_asset_exist(path) else tools.create_asset(name,ROOT,ue.Material,ue.MaterialFactoryNew())
     editing.delete_all_material_expressions(m)
@@ -30,7 +30,14 @@ def build(name, colors, metallic, roughness, camo=False):
     def blend(a,b,alpha):
         n=node(ue.MaterialExpressionLinearInterpolate); link(a,n,'A'); link(b,n,'B'); link(alpha,n,'Alpha'); return n
     surface=color(colors[0])
-    if camo:
+    if tiger:
+        stripe=node(ue.MaterialExpressionCustom)
+        stripe.set_editor_property('code','float u=UV.x*5.0; float v=UV.y*5.0; float wave=sin(v*6.28318+sin(u*2.3)*1.7+sin(u*5.7+v*.8)*.55); float width=.23+.18*sin(u*3.1+v*1.7); return smoothstep(width,width+.07,wave);')
+        stripe.set_editor_property('output_type',ue.CustomMaterialOutputType.CMOT_FLOAT1)
+        inp=ue.CustomInput(); inp.set_editor_property('input_name','UV'); stripe.set_editor_property('inputs',[inp])
+        link(node(ue.MaterialExpressionTextureCoordinate),stripe,'UV')
+        surface=blend(surface,color(colors[1]),stripe)
+    elif camo:
         for i,(scale,threshold) in enumerate([(3.8,.43),(6.1,.54),(10.5,.64)]):
             surface=blend(surface,color(colors[i+1]),mask(noise(scale,160+i*160),threshold))
     if camo or name == 'M_PaintedWeapon':
@@ -61,13 +68,15 @@ def build(name, colors, metallic, roughness, camo=False):
 
 wood=build('M_Woodland',[(.075,.093,.046),(.15,.135,.075),(.04,.052,.025),(.016,.019,.012)],.05,.64,True)
 desert=build('M_Desert',[(.29,.225,.145),(.42,.34,.23),(.16,.125,.08),(.065,.052,.035)],.05,.67,True)
+tiger=build('M_RedTiger',[(.27,.012,.009),(.014,.011,.012)],.05,.62,True,True)
+arctic=build('M_Arctic',[(.64,.69,.70),(.27,.32,.35),(.10,.15,.18),(.035,.052,.065)],.04,.66,True)
 original=build('M_PaintedWeapon',[(.032,.039,.032)],.08,.57)
 metal=build('M_WeaponMetal',[(.035,.04,.045)],.88,.34)
 rubber=build('M_WeaponRubber',[(.013,.016,.018)],0,.8)
 glass=build('M_OpticGlass',[(.006,.018,.026)],.35,.09)
 # Keep existing stable instance asset paths and skin IDs for saved profiles.
 instances=[]
-for name,parent in [('Woodland',wood),('Desert',desert)]:
+for name,parent in [('Woodland',wood),('Desert',desert),('RedTiger',tiger),('Arctic',arctic)]:
     path=ROOT+'/MI_'+name
     instance=assets.load_asset(path) if assets.does_asset_exist(path) else tools.create_asset('MI_'+name,ROOT,ue.MaterialInstanceConstant,ue.MaterialInstanceConstantFactoryNew())
     editing.set_material_instance_parent(instance,parent); assets.save_loaded_asset(instance,False); instances.append(instance)
@@ -85,8 +94,8 @@ for name in ['Sniper','AR','SMG']:
         if not slot.get_editor_property('material_interface'): raise RuntimeError('Missing model surface material')
         ue.log(name+' material '+str(slot.get_editor_property('material_slot_name'))+' = '+slot.get_editor_property('material_interface').get_path_name())
     skins=[]
-    for skin_name,instance in zip(['Woodland','Desert'],instances):
-        skin=ue.CrosshairWeaponSkin(); skin.set_editor_property('id',skin_name); skin.set_editor_property('display_name',skin_name)
+    for skin_name,instance in zip(['Woodland','Desert','RedTiger','Arctic'],instances):
+        skin=ue.CrosshairWeaponSkin(); skin.set_editor_property('id',skin_name); skin.set_editor_property('display_name','Red Tiger' if skin_name=='RedTiger' else skin_name)
         skin.set_editor_property('materials',[instance if str(slot.get_editor_property('material_slot_name'))=='Paint' else None for slot in slots])
         skins.append(skin)
     definition.set_editor_property('skins',skins); assets.save_loaded_asset(definition,False)

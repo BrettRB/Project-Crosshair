@@ -6,6 +6,8 @@
 class UCapsuleComponent;
 class UMaterialInterface;
 class UStaticMeshComponent;
+class USkeletalMeshComponent;
+class UAnimSequence;
 
 UCLASS(Blueprintable)
 class PROJECT_CROSSHAIR_API ACrosshairDummy : public AActor
@@ -23,6 +25,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1")) float MaxHealth = 100.f;
 	UPROPERTY(Replicated, BlueprintReadOnly) float Health = 100.f;
 	bool IsHeadImpact(const FVector& Impact) const;
+	bool IsHeadHit(const FHitResult& Hit) const;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<USkeletalMeshComponent> Model;
+	UPROPERTY(EditDefaultsOnly, Category="Presentation") TObjectPtr<UAnimSequence> TargetIdle;
 	UPROPERTY(ReplicatedUsing=OnRep_Hit, BlueprintReadOnly) bool bHit = false;
 protected:
 	virtual void BeginPlay() override;

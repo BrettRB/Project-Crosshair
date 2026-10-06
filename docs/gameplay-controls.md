@@ -22,7 +22,7 @@ GameOnly mode with permanent capture including the first mouse-down is applied a
 
 ## Camos
 
-The Camos tab selects a weapon; click Original, Woodland, or Desert, or select a row with arrows/D-pad and press Enter/A. The active camo is marked Equipped. Each weapon remembers its own finish across resets, switches, map travel, and restarts. See docs/weapon-appearance.md for the model-replacement foundation and remaining art/progression work.
+The Camos tab selects a weapon; click Original, Woodland, Desert, Red Tiger, or Arctic, or select a row with arrows/D-pad and press Enter/A. The active camo is marked Equipped. Each weapon remembers its own finish across resets, switches, map travel, and restarts. See docs/weapon-appearance.md for the model-replacement foundation and remaining art/progression work.
 
 ## Weapon hands
 
@@ -58,6 +58,28 @@ The actual user's saved horizontal and vertical flags were read as Off during va
 
 The Camos tab now applies realistic layered coatings to three distinct authored models; see docs/weapon-appearance.md for sources, regeneration and material-slot details.
 
-## Planned additions
+## Mantling and jump forgiveness (2026-10-02)
 
-The requested red tiger/arctic camos, improved targets/hitboxes, breakable traversable windows and mantling are recorded in [the future backlog](backlog.md) for the next development session.
+Press Space / A while facing a reachable ledge or a broken window. Traversal checks the full capsule path and landing clearance, automatically crouches through sufficiently large low openings, and stands up afterwards when space permits. A blocked path cancels safely. Reset, opening the menu and input focus loss cancel active mantling. Glass shatters when shot; that bullet continues through the pane. Thin cover supports reduced-damage wallbangs; thick cover still stops shots. Resetting an attempt restores the glass.
+
+Ordinary jump, sprint and crouch remain available. Jump has 100ms of coyote time after walking off an edge and a 120ms landing buffer while the button stays pressed. See [traversal and target setup](traversal-and-targets.md) for reusable map setup, tuning and local verification. Additional movement mechanics and cosmetic unlock progression remain in [the backlog](backlog.md).
+
+## Hit feedback and wallbangs (2026-10-02)
+
+Head hits show a larger gold marker and HEADSHOT text; body/limb hits show the ordinary white marker. Penetrated hits add WALLBANG text. The HUD now uses compact session/ammo/help panels, larger type and clearer menu rows; ammo remains visible when scoped. Three authored practice targets are upright and face the player. All 82 decorative Nuketown flower meshes have no collision, preserving the bed/ground and source assets.
+
+Wallbangs allow up to two vertical thin cover surfaces and 40cm total thickness, retaining 75% damage per layer. Glass consumes neither budget nor damage. See [hit feedback and wallbang tuning](hit-feedback-and-wallbangs.md).
+
+## Lethal throwables (2026-10-02)
+
+Hold G / RB to prepare the selected lethal; release to throw. Hold a frag to cook its three-second fuse. F / LB cycles Frag grenade and Tomahawk / battle axe during play. Choose **Lethal** in the Practice tab to save your selection. Bumpers still change tabs while the menu is open. The HUD shows the selected type, supply, and remaining fuse while cooking.
+
+Each attempt has two shared lethal charges, independent of firearm ammo. Reset restores supply and removes thrown items. Frags bounce and deal distance-based blast damage; solid cover blocks the blast. Tomahawks spin and damage targets on direct impact, then stick. Both break shootable glass. Successful lethal target hits use the existing trickshot recording and replay flow. See [lethal setup and tuning](lethal-throwables.md).
+
+## Home, classes, map imports and sandbox (2026-10-05)
+
+Home now offers Play, Weapon classes, Maps / Import and Settings. Five saved classes choose a primary, a distinct secondary, and a lethal. Classes is also available in the pause menu. Equip this class applies the selection; Play uses the active class. Number-row 1/2 selects a slot; wheel, Q and Y / Triangle switches between the two chosen guns.
+
+Controller default yaw/pitch are 720/540 degrees per second, with higher adjustable limits of 2160/1440. Old default speeds migrate once while custom speeds remain. Left-stick click latches sprint while moving. Settings > Controls > Sandbox target editing enables dummy placement/removal/clear controls; it ships Off and is also accessible in Targets. Mouse wheel navigates long menus.
+
+Maps / Import accepts local OBJ geometry or a map.json package with scale/spawn and one optional PNG/JPG atlas. Imports keep a local copy, create collision and participate in replay playback. See [home, classes and map import](home-classes-and-map-import.md) for steps, supported formats, limits and implementation.

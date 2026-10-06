@@ -1,0 +1,15 @@
+# X forward, Z up, centimeters; convex floor and backstop
+v -1000 -1000 0
+v 1000 -1000 0
+v 1000 1000 0
+v -1000 1000 0
+v 800 -400 0
+v 800 -400 400
+v 800 400 400
+v 800 400 0
+vt 0 0
+vt 4 0
+vt 4 4
+vt 0 4
+f 1/1 2/2 3/3 4/4
+f 5/1 6/2 7/3 8/4

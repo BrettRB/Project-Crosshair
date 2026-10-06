@@ -13,6 +13,7 @@ class PROJECT_CROSSHAIR_API ACrosshairGameMode : public AGameModeBase
 	GENERATED_BODY()
 public:
 	ACrosshairGameMode();
+ virtual void InitGame(const FString& MapName,const FString& Options,FString& ErrorMessage) override;
 };
 
 /** Owns menus even when replay playback has no possessed character. */
@@ -38,6 +39,17 @@ public:
 	static constexpr int32 DesertRow = 20;
 	static constexpr int32 CalibrationRow = 21;
 	static constexpr int32 FirstReplayRow = 22;
+	int32 GetFirstReplayRow() const;
+	int32 GetLethalRow() const;
+	int32 GetSkinCount() const;
+ int32 GetClassRow() const { return GetLethalRow()+1; }
+ int32 GetSandboxRow() const { return GetClassRow()+5; }
+ int32 GetHomeRow() const { return GetClassRow()+6; }
+ int32 GetImportRow() const { return GetClassRow()+7; }
+ void ShowHome();
+ void StartPlaying();
+ bool bHomeScreen=false,bFromHome=false;
+ int32 EditingClass=0;
 	int32 ControllerCalibrationStep = 0;
 	int32 MenuSelection = 0;
 	TArray<FString> GetMenuRows() const;
@@ -46,7 +58,7 @@ public:
 	void ActivateMenuRow(int32 Row);
 	void AdjustMenuRow(int32 Row, int32 Direction);
 	int32 MenuTab = 0;
-	static constexpr int32 MenuTabCount = 6;
+	static constexpr int32 MenuTabCount = 8;
 private:
 	void ApplyGameplayInputMode();
 	void CalibrateAxis(FKey Key, float Value);

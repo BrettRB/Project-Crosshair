@@ -1707,3 +1707,256 @@ Reviewed existing docs and searched for a backlog/roadmap; no dedicated current 
 ### Response Summary
 Confirm that the requested future changes are saved in docs/backlog.md, naming red tiger/arctic camos, target/hitbox improvements, shootable traversable windows and mantling. Implementation is deferred to the next session as requested.
 ---
+
+---
+## Interaction 40
+
+Date: 2026-10-02 10:43:12 (America/Chicago)
+
+### User Prompt
+Can you start making these new things like the new camos, new models and hitboxes, shootable windows, and mantling and further movement
+
+### Interpretation
+Implement a first pass of the deferred Red Tiger/Arctic camos, humanoid targets and hitboxes, reusable shootable windows integrated into Nuketown, mantling and basic movement improvements.
+
+### Requirements / Acceptance Criteria
+- New camos on sniper, AR and SMG, selectable in Camos and persistent through reset, map travel and saving.
+- Humanoid models/previews with real head/body/limb shot collision and existing damage/health.
+- Shoot designated house glass, continue the bullet through it while respecting opaque cover, climb suitable broken openings, and restore glass on reset; support future maps.
+- Space/controller A mantling with full capsule clearance/landing checks, automatic crouch, cancellation and gravity restoration.
+- Coyote time/jump buffering without double jumping; preserve input, reset and replay behavior.
+- Modular local Unreal implementation, appropriate local tests, docs and no unrelated changes.
+
+### Actions Taken
+Read README, AGENTS and relevant gameplay/map/weapon/backlog docs. Added procedural Red Tiger and Arctic paint finishes, shared fine detail and extensible Camos catalog rows. Retained existing weapon geometry. The new target model uses existing SKM_Manny_Simple, mannequin physics bodies and idle animation; placement previews match it. Movement capsules no longer score shots, and actual head-bone hits apply head damage.
+
+Added replicated ACrosshairWindow with immediate collision removal, temporary collision-free shards and reset/replay state restoration. Editor script converted 48 playable Nuketown house panes, preserving mesh/material/transform, separate frames and source map. Opening bounds are computed from exported geometry to handle baked rotations. Added UCrosshairTraversalComponent: collision-tested lift/across/drop paths for ledges and broken windows, automatic crouch, corner sweeps, cancellation, exposed tuning, 100ms coyote time and 120ms landing jump buffer.
+
+Added an isolated expansion integration/visual test harness and updated existing smoke expectations. Used the debugging-code skill in Rider to capture crouch/frame collision, placement initialization and replay startup state. Flying mode forced uncrouching, fixed by falling with gravity temporarily disabled. Shot bodies now activate after the first idle pose so pre-BeginPlay placement uses the physical capsule. A practice-map replay stall showed frame zero, buffered packets, a pending connection and a frozen 0.0167s clock. Skipping zero-time seeking failed; a 0.1s startup seek processes the initial frame and passed final core/restart/expansion tests. Removed agent breakpoints and stopped only agent-launched debug processes; user breakpoints preserved.
+
+### Files Changed
+- Scripts/create_weapon_finishes.py
+- Scripts/probe_traversal_assets.py, setup_breakable_windows.py, setup_expansion_assets.py (new)
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h/.cpp, CrosshairDummy.h/.cpp, CrosshairGame.h/.cpp, CrosshairPractice.h/.cpp, CrosshairReplaySubsystem.h/.cpp, CrosshairWeapon.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairTraversal.h/.cpp and CrosshairWindow.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp and CrosshairExpansionTest.h/.cpp (new test)
+- Content/Crosshair/Maps/L_Nuketown.umap; Player/BP_PracticeCharacter.uasset; Targets/BP_Target.uasset
+- Content/Crosshair/Weapons/DA_AR.uasset, DA_SMG.uasset, DA_Sniper.uasset
+- Content/Crosshair/Weapons/Finishes/M_RedTiger.uasset, MI_RedTiger.uasset, M_Arctic.uasset, MI_Arctic.uasset (new)
+- Content/Crosshair/Weapons/Finishes/M_Desert.uasset, M_Woodland.uasset, M_PaintedWeapon.uasset, M_WeaponMetal.uasset, M_WeaponRubber.uasset, M_OpticGlass.uasset (shared generation)
+- Content/Crosshair/Weapons/Models/SM_Sniper.uasset (material assignment save)
+- docs/backlog.md, gameplay-controls.md, nuketown-import.md, weapon-appearance.md, traversal-and-targets.md (new), ai-interaction-log.md
+
+### Verification
+All commands ran locally using UE_5.8. Smoke tests use CrosshairSmoke_v1, separate from the normal player profile.
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: final build succeeded. Initial compile errors corrected and agent debug-process DLL lock cleared before rebuilding.
+- UnrealEditor-Cmd Project_Crosshair.uproject -run=pythonscript -script=Scripts/setup_expansion_assets.py -unattended -NullRHI -nosound -nosplash: success, zero script errors/warnings; 48 panes converted, rerun converted=0 total=48. Binary assets saved through editor APIs.
+- UnrealEditor-Cmd Project_Crosshair.uproject -unattended -NullRHI -nosound -nosplash -ExecCmds='Automation RunTests Crosshair.' -TestExit='Automation Test Queue Empty' -abslog=Saved/Logs/ExpansionAutomation.log: seven tests passed (dead zone/frame rate, calibration, independent inversion, mouse displacement, damage, placement support, firing gates).
+- Local game command UnrealEditor-Cmd Project_Crosshair.uproject /Game/Crosshair/Maps/L_Practice -game -unattended -NullRHI -nosound -nosplash -ExecCmds='t.MaxFPS 60' with -CrosshairSmoke -CrosshairFollowupSmoke, ExpansionRegression.log: CROSSHAIR_FOLLOWUP_SMOKE_OK (input/calibration/menu/camo/grass regressions).
+- Same game command with -CrosshairSmoke -CrosshairExpansionSmoke, ExpansionSmoke.log: final CROSSHAIR_EXPANSION_OK (all catalogs, paint-only skins, menu/reset/map persistence, real head/torso/leg traces, capsule-gap miss, bullet through glass, opaque cover, glass reset, keyboard/controller mantle, saved start, cancellation, ceiling rejection, normal/coyote/buffered jumps, actual Nuketown window CrosshairWindow_40, replayed glass/mantle and return/reset state).
+- Expansion visual run with -CrosshairExpansionVisual -UnattendedInput -RenderOffscreen -windowed -ResX=1280 -ResY=720 instead of NullRHI, ExpansionVisual.log: CROSSHAIR_EXPANSION_OK. Reviewed ExpansionRedTigerTarget.png, ExpansionArctic.png and ExpansionCamos.png. Initial menu-open harness timeout corrected before passing run.
+- Same game command with -CrosshairSmoke, ExpansionCoreSmoke.log: final CROSSHAIR_SMOKE_OK (placement, weapons, successful-shot recording, replay camera/weapon, target layout and saved start restoration). Initial placement/startup failures corrected before final pass.
+- Separate process with -CrosshairSmokeSaved, ExpansionSavedSmoke.log: CROSSHAIR_SMOKE_SAVED_OK; saved playback survived restart and deletion succeeded.
+- Git status/source/asset/doc diff reviewed; git diff --check passed. Rider reports no sessions and only eight original user exception breakpoints, five enabled.
+
+### Notes / Follow-up
+- New camos are immediate cosmetics; unlock progression remains future work. Existing damage/health/controller direction/sensitivity unchanged.
+- Existing weapon meshes retained; dedicated custom humanoid art, mantle animation, further patterns/mechanics and multiplayer prediction remain future work.
+- Short replay playback starts at 0.1s to avoid the engine first-frame stall; first 100ms omitted. Longer attempts retain the eight-second lead-in.
+- Physical wireless-controller hardware, packaged/cooked builds and every individual Nuketown opening remain unverified. Controller A/look paths exercised with injected input. Existing imported material/texture warnings remain.
+- No external services, paid assets, commits or project-setting changes. Managed read-only filesystem required tool-level approval for writes/builds/tests.
+
+### Response Summary
+Report completed first pass: Red Tiger/Arctic on all weapons, humanoid targets and bone hitboxes, 48 shootable panes, Space/A mantling, coyote time and jump buffering. Local build/automation/gameplay/replay checks passed; custom art/animations/progression remain future polish.
+---
+
+---
+## Interaction 41
+
+Date: 2026-10-02 21:01:05 (America/Chicago)
+
+### User Prompt
+I few minor things I would like to be changed.
+
+1. Can you add a different hit marker for when the user gets a headshot.
+2. Fix the dummies in the practice area to be the right way up since they are currently upside down.
+3. Update the UI and make it look more presentable to users. 
+4. Fix the collision in the flower bed on nuketown since all the flowers in it currently have collision making it so you can't walk through it.
+5. Add the ability to wall bang a target for a better trick shot feeling[@CrosshairReplaySubsystem.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/CrosshairReplaySubsystem.cpp)
+
+### Interpretation
+Add distinct headshot feedback, correct authored practice-target orientation, improve HUD/menu presentation, remove decorative flower collision and implement bounded wall penetration for trickshots.
+
+### Requirements / Acceptance Criteria
+- Head hits use distinct color/shape/text and replay feedback; body/limb hits remain distinguishable.
+- Three practice-map targets are upright, with creation script corrected so rebuilding cannot reintroduce pitch inversion.
+- Readable HUD/menu typography, coherent panels/selection, preserved mouse/controller/keyboard navigation and tabs.
+- Nuketown decorative flowers allow movement while preserving beds/ground/source assets.
+- Shots penetrate limited thin cover with reduced damage; thick cover and near-barrel obstruction still block; glass and one-round firing remain correct.
+- Verify locally, preserve existing work from Interaction 40, append log and inspect Git status/diff.
+
+### Actions Taken
+Read AGENTS, relevant gameplay/traversal/map docs and weapon-source README (no root README exists), inspected source and existing working changes. Queried optional wallbang preference; no response arrived, so used the stated default of two thin surfaces with reduced damage. Added larger gold headshot X/side marks and HEADSHOT text, ordinary white body marker, WALLBANG annotation, and replay-only view flags.
+
+Editor probe identified all three authored targets with 180-degree pitch and 82 dedicated Nuketown flower meshes. Repaired only those map actors/components, saved and reloaded maps with assertions. Changed target creation to named Rotator arguments. Kept placeable model transforms, flower visuals, beds, ground and source mesh assets.
+
+Added modular CrosshairBallistics trace helper and weapon definition tuning: two solid layers, 40cm total entry-to-exit depth, 75% damage per layer. Requires a valid exit, checks overlapping cover, retraces without ignoring or disabling walls, supports NoWallbang tags, preserves near-barrel blocking and glass penetration. Resolved camera aim in a read-only pass before actual muzzle damage to avoid glass parallax. Retained base damage/health and one round/recoil per shot.
+
+Updated HUD/menu with larger fonts, compact session/ammo/help panels, shorter hints, tab descriptions, separate setting labels/values, simpler camo rows and consistent selection colors. Moved HUD panels after scope drawing so ammo/session remain visible. Rendered and reviewed screenshots, then enlarged small text.
+
+Extended expansion coverage for target orientation, every flower, direct head/body markers, wall+glass damage, thick cover, two/three layers, combined depth, NoWallbang tags and near-barrel gate. Initial compile issues and glass-aim regression corrected. Used debugging-code skill in Rider: breakpoint at CrosshairWeapon.cpp:221, stack TryFire, Hit.BoneName=neck_01 and Direction=(1,0,0) established a test camera-update race. Tests now wait a frame for aim updates before shots. Removed agent breakpoint/session and guarded-stop only own FeedbackDebug process; eight user exception breakpoints (five enabled) preserved.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairBallistics.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairData.h
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h/.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairExpansionTest.cpp
+- Scripts/create_crosshair_assets.py
+- Scripts/probe_feedback_assets.py and repair_feedback_assets.py (new)
+- Content/Crosshair/Maps/L_Practice.umap and L_Nuketown.umap (editor saves)
+- docs/hit-feedback-and-wallbangs.md (new)
+- docs/gameplay-controls.md, traversal-and-targets.md, nuketown-import.md, ai-interaction-log.md
+
+### Verification
+All tests/builds ran locally with UE_5.8; smoke runs use isolated CrosshairSmoke_v1 save.
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: final succeeded after compile/test-timing corrections.
+- UnrealEditor-Cmd Project_Crosshair.uproject -run=pythonscript -script=Scripts/probe_feedback_assets.py -unattended -NullRHI -nosound -nosplash -abslog=Saved/Logs/FeedbackAssetsProbe.log: successful read-only actor/component inventory.
+- Same editor command with repair_feedback_assets.py, FeedbackAssetsRepair.log: success, zero errors/warnings, CROSSHAIR_FEEDBACK_ASSETS_OK upright=3 flowers=82; reload assertions passed.
+- UnrealEditor-Cmd Project_Crosshair.uproject /Game/Crosshair/Maps/L_Practice -game -CrosshairSmoke -CrosshairExpansionSmoke -unattended -NullRHI -nosound -nosplash -ExecCmds='t.MaxFPS 60' -abslog=Saved/Logs/FeedbackSmoke.log: CROSSHAIR_EXPANSION_OK, head/body wallbang and headshot feedback, upright models, flower collision and prior camos/glass/mantling/replay passed.
+- Rendered equivalent using -CrosshairExpansionVisual -UnattendedInput -RenderOffscreen -windowed -ResX=1280 -ResY=720 instead of NullRHI, FeedbackVisual.log: final CROSSHAIR_EXPANSION_OK. Extra two/three-layer, damage-scale, depth-budget, solid-tag and near-barrel tests passed. Reviewed FeedbackHeadshot.png, ExpansionCamos.png, ExpansionArctic.png; final readable UI and scoped panels included.
+- Core local game command with -CrosshairSmoke, FeedbackCoreSmoke.log: CROSSHAIR_SMOKE_OK, including input/movement, weapon handling/obstruction, placement, menu actions, successful shot recording, replay camera/weapon and restored layout/start.
+- git diff --check reports one intentional trailing space copied verbatim from item 3 of the user prompt. The source/document diff check excluding this verbatim interaction log passes; source/status reviewed. Rider reports no sessions and eight original user breakpoints, five enabled.
+
+### Notes / Follow-up
+- Geometry-based penetration is designer-tunable per weapon; material-specific resistance and every imported wall shape remain future validation/tuning.
+- Physical controller hardware and packaged/cooked builds remain unverified. Existing imported texture/material warnings remain.
+- No commits, external services, paid assets or unrelated asset regeneration. Preserved all pre-existing uncommitted work. Managed filesystem required tool-level approval for writes/builds/tests.
+
+### Response Summary
+Confirm distinct gold headshot feedback, upright practice targets, cleaner readable HUD/menu, collision removed from 82 decorative flowers, and limited reduced-damage wallbangs. Report local build/gameplay/rendered/replay verification passed and link implementation notes.
+---
+
+---
+## Interaction 42
+
+Date/time: 2026-10-02T21:55:44 America/Chicago.
+
+### User Prompt
+Next, can we work on adding lethal throwables in the game such as grenades, frags, battle axe/tomohawks[@CrosshairWeapon.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/CrosshairWeapon.cpp)
+
+### Interpretation
+Add a cookable frag grenade and a direct-impact tomahawk/battle axe, integrated with practice controls, inventory, targets, glass, menu/HUD and replays.
+
+### Requirements / Acceptance Criteria
+- Keyboard/controller preparation, release and selection; retain existing gun and movement controls.
+- Bouncing cooked frags with falloff blast damage and cover protection; spinning swept direct-hit axes.
+- Breakable-window continuation, shared supply, saved selection, reset cleanup/replenishment, and recorded successful hits.
+- Original local models, reusable Blueprint tuning, local build/tests and source review.
+
+### Actions Taken
+Implemented UCrosshairLethalComponent, ACrosshairThrowable and a small projectile-movement subclass. Added G/RB hold-release, F/LB cycle, saved equipment choice, Practice Lethal row, supply/fuse HUD, action guards and attempt reset cleanup. Generated original curved grenade and axe meshes through Unreal APIs using existing finish materials. Added isolated lethal integration/visual tests and documentation.
+
+Used the debugging-code skill and Rider/LLDB. Paused in OnBounce and lethal-test Tick; observed incoming axe X velocity 2200, a broken pane, subsequent X velocity 0 at the pane and target health 100. Local engine HandleDeflection projected the restored velocity onto the old pane normal. The movement subclass now skips this only for broken glass. Corrected test screenshot delay and test-only replay-transition guards. Normally closed the open editor to release the DLL for linking. Removed agent breakpoints and preserved all eight user exception breakpoints, five enabled; final debugger has no sessions.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairThrowable.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairLethalTest.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairData.h, CrosshairCharacter.h/.cpp, CrosshairGame.h/.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairPractice.cpp, CrosshairTraversal.cpp, CrosshairReplaySubsystem.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp
+- Scripts/create_throwable_models.py (new)
+- ContentSource/Throwables/SM_Frag.obj, SM_Tomahawk.obj, Crosshair.mtl, README.md (new)
+- Content/Crosshair/Weapons/Throwables/SM_Frag.uasset, SM_Tomahawk.uasset (new editor imports)
+- docs/lethal-throwables.md (new), gameplay-controls.md, ai-interaction-log.md
+
+### Verification
+All commands ran locally with UE_5.8; game tests use isolated CrosshairSmoke_v1 saves.
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: final succeeded. Initial HUD pointer deduction fixed; linker lock resolved by normal editor close.
+- UnrealEditor-Cmd Project_Crosshair.uproject -run=pythonscript -script=Scripts/create_throwable_models.py -unattended -NullRHI -nosound -nosplash: LethalModels.log, CROSSHAIR_LETHAL_MODELS_OK, zero script errors/warnings.
+- UnrealEditor-Cmd Project_Crosshair.uproject /Game/Crosshair/Maps/L_Practice -game -CrosshairSmoke -CrosshairLethalSmoke -unattended -NullRHI -nosound -nosplash -ExecCmds='t.MaxFPS 60': final LethalSmoke.log, exit 0, CROSSHAIR_LETHAL_OK. Covers key paths, cooking/overcook, cancellation, saved selection, supply, gun-ammo independence, axe hits, bounce, falloff/cover, near-wall release, reset cleanup, glass, axe replay flight/stick and return/restock. Initial glass timeout and a subsequent test-only null reference at replay transition were corrected before final success.
+- Rendered equivalent using -CrosshairLethalVisual -UnattendedInput -RenderOffscreen -windowed -ResX=1280 -ResY=720 instead of NullRHI: LethalVisual.log, exit 0, CROSSHAIR_LETHAL_OK. Reviewed LethalMenu.png, LethalTomahawk.png, LethalFrag.png: readable UI, distinct curved models, held fuse feedback.
+- Core game command with -CrosshairSmoke: LethalCoreRegression.log, exit 0, CROSSHAIR_SMOKE_OK, input/firearms/practice/menu/replay passed.
+- Game command with -CrosshairSmoke -CrosshairExpansionSmoke: LethalExpansionRegression.log, exit 0, CROSSHAIR_EXPANSION_OK, camos/targets/glass/headshot/wallbang/traversal/replay passed.
+- Git status/diff reviewed; diff --check excluding the verbatim interaction log passes. Existing intentional prompt whitespace from Interaction 41 preserved. Sandbox Git LFS review needed escalation for temporary files. Initial log append used the wrong Windows decoding; corrected by UTF-8 append without changing earlier records.
+
+### Notes / Follow-up
+- Two shared charges per attempt; grenade/frag names refer to one initial explosive, tomahawk/battle axe names to one impact weapon.
+- Current hands use existing idle animation. Throw-specific animations, audio/particle polish, pickups, alternative explosives and unlocks remain future work. Practice player remains invulnerable.
+- Axe replay verified; frag physics/damage verified in live play. Physical controller, packaged/cooked builds and online multiplayer support are not claimed.
+- Preserved prior uncommitted changes. No commits, external services, paid assets or unrelated asset regeneration/deletion. Managed filesystem required tool-level write/build/test approvals.
+
+### Response Summary
+Playable cookable frags and spinning impact tomahawks added, with G/RB throw, F/LB selection, Practice menu/HUD, resets and replays. Local build, gameplay, rendered and regression checks passed; animation/audio remain future polish.
+---
+
+---
+## Interaction 43
+
+Date/time: 2026-10-05 20:08 America/Chicago.
+
+### User Prompt
+Between current issues and things I would like added, there are 6 things needed to be done.
+!. Fix the lighting for indoor areas such as Nuketown.
+2. Add a secondary weapon slot that a user can switch to using either the scroll wheel or the number row on KBM and Y/ triangle on controller.
+3. Add map import abilities for users.
+4. Add a start/home page where a user can select between things like playing, weapon class creator, map import section, setting, etc.
+5. Add a weapon class creator were user can choice a primary, secondary, and lethal throwable. Also add a spot in the pause menu where the user can change the class.
+6. Update the controller sensitivity to be higher so the user can get more turns in when going for a 360, 720, etc
+7. Make all the controls feel more like COD on controller and have a sandbox style mode to place down the target dummies that the user can get to from the settings.[@CrosshairLethalTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairLethalTest.cpp)
+
+### Interpretation
+Implement all seven listed items: corrected indoor lighting, two class weapon slots, local map import, home navigation, persistent loadout creation/equipping, faster controller turns and familiar controller/sandbox controls.
+
+### Requirements / Acceptance Criteria
+- Improve existing Nuketown interior lights while preserving exterior lighting and unrelated assets.
+- Switch primary/secondary with number-row 1/2, wheel and Y/Triangle.
+- Home offers Play, Weapon classes, Maps/Import and Settings; pause has Classes/Maps tabs.
+- Save five editable classes with distinct primary/secondary and selected lethal, equip during practice.
+- Higher adjustable controller sensitivity, independent inversion, preserved mouse input and familiar click-to-sprint behavior.
+- Settings enables sandbox target placement/removal with controller controls.
+- Import validated local geometry/textures into a persistent library; play and replay imported maps.
+- Build/test locally, preserve previous work and append this record.
+
+### Actions Taken
+Read AGENTS.md and relevant project documentation (root README absent). Proposed a short plan and asked optional format/layout questions. No answers arrived; after allowing time, explicitly proceeded with OBJ/map.json plus optional local texture atlas and the documented controller layout.
+
+Added reusable map-library/imported-geometry subsystem and actor with bounded OBJ/JSON parsing, relative-path validation, unique copied packages, runtime collision/materials, map travel and recorded map IDs. Added dedicated L_UserMap and M_ImportedMap through Unreal editor Python APIs. Added five saved classes and two-slot weapon handling, home navigation, Classes/Maps tabs, sandbox setting, faster sensitivity defaults/migration and latched controller sprint. Existing custom sensitivity, mouse/stick composition and inversion/calibration paths retained. Corrected eleven existing Nuketown indoor point/rect lights to movable shadowed lumens, then tuned intensity/temperature after before/after visual review.
+
+Applied debugging-code skill for imported floor collision. Attached Rider/LLDB only to the agent's opt-in test process. Paused at the failed support assertion: capsule Z 96.10, movement Falling, no walkable floor, procedural section had 12 vertices/12 indices and valid bounds. Local engine code showed procedural collision flips geometric normals. Converted OBJ triangle winding while retaining outward face normals; walking support and imported replay passed afterward. Removed agent breakpoints and stopped/detached only that test process. Preserved eight original user exception breakpoints (five enabled).
+
+Added frontend integration/visual tests and OBJ automation coverage. Updated legacy fixtures to enable sandbox intentionally and menu/replay row assertions for new sections. One initial menu regression failure was an old Targets-tab expectation; updated it to include the sandbox row, rebuilt and reran successfully.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairMapLibrary.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairData.h, CrosshairWeapon.h/.cpp, CrosshairCharacter.h/.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h/.cpp, CrosshairPractice.cpp, CrosshairThrowable.cpp, CrosshairReplaySubsystem.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairRulesTests.cpp, CrosshairSmokeTest.cpp, CrosshairExpansionTest.cpp, CrosshairLethalTest.cpp
+- Source/Project_Crosshair/Project_Crosshair.Build.cs, Project_Crosshair.uproject, Config/DefaultGame.ini
+- Scripts/setup_frontend_assets.py, probe_indoor_lighting.py, repair_indoor_lighting.py (new)
+- Content/Crosshair/Maps/L_UserMap.umap, M_ImportedMap.uasset (new editor-generated assets), L_Nuketown.umap (indoor lights)
+- ContentSource/UserMapsExample/README.md, map.obj, map.json, checker.png, invalid.json (new original fixture)
+- docs/home-classes-and-map-import.md (new), gameplay-controls.md, nuketown-import.md, ai-interaction-log.md
+
+### Verification
+All commands local, UE 5.8; smoke sessions use isolated test saves/map storage.
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: final Succeeded. Final test rebuild waited for the regression process DLL release and succeeded.
+- UnrealEditor-Cmd Project_Crosshair.uproject -run=pythonscript -script=<absolute Scripts/setup_frontend_assets.py> -unattended -NullRHI -nosound -nosplash: FrontendAssets.log, CROSSHAIR_FRONTEND_ASSETS_OK, zero script errors/warnings.
+- Same commandlet with probe_indoor_lighting.py and repair_indoor_lighting.py: inventory confirmed eleven intensity-1 indoor lights; repair saved/reloaded all eleven at final 500/650 lumens, CROSSHAIR_INDOOR_LIGHTS_OK. Initial relative probe path was corrected to an absolute script path.
+- UnrealEditor-Cmd Project_Crosshair.uproject /Game/Crosshair/Maps/L_Practice -game -CrosshairSmoke -CrosshairFrontendSmoke -unattended -NullRHI -nosound -nosplash -ExecCmds='t.MaxFPS 60': FrontendSmoke.log, exit 0, CROSSHAIR_FRONTEND_OK. Home/class save/equip, 1/2/wheel/Y, sprint latch/stop, sandbox, 720 deg/s, malformed/path-escaping imports, fresh package registration/texture MID, floor support, map/class travel, recorded hit, imported replay geometry and return all passed.
+- Rendered equivalent with -CrosshairFrontendVisual -UnattendedInput -RenderOffscreen -windowed -ResX=1280 -ResY=720 instead of NullRHI: FrontendVisual.log, exit 0, CROSSHAIR_FRONTEND_OK. Reviewed final Home, Classes, Maps, imported checker material, Yellow and Green interior screenshots and baseline indoor views. Generated images remain under Saved.
+- UnrealEditor-Cmd Project_Crosshair.uproject -unattended -NullRHI -nosound -nosplash -ExecCmds='Automation RunTests Crosshair' -TestExit='Automation Test Queue Empty': FrontendAutomation.log, exit 0; all eight tests Success (four input rules, OBJValidation, damage, placement, fire gates).
+- Local game regressions using -CrosshairSmoke and optional -CrosshairPolishSmoke/-CrosshairLethalSmoke/-CrosshairExpansionSmoke: CoreRegression.log CROSSHAIR_SMOKE_OK, final PolishRegression.log CROSSHAIR_POLISH_SMOKE_OK, LethalRegression.log CROSSHAIR_LETHAL_OK, ExpansionRegression.log CROSSHAIR_EXPANSION_OK. All processes exit 0; marker checks confirmed actual pass despite Unreal reporting exit 0 on the initial stale assertion.
+- git status/diff reviewed; git diff --check excluding the exact interaction log passes. Preserved existing intentional prompt whitespace from Interaction 41. Managed sandbox required tool-level approval for project writes, builds, tests and Git LFS temporary files.
+
+### Notes / Follow-up
+- First map format supports OBJ/map.json and one PNG/JPG atlas. FBX, Unreal asset packs, archives, multiple MTL materials and map-specific actors require separate workflows. Import window accepts a pasted local path. Imported packages are copied, so originals can be moved afterward.
+- Controller checks used simulated physical-key events. Physical controller hardware and packaged/cooked builds remain unverified.
+- Existing weapon/hand presentation and imported material warnings are inherited; no unrelated model/animation changes made here.
+- No commits, remote CI, external services, paid assets or unrelated asset regeneration/deletion. Preserved all pre-existing uncommitted changes.
+
+### Response Summary
+All seven listed features implemented. Highlight corrected indoor lighting, home/classes/maps, 1/2/wheel/Y slots, 720-degree controller yaw with click sprint, and Settings sandbox. State first map format OBJ/map.json, local build/eight automation tests/gameplay/rendered/replay checks passed, and physical-controller verification remains.
+---

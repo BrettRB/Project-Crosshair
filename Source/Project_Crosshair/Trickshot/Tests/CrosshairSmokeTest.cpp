@@ -38,7 +38,7 @@ bool UCrosshairSmokeTest::ShouldCreateSubsystem(UObject* Outer) const
 #if UE_BUILD_SHIPPING
 	return false;
 #else
-	return FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmokeSaved"));
+	return !FParse::Param(FCommandLine::Get(), TEXT("CrosshairFrontendSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLethalSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairExpansionSmoke")) && (FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmokeSaved")));
 #endif
 }
 void UCrosshairSmokeTest::Initialize(FSubsystemCollectionBase& Collection)
@@ -72,6 +72,7 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 		&& GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return;
 #endif
 	auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+    Replay->GetSettings().bSandboxTargets=true;
 	auto* PC = Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
 	auto* Pawn = PC ? Cast<ACrosshairCharacter>(PC->GetPawn()) : nullptr;
 	auto Key = [PC](FKey K, EInputEvent Event) { if (PC) PC->InputKey(FInputKeyEventArgs::CreateSimulated(K, Event, Event == IE_Released ? 0.f : 1.f)); };
@@ -223,11 +224,11 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 		PC->ActivateMenuRow(PC->CalibrationRow); AxisCalibration(EKeys::Gamepad_RightX,-.8f); PC->SetMenuTab(5);
 		if (!Check(!PC->ControllerCalibrationStep && Replay->GetSettings().ControllerAxisDirection.Equals(FVector2D(1,1)), TEXT("Incomplete calibration is canceled without changing saved direction"))) return;
 		PC->SetMenuTab(5);
-		if (!Check(PC->GetVisibleMenuRows() == TArray<int32>({PC->WeaponRow, PC->SkinRow, PC->WoodlandRow, PC->DesertRow}), TEXT("Camos tab contains weapon and direct camo choices"))) return;
+		if (!Check(PC->GetVisibleMenuRows() == TArray<int32>({PC->WeaponRow, PC->SkinRow, PC->WoodlandRow, PC->DesertRow,22,23}), TEXT("Camos tab contains weapon and direct camo choices"))) return;
 		if (auto* Profile = Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("CrosshairProfile_v1"),0)))
 			UE_LOG(LogTemp, Display, TEXT("USER_CONTROLLER_SETTINGS horizontal=%d vertical=%d"), Profile->Settings.bInvertControllerHorizontal, Profile->Settings.bInvertControllerVertical);
 		const int32 Ammo = Weapon->Ammo;
-		if (!Check(Weapon->Definition->Skins.Num() == 2 && !Weapon->SetSkin(TEXT("MissingSkin")), TEXT("Starter finish catalog rejects unknown skins"))) return;
+		if (!Check(Weapon->Definition->Skins.Num() == 4 && !Weapon->SetSkin(TEXT("MissingSkin")), TEXT("Starter finish catalog rejects unknown skins"))) return;
 		PC->ActivateMenuRow(PC->WoodlandRow);
 		if (!Check(Weapon->SkinId == TEXT("Woodland") && Weapon->Mesh->GetMaterial(0) == Weapon->Definition->Skins[0].Materials[0], TEXT("Finish selector applies Woodland material"))) return;
 		if (!Check(Weapon->PresentationMesh->GetMaterial(0) == Weapon->Definition->Skins[0].Materials[0], TEXT("Authored stock receives Woodland paint"))) return;
@@ -365,12 +366,12 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 		Key(EKeys::Gamepad_Special_Right, IE_Pressed);
 		if (!Check(PC->bMenuOpen && PC->bShowMouseCursor && PC->MenuTab == 0, TEXT("Start opens mouse-accessible Practice tab"))) return;
 		Key(EKeys::Gamepad_RightShoulder, IE_Pressed);
-		if (!Check(PC->MenuTab == 1 && PC->GetVisibleMenuRows().Num() == 9, TEXT("Controller bumper opens Controls tab"))) return;
+		if (!Check(PC->MenuTab == 1 && PC->GetVisibleMenuRows().Num() == 10, TEXT("Controller bumper opens Controls tab"))) return;
 		const float Old = Replay->GetSettings().StickYawSpeed;
 		Key(EKeys::Gamepad_DPad_Right, IE_Pressed);
 		if (!Check(Replay->GetSettings().StickYawSpeed > Old, TEXT("Controller adjusts sensitivity in its tab"))) return;
 		if (auto* HUD = Cast<ACrosshairHUD>(PC->GetHUD())) HUD->NotifyHitBoxClick(TEXT("Tab_3"));
-		if (!Check(PC->MenuTab == 3 && PC->GetVisibleMenuRows() == TArray<int32>({11,12}), TEXT("Mouse tab action isolates target controls"))) return;
+		if (!Check(PC->MenuTab == 3 && PC->GetVisibleMenuRows() == TArray<int32>({PC->GetSandboxRow(),11,12}), TEXT("Mouse tab action isolates sandbox and target controls"))) return;
 		PC->SetMenuTab(ACrosshairPlayerController::MenuTabCount - 1);
 		Key(EKeys::Gamepad_RightShoulder, IE_Pressed);
 		if (!Check(PC->MenuTab == 0, TEXT("Tab navigation wraps to Practice"))) return;
@@ -559,7 +560,7 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
         for (int32 i=0; i<3; ++i) Target->TakeDamage(AR->HeadDamage,Damage,PC,Weapon);
         if (!Check(Target->bHit && Target->Health == 0, TEXT("AR defeats on third head hit"))) return;
         Target->ResetTarget();
-        if (!Check(Target->IsHeadImpact(Target->Head->GetComponentLocation()) && !Target->IsHeadImpact(Target->GetActorLocation()), TEXT("Head and body regions are distinct"))) return;
+        if (!Check(Target->IsHeadImpact(Target->Model->GetBoneLocation(TEXT("head"))) && !Target->IsHeadImpact(Target->GetActorLocation()), TEXT("Head and body regions are distinct"))) return;
         Key(EKeys::Escape,IE_Pressed);
         PC->MenuSelection = ACrosshairPlayerController::WeaponRow;
         Key(EKeys::Enter,IE_Pressed);

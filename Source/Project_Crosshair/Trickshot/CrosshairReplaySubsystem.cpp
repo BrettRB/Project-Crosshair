@@ -2,6 +2,8 @@
 #include "CrosshairCharacter.h"
 #include "CrosshairPractice.h"
 #include "CrosshairWeapon.h"
+#include "CrosshairWindow.h"
+#include "CrosshairMapLibrary.h"
 #include "Engine/DemoNetDriver.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
@@ -27,6 +29,18 @@ void UCrosshairReplaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Super::Initialize(Collection);
 	if (!FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke"))) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(ProfileSlot(), 0));
 	if (!Save) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::CreateSaveGameObject(UCrosshairSaveGame::StaticClass()));
+ auto& Settings=Save->Settings;
+ if (Settings.ControlPresetVersion<1)
+ {
+  if (FMath::IsNearlyEqual(Settings.StickYawSpeed,360.f)) Settings.StickYawSpeed=720;
+  if (FMath::IsNearlyEqual(Settings.StickPitchSpeed,240.f)) Settings.StickPitchSpeed=540;
+  Settings.ControlPresetVersion=1;
+ }
+ if (Settings.Classes.IsEmpty()) for (int32 i=0;i<5;++i)
+ { FCrosshairClass C; C.Name=FString::Printf(TEXT("Custom %d"),i+1); C.Primary=i%3; C.Secondary=(i+1)%3; C.Lethal=Settings.LethalType; Settings.Classes.Add(C); }
+ Settings.ActiveClass=FMath::Clamp(Settings.ActiveClass,0,Settings.Classes.Num()-1);
+ for (auto& C:Settings.Classes) { C.Primary=FMath::Clamp(C.Primary,0,2); C.Secondary=FMath::Clamp(C.Secondary,0,2); if (C.Secondary==C.Primary) C.Secondary=(C.Primary+1)%3; }
+
 }
 void UCrosshairReplaySubsystem::Deinitialize()
 {
@@ -44,10 +58,11 @@ void UCrosshairReplaySubsystem::SaveSettings()
 {
 	if (!Save) return;
 	FCrosshairSettings& S = Save->Settings;
+	if (S.LethalType!=ECrosshairLethalType::Tomahawk) S.LethalType=ECrosshairLethalType::Frag;
 	S.ControllerAxisDirection.X = S.ControllerAxisDirection.X < 0 ? -1 : 1;
 	S.ControllerAxisDirection.Y = S.ControllerAxisDirection.Y < 0 ? -1 : 1;
-	S.StickYawSpeed = FMath::Clamp(S.StickYawSpeed, 60.f, 1080.f);
-	S.StickPitchSpeed = FMath::Clamp(S.StickPitchSpeed, 60.f, 720.f);
+	S.StickYawSpeed = FMath::Clamp(S.StickYawSpeed, 60.f, 2160.f);
+	S.StickPitchSpeed = FMath::Clamp(S.StickPitchSpeed, 60.f, 1440.f);
 	S.StickDeadZone = FMath::Clamp(S.StickDeadZone, 0.f, 0.4f);
 	S.StickExponent = FMath::Clamp(S.StickExponent, 0.5f, 3.f);
 	S.MouseSensitivity = FMath::Clamp(S.MouseSensitivity, 0.01f, 1.f);
@@ -65,6 +80,7 @@ void UCrosshairReplaySubsystem::PracticeReady(ACrosshairCharacter* Player)
 {
 	if (IsPlayback() || Player->IsReplayPlayback()) return;
 	LivePlayer = Player;
+	const bool RestoreWindows = Phase == ECrosshairReplayPhase::Returning && bHaveSession;
 	if (Phase == ECrosshairReplayPhase::Returning && bHaveSession)
 	{
 		Player->Placement->RestoreLayout(ReturnTargets);
@@ -74,6 +90,9 @@ void UCrosshairReplaySubsystem::PracticeReady(ACrosshairCharacter* Player)
 	ReturnMap = UWorld::RemovePIEPrefix(Player->GetWorld()->GetOutermost()->GetName());
 	Phase = ECrosshairReplayPhase::Idle;
 	Player->Attempt->ResetAttempt();
+	if (RestoreWindows)
+		for (TActorIterator<ACrosshairWindow> It(Player->GetWorld());It;++It)
+			It->RestoreBroken(ReturnBrokenWindows.FindRef(It->GetFName()));
 }
 void UCrosshairReplaySubsystem::CaptureSession()
 {
@@ -81,6 +100,8 @@ void UCrosshairReplaySubsystem::CaptureSession()
 	ReturnStart = LivePlayer->Attempt->StartTransform;
 	ReturnTargets = LivePlayer->Placement->GetLayout();
 	ReturnWeapon = LivePlayer->Inventory->ActiveIndex;
+	ReturnBrokenWindows.Reset();
+	for (TActorIterator<ACrosshairWindow> It(LivePlayer->GetWorld());It;++It) ReturnBrokenWindows.Add(It->GetFName(),It->bBroken);
 	bHaveSession = true;
 }
 void UCrosshairReplaySubsystem::StopRecording(bool bKeep)
@@ -143,7 +164,7 @@ void UCrosshairReplaySubsystem::PlaySaved(int32 Index)
 {
 	if (!Save->Replays.IsValidIndex(Index) || IsFinishing() || IsPlayback()) return;
 	const FCrosshairReplayEntry Entry = Save->Replays[Index];
-	if (Entry.FormatVersion != ReplayFormatVersion || !FPackageName::DoesPackageExist(Entry.Map))
+	if (Entry.FormatVersion != ReplayFormatVersion || !FPackageName::DoesPackageExist(Entry.Map) || (!Entry.ImportedMapId.IsEmpty() && !GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>()->Find(Entry.ImportedMapId)))
 	{
 		Report(TEXT("Replay unavailable: incompatible version or missing map."));
 		return;
@@ -211,7 +232,8 @@ void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 	if (Phase == ECrosshairReplayPhase::StartPending && bWriterReady && Now - PhaseStarted > 0.3)
 	{
 		Current.Name = TEXT("Crosshair_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
-		Current.Map = ReturnMap;
+		Current.ImportedMapId=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>()->ActiveMapId;
+	Current.Map = ReturnMap;
 		Current.RecordedAt = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
 		Current.FormatVersion = ReplayFormatVersion;
 		if (IConsoleVariable* Rate = IConsoleManager::Get().FindConsoleVariable(TEXT("demo.RecordHz"))) Rate->Set(60.f, ECVF_SetByCode);
@@ -271,7 +293,10 @@ void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 			if (!bSeekStarted && Demo->GetDemoTotalTime() > 0)
 			{
 				bSeekStarted = true;
-				Demo->GotoTimeInSeconds(FMath::Max(0.f, Viewing.HitSeconds - 8.f), FOnGotoTimeDelegate::CreateWeakLambda(this, [this](bool Success)
+				// UE can buffer an entire short stream before processing its first packet.
+				// A small nonzero seek processes that initial frame instead of stalling at zero.
+				const float SeekTime = FMath::Max(0.1f, Viewing.HitSeconds - 8.f);
+				Demo->GotoTimeInSeconds(SeekTime, FOnGotoTimeDelegate::CreateWeakLambda(this, [this](bool Success)
 				{
 					bSeekComplete = Success;
 					if (!Success) { Report(TEXT("Replay seek failed")); ReturnToPractice(); }

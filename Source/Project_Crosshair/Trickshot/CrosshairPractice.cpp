@@ -1,14 +1,17 @@
 #include "CrosshairPractice.h"
 #include "CrosshairCharacter.h"
 #include "CrosshairDummy.h"
+#include "CrosshairWindow.h"
 #include "CrosshairWeapon.h"
+#include "CrosshairThrowable.h"
 #include "CrosshairReplaySubsystem.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EngineUtils.h"
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
-#include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/StaticMesh.h"
 #include "Components/CapsuleComponent.h"
 
@@ -18,6 +21,8 @@ void UCrosshairPlacementComponent::Toggle()
 	if (ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner()))
 	{
 		if (!Player->CanAct()) return;
+        if (!Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().bSandboxTargets)
+        { Player->Notify(TEXT("Enable sandbox target editing in Settings / Controls.")); return; }
 		bPlacing = !bPlacing;
 		Player->StopActions();
 		Player->Notify(bPlacing ? TEXT("Place target: aim at ground, Fire to confirm, ADS to cancel") : TEXT("Placement cancelled"));
@@ -26,12 +31,14 @@ void UCrosshairPlacementComponent::Toggle()
 void UCrosshairPlacementComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	PreviewMesh = NewObject<UStaticMeshComponent>(GetOwner(), TEXT("PlacementPreview"));
-	PreviewMesh->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
+	PreviewMesh = NewObject<USkeletalMeshComponent>(GetOwner(), TEXT("PlacementPreview"));
+    const auto* Template = TargetClass ? TargetClass->GetDefaultObject<ACrosshairDummy>() : GetDefault<ACrosshairDummy>();
+    PreviewMesh->SetSkeletalMesh(Template->Model->GetSkeletalMeshAsset());
 	PreviewMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PreviewMesh->SetCastShadow(false);
 	PreviewMesh->RegisterComponent();
-	PreviewMesh->SetWorldScale3D(FVector(0.56, 0.56, 1.8));
+	if (Template->TargetIdle) PreviewMesh->PlayAnimation(Template->TargetIdle,true);
+    PreviewMesh->VisibilityBasedAnimTickOption=EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	PreviewMesh->SetVisibility(false);
 }
 void UCrosshairPlacementComponent::EndPlay(EEndPlayReason::Type Reason)
@@ -62,13 +69,20 @@ void UCrosshairPlacementComponent::TickComponent(float Delta, ELevelTick Type, F
 	if (PreviewMesh)
 	{
 		PreviewMesh->SetVisibility(bPlacing);
-		PreviewMesh->SetWorldLocationAndRotation(Preview.GetLocation(), Preview.GetRotation());
+		PreviewMesh->SetWorldLocationAndRotation(Preview.GetLocation()-FVector(0,0,90), (Preview.Rotator()+FRotator(0,-90,0)).Quaternion());
+        const auto* Template = TargetClass ? TargetClass->GetDefaultObject<ACrosshairDummy>() : GetDefault<ACrosshairDummy>();
+        if (Template->TargetMaterial)
+        {
+            auto* Tint=Cast<UMaterialInstanceDynamic>(PreviewMesh->GetOverlayMaterial());
+            if (!Tint) { Tint=UMaterialInstanceDynamic::Create(Template->TargetMaterial,this); PreviewMesh->SetOverlayMaterial(Tint); }
+            Tint->SetVectorParameterValue(TEXT("Color"),bValidPlacement ? FLinearColor(.08f,.6f,.25f) : FLinearColor(.8f,.08f,.04f));
+        }
 	}
 }
 void UCrosshairPlacementComponent::Confirm()
 {
 	ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner());
-	if (!bPlacing || !Player || !Player->CanAct()) return;
+	if (!bPlacing || !Player || !Player->CanAct() || !Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().bSandboxTargets) return;
 	UpdatePreview();
 	if (!bValidPlacement) { Player->Notify(TEXT("Choose clear, supported ground")); return; }
 	if (GetLayout().Num() >= MaximumTargets) { Player->Notify(TEXT("Target limit reached; remove a target first")); return; }
@@ -84,6 +98,7 @@ void UCrosshairPlacementComponent::RemoveAimedTarget()
 {
 	ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner());
 	if (!Player || !Player->CanAct()) return;
+    if (!Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().bSandboxTargets) { Player->Notify(TEXT("Enable sandbox target editing in Settings / Controls.")); return; }
 	const UCameraComponent* Camera = Player->GetFirstPersonCameraComponent();
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(RemoveTarget), false, GetOwner());
@@ -94,6 +109,7 @@ void UCrosshairPlacementComponent::ClearTargets()
 {
 	ACrosshairCharacter* Player = Cast<ACrosshairCharacter>(GetOwner());
 	if (!Player || !Player->CanAct()) return;
+    if (!Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().bSandboxTargets) { Player->Notify(TEXT("Enable sandbox target editing in Settings / Controls.")); return; }
 	for (TActorIterator<ACrosshairDummy> It(GetWorld()); It; ++It) It->Destroy();
 	Player->Notify(TEXT("Targets cleared"));
 }
@@ -139,10 +155,12 @@ void UCrosshairAttemptComponent::ResetAttempt()
 		return;
 	}
 	bSucceeded = false;
+	Player->Lethals->Reset();
 	Player->StopActions();
 	Player->Placement->bPlacing = false;
 	Player->UnCrouch();
 	Player->GetCharacterMovement()->StopMovementImmediately();
+	for (TActorIterator<ACrosshairWindow> It(GetWorld()); It; ++It) It->ResetGlass();
 	FVector Position = StartTransform.GetLocation();
 	const FRotator Rotation(0, StartTransform.Rotator().Yaw, 0);
 	if (!GetWorld()->FindTeleportSpot(Player, Position, Rotation))

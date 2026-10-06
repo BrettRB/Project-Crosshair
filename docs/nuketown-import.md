@@ -54,3 +54,18 @@ The original Downloads/Nuketown.txt instructions are preserved byte-for-byte at 
 Downloads/nuketown_v10.zip contains a separate 2D map pack (gfx sprites/tiles and .lua/.map files). It is not an input to this Unreal project and can also be removed without affecting it. Unrelated Downloads files, including Project Crosshair.zip and Windows, were not assessed for deletion.
 
 Removing the original archives means restoring pristine author-supplied copies later would require another download or a separate backup. Missing third-party texture/sky dependencies already documented above are not supplied by these archives and are unrelated to deleting staging files.
+
+
+### Breakable house windows (2026-10-02)
+
+The 48 separate `func_breakable_*` house panes with only glass/nodraw material slots in playable L_Nuketown are now ACrosshairWindow actors. Original pane meshes, materials and transforms are preserved. Frames, walls, vehicle glass and the imported source map are unchanged. Scripts/setup_breakable_windows.py measures the pane plane from editor-exported vertices, including house rotations baked into mesh geometry, then saves the map through Unreal APIs. Re-running the conversion finds the existing 48 windows and creates no duplicates. A fresh setup_nuketown.py import should be followed by setup_breakable_windows.py.
+
+Shots shatter glass and continue through the opening. Jump can mantle through openings with sufficient capsule clearance; decorative small panes remain shootable but cannot fit the player. Collision checks preserve solid frames and walls. See [traversal and target setup](traversal-and-targets.md) for future-map configuration and verification.
+
+## Flower-bed collision repair (2026-10-02)
+
+Scripts/repair_feedback_assets.py removes collision only from the 82 playable-map components using `/Game/BlackOPSIK/2/models_bo1_nuketown_outside_mc_t5_foliage_flowers01` through `flowers05`. It preserves mesh assets, source map, flower appearance, bed geometry and ground. Save/reload verification and runtime inspection confirm every matching component uses NoCollision. This complements the earlier four raised-grass repairs; other vegetation and planters remain separate assets.
+
+## Indoor lighting (2026-10-05)
+
+The eleven existing point/rect lights in playable L_Nuketown now use movable dynamic lighting, lumen units, soft sources, 5000 K color and an 850 cm local attenuation radius. Point lights use inverse-square falloff and 500 lumens; rect lights use 650 lumens. Indirect contribution is 1.15. Scripts/repair_indoor_lighting.py updates only these lights and asserts their state after save/reload. Exterior daylight, geometry, collision, source map and materials remain intact. Rendered checks compare indoor views and tune highlights without globally increasing skylight/exposure.
