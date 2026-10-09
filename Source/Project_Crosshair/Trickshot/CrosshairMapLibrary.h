@@ -26,7 +26,8 @@ class PROJECT_CROSSHAIR_API UCrosshairMapLibrary : public UGameInstanceSubsystem
 public:
  virtual void Initialize(FSubsystemCollectionBase& Collection) override;
  void Refresh();
- int32 MapCount() const { return Maps.Num()+2; }
+ static constexpr int32 BuiltinMapCount=2;
+ int32 MapCount() const { return Maps.Num()+BuiltinMapCount; }
  FString MapName(int32 Index) const;
  bool Import(const FString& File,FString& Error);
  bool PlayMap(int32 Index);

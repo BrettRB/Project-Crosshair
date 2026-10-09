@@ -30,6 +30,7 @@ void UCrosshairReplaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	if (!FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke"))) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(ProfileSlot(), 0));
 	if (!Save) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::CreateSaveGameObject(UCrosshairSaveGame::StaticClass()));
  auto& Settings=Save->Settings;
+ UCrosshairBotMatch::Validate(Settings.BotMatch);
  if (Settings.ControlPresetVersion<1)
  {
   if (FMath::IsNearlyEqual(Settings.StickYawSpeed,360.f)) Settings.StickYawSpeed=720;
@@ -58,6 +59,7 @@ void UCrosshairReplaySubsystem::SaveSettings()
 {
 	if (!Save) return;
 	FCrosshairSettings& S = Save->Settings;
+ UCrosshairBotMatch::Validate(S.BotMatch);
 	if (S.LethalType!=ECrosshairLethalType::Tomahawk) S.LethalType=ECrosshairLethalType::Frag;
 	S.ControllerAxisDirection.X = S.ControllerAxisDirection.X < 0 ? -1 : 1;
 	S.ControllerAxisDirection.Y = S.ControllerAxisDirection.Y < 0 ? -1 : 1;

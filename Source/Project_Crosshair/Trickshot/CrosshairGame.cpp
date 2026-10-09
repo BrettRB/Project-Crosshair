@@ -95,7 +95,7 @@ void ACrosshairPlayerController::ToggleMenu()
 	if (bMenuOpen)
  { MapChoice=GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Nuketown")) ? 1 : 0;
    const auto* Library=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>();
-   for (int32 i=0;i<Library->Maps.Num();++i) if (Library->Maps[i].Id==Library->ActiveMapId) MapChoice=i+2;
+   for (int32 i=0;i<Library->Maps.Num();++i) if (Library->Maps[i].Id==Library->ActiveMapId) MapChoice=i+UCrosshairMapLibrary::BuiltinMapCount;
    EditingClass=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().ActiveClass;
  }
 	// Keep the world running: a successful replay must finish writing while the menu is open.
@@ -176,10 +176,10 @@ int32 ACrosshairPlayerController::GetSkinCount() const
 	return Weapon && Weapon->Definition ? Weapon->Definition->Skins.Num() : 0;
 }
 int32 ACrosshairPlayerController::GetLethalRow() const { return FirstReplayRow + FMath::Max(0, GetSkinCount()-2); }
-int32 ACrosshairPlayerController::GetFirstReplayRow() const { return GetImportRow()+1; }
+int32 ACrosshairPlayerController::GetFirstReplayRow() const { return GetBotMatchRow()+5; }
 TArray<FString> ACrosshairPlayerController::GetMenuRows() const
 {
-	if (bHomeScreen) return {TEXT("Play"),TEXT("Weapon classes"),TEXT("Maps / Import"),TEXT("Settings"),TEXT("Quit to Desktop")};
+	if (bHomeScreen) return {TEXT("Play"),TEXT("Weapon classes"),TEXT("Maps / Import"),TEXT("Settings"),TEXT("Bot FFA setup"),TEXT("Quit to Desktop")};
  auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
  const FCrosshairSettings& S = Replay->GetSettings();
 	TArray<FString> Rows = {
@@ -227,6 +227,11 @@ TArray<FString> ACrosshairPlayerController::GetMenuRows() const
  Rows.Add(TEXT("Equip this class"));
  Rows.Add(FString::Printf(TEXT("Sandbox target editing: %s"),S.bSandboxTargets ? TEXT("On") : TEXT("Off")));
  Rows.Add(TEXT("Home")); Rows.Add(TEXT("Import map from local file"));
+ Rows.Add(TEXT("Bot difficulty: ")+UCrosshairBotMatch::DifficultyName(S.BotMatch.Difficulty));
+ Rows.Add(FString::Printf(TEXT("Bot count: %d"),S.BotMatch.BotCount));
+ Rows.Add(FString::Printf(TEXT("Score limit: %d"),S.BotMatch.ScoreLimit));
+ Rows.Add(FString::Printf(TEXT("Time limit: %d minutes"),S.BotMatch.TimeLimitMinutes));
+ Rows.Add(TEXT("Bot combat: In development"));
  for (const auto& Entry : Replay->GetReplays()) Rows.Add(TEXT("Play: ") + Entry.RecordedAt);
 	return Rows;
 }
@@ -259,7 +264,7 @@ void ACrosshairPlayerController::CalibrateAxis(FKey Key, float Value)
 }
 TArray<int32> ACrosshairPlayerController::GetVisibleMenuRows() const
 {
-	if (bHomeScreen) return {0,1,2,3,4};
+	if (bHomeScreen) return {0,1,2,3,4,5};
  switch (MenuTab)
  {
 	case 1: return {1, 2, InvertHorizontalRow, InvertVerticalRow, CalibrationRow, 3, 4, 5, 6, GetSandboxRow()};
@@ -267,6 +272,7 @@ TArray<int32> ACrosshairPlayerController::GetVisibleMenuRows() const
 	case 3: return {GetSandboxRow(),11,12};
  case 6: return {GetClassRow(),GetClassRow()+1,GetClassRow()+2,GetClassRow()+3,GetClassRow()+4};
  case 7: return {MapRow,GetImportRow(),GetHomeRow()};
+ case 8: return {GetBotMatchRow(),GetBotMatchRow()+1,GetBotMatchRow()+2,GetBotMatchRow()+3,GetBotMatchRow()+4};
 	case 5:
 	{
 		TArray<int32> Rows = {WeaponRow, SkinRow, WoodlandRow, DesertRow};
@@ -305,6 +311,14 @@ void ACrosshairPlayerController::AdjustSelection(int32 Direction)
 {
  if (bHomeScreen) return;
  auto* ClassReplay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>(); auto& Settings=ClassReplay->GetSettings();
+ const int32 BotOffset=MenuSelection-GetBotMatchRow();
+ if (BotOffset>=0 && BotOffset<5)
+ {
+  if (ClassReplay->IsPlayback() || ClassReplay->IsFinishing()) return;
+  if (BotOffset==0) GetGameInstance()->GetSubsystem<UCrosshairBotMatch>()->SetDifficulty(ECrosshairBotDifficulty((int32(Settings.BotMatch.Difficulty)+Direction+4)%4));
+  else { if (BotOffset==1) Settings.BotMatch.BotCount+=Direction; if (BotOffset==2) Settings.BotMatch.ScoreLimit+=Direction*5; if (BotOffset==3) Settings.BotMatch.TimeLimitMinutes+=Direction; ClassReplay->SaveSettings(); }
+  return;
+ }
  const int32 Offset=MenuSelection-GetClassRow();
  if (Offset>=0 && Offset<4)
  {
@@ -358,10 +372,11 @@ void ACrosshairPlayerController::ActivateSelection()
 	auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
 	const int32 Selected = MenuSelection;
  if (bHomeScreen)
- { if (Selected==0) StartPlaying(); else if (Selected==1) SetMenuTab(6); else if (Selected==2) SetMenuTab(7); else if (Selected==3) SetMenuTab(1); else { bFromHome=false; MenuSelection=QuitRow; ActivateSelection(); } return; }
+ { if (Selected==0) StartPlaying(); else if (Selected==1) SetMenuTab(6); else if (Selected==2) SetMenuTab(7); else if (Selected==3) SetMenuTab(1); else if (Selected==4) SetMenuTab(8); else { bFromHome=false; bHomeScreen=false; MenuSelection=QuitRow; ActivateSelection(); } return; }
  if (Selected==GetHomeRow()) { if (!Replay->IsFinishing() && !Replay->IsPlayback()) ShowHome(); return; }
  if (Selected==GetImportRow()) { GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>()->ShowImportDialog(this); return; }
  if (Selected==GetSandboxRow()) { AdjustSelection(1); return; }
+ if (Selected>=GetBotMatchRow() && Selected<GetFirstReplayRow()) { AdjustSelection(1); return; }
  const int32 ClassOffset=Selected-GetClassRow();
  if (ClassOffset>=0 && ClassOffset<5)
  {
@@ -544,13 +559,13 @@ void ACrosshairHUD::DrawHUD()
          Text(TEXT("WELCOME TO CROSSHAIR"),White,230,115,1.6f);
          Text(TEXT("Build your class. Pick a map. Land your next trickshot."),Muted,230,156,.95f);
          auto HomeRows=PC->GetMenuRows();
-         for (int32 i=0;i<HomeRows.Num();++i) { const float HomeY=205+i*48; Rect(PC->MenuSelection==i ? FLinearColor(.085f,.16f,.21f) : FLinearColor(.04f,.055f,.075f),230,HomeY,540,40); Text(HomeRows[i],PC->MenuSelection==i ? Accent : White,250,HomeY+9,1.1f); HitBox(FName(*FString::Printf(TEXT("Row_%d"),i)),230,HomeY,540,40); }
+         for (int32 i=0;i<HomeRows.Num();++i) { const float HomeY=192+i*45; Rect(PC->MenuSelection==i ? FLinearColor(.085f,.16f,.21f) : FLinearColor(.04f,.055f,.075f),230,HomeY,540,40); Text(HomeRows[i],PC->MenuSelection==i ? Accent : White,250,HomeY+9,1.1f); HitBox(FName(*FString::Printf(TEXT("Row_%d"),i)),230,HomeY,540,40); }
          Text(TEXT("Arrows / D-pad select   |   Enter / A play or open"),Muted,230,490,.85f); return;
         }
- const TCHAR* Tabs[] = {TEXT("Practice"), TEXT("Controls"), TEXT("Display"), TEXT("Targets"), TEXT("Replays"), TEXT("Camos"),TEXT("Classes"),TEXT("Maps")};
+ const TCHAR* Tabs[] = {TEXT("Practice"), TEXT("Controls"), TEXT("Display"), TEXT("Targets"), TEXT("Replays"), TEXT("Camos"),TEXT("Classes"),TEXT("Maps"),TEXT("Bot FFA")};
 		for (int32 Tab = 0; Tab < ACrosshairPlayerController::MenuTabCount; ++Tab)
 		{
-			const float TY = 108 + Tab * 46;
+			const float TY = 104 + Tab * 43;
 			const bool Selected = PC->MenuTab == Tab;
 			if (Selected) { Rect(FLinearColor(.07f, .16f, .21f), 16, TY, 178, 40); Rect(Accent, 16, TY, 3, 40); }
 			Text(Tabs[Tab], Selected ? Accent : Muted, 34, TY + 12, 1.15f);
@@ -565,7 +580,7 @@ void ACrosshairHUD::DrawHUD()
 		const float RowHeight = RowPitch - 4.f;
 		const int32 First = FMath::Max(0, Index - PageSize + 1);
 		Text(Tabs[PC->MenuTab], White, 224, 102, 1.4f);
-		const TCHAR* Descriptions[]={TEXT("Set up your next attempt"),TEXT("Tune your mouse and controller"),TEXT("Adjust your field of view"),TEXT("Manage your practice targets"),TEXT("Watch your saved attempts"),TEXT("Choose a finish for your weapon"),TEXT("Build and equip your weapon class"),TEXT("Play and import local maps")};
+		const TCHAR* Descriptions[]={TEXT("Set up your next attempt"),TEXT("Tune your mouse and controller"),TEXT("Adjust your field of view"),TEXT("Manage your practice targets"),TEXT("Watch your saved attempts"),TEXT("Choose a finish for your weapon"),TEXT("Build and equip your weapon class"),TEXT("Play and import local maps"),TEXT("Prepare a free-for-all bot match")};
 		Text(Descriptions[PC->MenuTab],Muted,450,109,.85f);
 		if (PC->MenuTab == 4 && Visible.Num() == 1) Text(TEXT("No saved replays yet. Land a shot to record an attempt."), Muted, 224, 176);
 		for (int32 i = First; i < FMath::Min(Visible.Num(), First + PageSize); ++i)
@@ -583,7 +598,7 @@ void ACrosshairHUD::DrawHUD()
 			}
 			else Text(Rows[Row],Selected ? Accent : White,232,RY+10,1.f);
 			HitBox(FName(*FString::Printf(TEXT("Row_%d"), Row)), 216, RY, 650, RowHeight);
-			if ((Row >= 1 && Row <= 8) || Row == PC->WeaponRow || Row == PC->GetLethalRow() || (Row>=PC->GetClassRow() && Row<PC->GetClassRow()+4) || Row==PC->GetSandboxRow() || Row == PC->MapRow || Row == PC->InvertHorizontalRow || Row == PC->InvertVerticalRow)
+			if ((Row >= 1 && Row <= 8) || Row == PC->WeaponRow || Row == PC->GetLethalRow() || (Row>=PC->GetClassRow() && Row<PC->GetClassRow()+4) || Row==PC->GetSandboxRow() || (Row>=PC->GetBotMatchRow() && Row<PC->GetBotMatchRow()+4) || Row == PC->MapRow || Row == PC->InvertHorizontalRow || Row == PC->InvertVerticalRow)
 			{
 				Text(TEXT("<"), Muted, 895, RY + 10, 1.2f);
 				Text(TEXT(">"), Muted, 941, RY + 10, 1.2f);
@@ -597,6 +612,7 @@ void ACrosshairHUD::DrawHUD()
 		if (PC->MenuTab == 3) Text(TEXT("Enable sandbox editing, then P / D-pad Up places targets."), Muted, 224, 468);
 		if (PC->MenuTab==6) Text(TEXT("Choose two weapons and a lethal. Equip applies the class and restocks."),Muted,224,468,.85f);
         if (PC->MenuTab==7) Text(TEXT("Local OBJ geometry / map.json packages. Import to add a playable map."),Muted,224,468,.85f);
+        if (PC->MenuTab==8) Text(TEXT("Setup saves now. Bot combat, spawning and scoring are the next stage."),Muted,224,468,.8f);
         if (PC->MenuTab == 4) Text(TEXT("X / Delete removes the selected replay."), Muted, 224, 468);
 		Rect(FLinearColor(.07f, .09f, .12f), 20, 504, 960, 1);
 		Text(TEXT("Q / E, Tab or LB / RB: tabs    |    Arrows / D-pad: select    |    Enter / A: activate"), Muted, 28, 526);

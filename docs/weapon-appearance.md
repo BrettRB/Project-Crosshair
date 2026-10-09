@@ -28,3 +28,17 @@ These are original detailed game meshes rather than scanned production art. Furt
 ### Expanded finishes (2026-10-02)
 
 Red Tiger and Arctic are available immediately on every weapon. The Camos tab expands from the definition's catalog, including the new choices while keeping replay rows separate. The new integration test confirms Paint-only overrides and retention of authored metal/rubber/optics, direct menu selection, reset/map persistence and rendering. Final Red Tiger AR and Arctic SMG screenshots were reviewed alongside the humanoid target. No additional weapon geometry or damage changes were made in this batch; the existing three authored weapon models are retained.
+
+
+### Military appearance (2026-10-08)
+
+The original AR and SMG now include muzzle-device rings, sling fittings, handguard slot details and magazine floorplates. The precision rifle adds cheek-rest supports, folded bipod fittings and a muzzle brake. Geometry remains in the same grip basis, preserving handling, ADS, reload and saved camos. Scripts/restore_weapon_material_slots.py restores existing semantic surfaces and skin references after geometry-only imports without rebuilding the finish shaders.
+
+The visible character now uses project-owned olive/tan fabric shading, dark gloves and rounded elbow pads attached to the animated arm bones. UCrosshairCombatAppearance owns collision-free cosmetic gear. The existing skeletal rig, animation and hands remain; this is a military viewmodel update, not a newly rigged full-body soldier. Pads follow the weapon-driven arms and hide with them during scope view. Template mannequin materials and target dummy art stay independent.
+
+Scripts/create_combat_character.py creates /Game/Crosshair/Player/Combat assets through Unreal APIs and configures BP_PracticeCharacter. Original pad geometry is retained under ContentSource/Character. Regeneration overwrites these generated assets; preserve artist replacements elsewhere. The reference-pose arm mask remains intact so the torso does not enter the first-person view.
+
+
+## Shoulder stow and back carry
+
+Weapon changes now animate a shoulder stow and incoming draw, with hands following the outgoing gun. The inactive class weapon is carried on the world character back. See [Highrise and weapon switching](highrise-and-weapon-switching.md) for timing, body configuration and current presentation limitations.

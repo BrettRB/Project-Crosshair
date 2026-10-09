@@ -1,0 +1,8 @@
+newmtl Paint
+Kd .1 .1 .05
+newmtl Metal
+Kd .05 .05 .05
+newmtl Rubber
+Kd .02 .02 .02
+newmtl Glass
+Kd .01 .01 .01

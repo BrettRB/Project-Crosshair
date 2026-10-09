@@ -10,6 +10,7 @@
 #include "Engine/StaticMesh.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Engine/DemoNetDriver.h"
@@ -68,6 +69,8 @@ void ACrosshairWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(ACrosshairWeapon, Ammo);
 	DOREPLIFETIME(ACrosshairWeapon, bReloading);
 	DOREPLIFETIME(ACrosshairWeapon, bEquipped);
+ DOREPLIFETIME(ACrosshairWeapon,bStowing); DOREPLIFETIME(ACrosshairWeapon,bHolstered);
+ DOREPLIFETIME(ACrosshairWeapon,StowStartedAt); DOREPLIFETIME(ACrosshairWeapon,DrawStartedAt);
 	DOREPLIFETIME(ACrosshairWeapon, ReloadStartedAt);
 	DOREPLIFETIME(ACrosshairWeapon, LastImpact);
 	DOREPLIFETIME(ACrosshairWeapon, ShotSequence);
@@ -142,11 +145,39 @@ FText ACrosshairWeapon::GetSkinName() const
 void ACrosshairWeapon::SetEquipped(bool Equipped)
 {
 	bEquipped = Equipped;
+ bStowing=false; bHolstered=false; DrawStartedAt=-1000;
 	StopFire();
 	// Cancelling a reload never transfers ammunition; only a finished reload does.
 	bReloading = false;
 	if (Equipped && Definition) NextShotAt = FMath::Max(NextShotAt, GetWorld()->GetTimeSeconds() + Definition->EquipSeconds);
 	SetActorHiddenInGame(!Equipped);
+}
+void ACrosshairWeapon::BeginStow()
+{ bStowing=true; bHolstered=false; StowStartedAt=GetWorld()->GetTimeSeconds(); }
+void ACrosshairWeapon::BeginDraw(float Delay)
+{ DrawStartedAt=GetWorld()->GetTimeSeconds()+Delay; NextShotAt=FMath::Max(NextShotAt,double(DrawStartedAt+FMath::Max(.05f,Definition->DrawSeconds))); }
+bool ACrosshairWeapon::IsSwitching() const
+{ return Definition && (bStowing || (bEquipped && GetWorld()->GetTimeSeconds()<DrawStartedAt+FMath::Max(.05f,Definition->DrawSeconds))); }
+void ACrosshairWeapon::UpdateCarry()
+{
+ auto* P=Cast<ACrosshairCharacter>(GetOwner()); if (!P || !Definition) return;
+ const float Now=GetWorld()->GetTimeSeconds();
+ const bool Playback=P->IsReplayPlayback();
+ if (bStowing && Now>=StowStartedAt+FMath::Max(.05f,Definition->StowSeconds) && !Playback)
+ { bStowing=false; bHolstered=(P->Inventory->Weapons.IsValidIndex(P->Inventory->PrimaryIndex) && P->Inventory->Weapons[P->Inventory->PrimaryIndex]==this) || (P->Inventory->Weapons.IsValidIndex(P->Inventory->SecondaryIndex) && P->Inventory->Weapons[P->Inventory->SecondaryIndex]==this); }
+ if (bHolstered)
+ {
+  if (Mesh->GetAttachParent()!=P->GetCapsuleComponent()) AttachToComponent(P->GetCapsuleComponent(),FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+  Mesh->SetRelativeLocationAndRotation(FVector(-26,-12,5),FRotator(75,0,0).Quaternion()*Definition->MeshRotation.Quaternion());
+  PresentationMesh->SetVisibility(Definition->PresentationMesh!=nullptr); PresentationMesh->SetOwnerNoSee(true);
+  Mesh->SetVisibility(!Definition->PresentationMesh); for (UStaticMeshComponent* Detail:Details) Detail->SetVisibility(false);
+ }
+ else if (bEquipped || bStowing)
+ {
+  if (Mesh->GetAttachParent()!=P->GetFirstPersonCameraComponent()) AttachToComponent(P->GetFirstPersonCameraComponent(),FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+  PresentationMesh->SetOwnerNoSee(false);
+ }
+ SetActorHiddenInGame(!(bEquipped || bStowing || bHolstered) || (bEquipped && Now<DrawStartedAt) || ((bEquipped || bStowing) && P->Lethals->IsHolding()));
 }
 void ACrosshairWeapon::ResetWeapon()
 {
@@ -164,6 +195,7 @@ void ACrosshairWeapon::StartFire()
 void ACrosshairWeapon::StopFire() { bTriggerHeld = false; }
 void ACrosshairWeapon::Reload()
 {
+ if (IsSwitching()) return;
 	if (!Definition || bReloading || !bEquipped || Ammo >= Definition->MagazineSize) return;
 	StopFire();
 	bReloading = true;
@@ -174,7 +206,7 @@ void ACrosshairWeapon::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	Kick = FMath::FInterpTo(Kick, 0, DeltaSeconds, 14);
-	SetActorHiddenInGame(!bEquipped);
+	UpdateCarry();
 	if (!HasAuthority() || (GetWorld()->GetDemoNetDriver() && GetWorld()->GetDemoNetDriver()->IsPlaying())) return;
 	if (bReloading && GetWorld()->GetTimeSeconds() >= ReloadEndsAt)
 	{
@@ -234,7 +266,7 @@ void ACrosshairWeapon::OnRep_Shot()
 void ACrosshairWeapon::UpdatePresentation(float AimAlpha)
 {
 	if (!Definition) return;
-	FVector Offset = FMath::Lerp(Definition->HipOffset, Definition->AimOffset, AimAlpha);
+	FVector Offset = FMath::Lerp(Definition->HipOffset, Definition->AimOffset, IsSwitching() ? 0.f : AimAlpha);
 	Offset.X -= Kick;
 	FRotator Rotation = Definition->MeshRotation;
 	if (bReloading)
@@ -243,13 +275,25 @@ void ACrosshairWeapon::UpdatePresentation(float AimAlpha)
 		Offset.Z -= FMath::Sin(Phase * PI) * 20;
 		Rotation.Roll += FMath::Sin(Phase * PI) * 30;
 	}
-	Mesh->SetRelativeLocationAndRotation(Offset, Rotation);
+	const float Now=GetWorld()->GetTimeSeconds();
+ if (bStowing)
+ {
+  const float T=FMath::Clamp((Now-StowStartedAt)/FMath::Max(.05f,Definition->StowSeconds),0.f,1.f); const float Smooth=T*T*(3-2*T);
+  Offset+=FVector(-55,42,15)*Smooth;
+  Rotation=FRotator(FQuat::Slerp(Definition->MeshRotation.Quaternion(),(FRotator(55,40,-25).Quaternion()*Definition->MeshRotation.Quaternion()),Smooth));
+ }
+ else if (bEquipped)
+ {
+  const float T=FMath::Clamp((Now-DrawStartedAt)/FMath::Max(.05f,Definition->DrawSeconds),0.f,1.f); const float Remaining=1-T*T*(3-2*T);
+  Offset+=FVector(-25,24,-45)*Remaining; Rotation=FRotator(FQuat::Slerp(Rotation.Quaternion(),FRotator(-35,15,20).Quaternion()*Rotation.Quaternion(),Remaining));
+ }
+ Mesh->SetRelativeLocationAndRotation(Offset, Rotation);
 	const bool Scoped = Definition->AimStyle == ECrosshairAimStyle::Scope;
-	const bool ScopeView = Scoped && AimAlpha >= .95f;
+	const bool ScopeView = Scoped && AimAlpha >= .95f && !IsSwitching();
 	// Authored models share the root transform with the hands; scope view hides the model.
 	const bool Authored = Definition->PresentationMesh != nullptr;
 	Mesh->SetVisibility(!Authored && (!Scoped || !Definition->bUsePrototypeGeometry));
-	PresentationMesh->SetVisibility(Authored && bEquipped && !ScopeView);
+	PresentationMesh->SetVisibility(Authored && (bEquipped || bStowing) && !ScopeView);
 	// Dimensions below are in centimetres before conversion to the template mesh's local axes.
 	const FVector SniperPositions[] = {
 		FVector(-2,0,9), FVector(54,0,1),
@@ -309,12 +353,17 @@ void UCrosshairInventoryComponent::BeginPlay()
 	ApplyClass();
 }
 ACrosshairWeapon* UCrosshairInventoryComponent::GetCurrent() const { return Weapons.IsValidIndex(ActiveIndex) ? Weapons[ActiveIndex].Get() : nullptr; }
+ACrosshairWeapon* UCrosshairInventoryComponent::GetPresentationWeapon() const
+{ for (ACrosshairWeapon* W:Weapons) if (W && W->bStowing && W->Definition && GetWorld()->GetTimeSeconds()<W->StowStartedAt+FMath::Max(.05f,W->Definition->StowSeconds)) return W; return GetCurrent(); }
 void UCrosshairInventoryComponent::Equip(int32 Index)
 {
-	if (!Weapons.IsValidIndex(Index)) return;
-	if (ACrosshairWeapon* Previous = GetCurrent()) Previous->SetEquipped(false);
-	ActiveIndex = Index;
-	GetCurrent()->SetEquipped(true);
+ if (!Weapons.IsValidIndex(Index) || (Index==ActiveIndex && GetCurrent() && GetCurrent()->bEquipped)) return;
+ auto* Previous=GetCurrent(); auto* P=Cast<ACrosshairCharacter>(GetOwner());
+ const bool Animate=P && P->CanAct() && Previous && Previous->bEquipped && Index!=ActiveIndex;
+ for (ACrosshairWeapon* W:Weapons) { W->SetEquipped(false); W->bHolstered=(W!=Weapons[Index] && ((Weapons.IsValidIndex(PrimaryIndex) && W==Weapons[PrimaryIndex]) || (Weapons.IsValidIndex(SecondaryIndex) && W==Weapons[SecondaryIndex]))); }
+ ActiveIndex=Index; GetCurrent()->SetEquipped(true);
+ if (Animate) { Previous->BeginStow(); GetCurrent()->BeginDraw(FMath::Max(.05f,Previous->Definition->StowSeconds)); }
+ for (ACrosshairWeapon* W:Weapons) W->UpdateCarry();
 }
 void UCrosshairInventoryComponent::Cycle() { EquipSlot(ActiveIndex==PrimaryIndex ? 1 : 0); }
 void UCrosshairInventoryComponent::EquipSlot(int32 Slot) { Equip(Slot==0 ? PrimaryIndex : SecondaryIndex); }
@@ -330,4 +379,4 @@ void UCrosshairInventoryComponent::ApplyClass()
  Player->Lethals->Selected=C.Lethal; S.LethalType=C.Lethal;
  ResetWeapons(); Player->Lethals->Reset(); EquipSlot(0);
 }
-void UCrosshairInventoryComponent::ResetWeapons() { for (ACrosshairWeapon* Weapon : Weapons) if (Weapon) Weapon->ResetWeapon(); }
+void UCrosshairInventoryComponent::ResetWeapons() { for (ACrosshairWeapon* Weapon : Weapons) if (Weapon) { Weapon->ResetWeapon(); Weapon->SetEquipped(false); } if (GetCurrent()) Equip(ActiveIndex); }

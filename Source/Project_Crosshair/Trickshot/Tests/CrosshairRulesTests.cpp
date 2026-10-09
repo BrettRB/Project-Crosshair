@@ -125,3 +125,19 @@ bool FCrosshairObjTest::RunTest(const FString& Parameters)
 }
 
 #endif
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairBotTuningTest, "Crosshair.Bots.DifficultyPresets", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairBotTuningTest::RunTest(const FString& Parameters)
+{
+ auto Previous=UCrosshairBotMatch::TuningFor(ECrosshairBotDifficulty::Easy);
+ for (auto Difficulty:{ECrosshairBotDifficulty::Regular,ECrosshairBotDifficulty::Hardened,ECrosshairBotDifficulty::Veteran})
+ {
+  const auto Next=UCrosshairBotMatch::TuningFor(Difficulty);
+  TestTrue(TEXT("Difficulty lowers reaction, aim error and decision latency"),Next.ReactionSeconds<Previous.ReactionSeconds && Next.AimErrorDegrees<Previous.AimErrorDegrees && Next.DecisionSeconds<Previous.DecisionSeconds);
+  TestTrue(TEXT("Difficulty increases tracking and movement"),Next.TrackingDegreesPerSecond>Previous.TrackingDegreesPerSecond && Next.MovementSpeed>Previous.MovementSpeed);
+  TestTrue(TEXT("Veteran still has reaction latency and aim error"),Next.ReactionSeconds>0 && Next.AimErrorDegrees>0); Previous=Next;
+ }
+ FCrosshairBotMatchOptions Invalid; Invalid.Difficulty=ECrosshairBotDifficulty(255);Invalid.BotCount=1000;Invalid.ScoreLimit=-5;Invalid.TimeLimitMinutes=0; UCrosshairBotMatch::Validate(Invalid);
+ TestTrue(TEXT("Corrupt/unsupported saved options are bounded"),Invalid.Difficulty==ECrosshairBotDifficulty::Regular && Invalid.BotCount==11 && Invalid.ScoreLimit==5 && Invalid.TimeLimitMinutes==1);
+ return true;
+}

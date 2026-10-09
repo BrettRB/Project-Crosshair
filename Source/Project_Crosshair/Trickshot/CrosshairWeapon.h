@@ -19,6 +19,10 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	void Initialize(UCrosshairWeaponDefinition* InDefinition);
 	void SetEquipped(bool bEquipped);
+ void BeginStow();
+ void BeginDraw(float Delay);
+ bool IsSwitching() const;
+ void UpdateCarry();
 	void StartFire();
 	void StopFire();
 	void Reload();
@@ -36,6 +40,10 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly) bool bReloading = false;
 	UPROPERTY(Replicated, BlueprintReadOnly) bool bEquipped = false;
 	UPROPERTY(Replicated) float ReloadStartedAt = 0;
+ UPROPERTY(Replicated,BlueprintReadOnly) bool bStowing=false;
+ UPROPERTY(Replicated,BlueprintReadOnly) bool bHolstered=false;
+ UPROPERTY(Replicated) float StowStartedAt=-1000;
+ UPROPERTY(Replicated) float DrawStartedAt=-1000;
 protected:
 	virtual void BeginPlay() override;
 	UFUNCTION() void OnRep_Definition();
@@ -61,6 +69,7 @@ public:
 	virtual void BeginPlay() override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UFUNCTION(BlueprintPure) ACrosshairWeapon* GetCurrent() const;
+ ACrosshairWeapon* GetPresentationWeapon() const;
 	UFUNCTION(BlueprintCallable) void Equip(int32 Index);
 	void Cycle();
  void EquipSlot(int32 Slot);

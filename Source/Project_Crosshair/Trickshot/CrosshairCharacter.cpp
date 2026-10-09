@@ -1,4 +1,5 @@
 #include "CrosshairCharacter.h"
+#include "CrosshairCombatAppearance.h"
 #include "CrosshairData.h"
 #include "CrosshairWeapon.h"
 #include "CrosshairPractice.h"
@@ -10,6 +11,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Animation/AnimSequence.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -29,6 +31,7 @@ ACrosshairCharacter::ACrosshairCharacter()
 	bAlwaysRelevant = true;
 	SetNetUpdateFrequency(120);
 	SetMinNetUpdateFrequency(60);
+	CombatAppearance=CreateDefaultSubobject<UCrosshairCombatAppearance>(TEXT("Combat appearance"));
 	Inventory = CreateDefaultSubobject<UCrosshairInventoryComponent>(TEXT("Inventory"));
 	Lethals = CreateDefaultSubobject<UCrosshairLethalComponent>(TEXT("Lethals"));
 	Placement = CreateDefaultSubobject<UCrosshairPlacementComponent>(TEXT("Placement"));
@@ -65,6 +68,7 @@ void ACrosshairCharacter::PostInitializeComponents()
 void ACrosshairCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+ if (GetMesh()->GetSkeletalMeshAsset()) { GetMesh()->SetVisibility(true); GetMesh()->SetOwnerNoSee(true); if (BodyIdleAnimation) GetMesh()->PlayAnimation(BodyIdleAnimation,true); }
 	if (IdleAnimation)
 	{
 		auto* Arms = GetFirstPersonMesh();
@@ -143,7 +147,7 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 	{
 		const FCrosshairSettings& Settings = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
 		const float AimSeconds = Weapon && Weapon->Definition ? Weapon->Definition->AimSeconds : 0.2f;
-		const bool bWantsAim = bAimHeld && CanAct() && !Placement->bPlacing && !Lethals->IsBusy() && Weapon && !Weapon->bReloading;
+		const bool bWantsAim = bAimHeld && CanAct() && !Placement->bPlacing && !Lethals->IsBusy() && Weapon && !Weapon->bReloading && !Weapon->IsSwitching();
 		AimAlpha = FMath::FInterpConstantTo(AimAlpha, bWantsAim ? 1.f : 0.f, DeltaSeconds, 1.f / FMath::Max(0.01f, AimSeconds));
 		Camera->SetFieldOfView(FMath::Lerp(Settings.FieldOfView, Weapon && Weapon->Definition ? Weapon->Definition->AimFOV : Settings.FieldOfView, AimAlpha));
 		const float EyeZ = bIsCrouched ? 30.f : 64.f;
@@ -156,14 +160,16 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		RecordedView.AimAlpha = AimAlpha;
 		if (GetActorLocation().Z < -1500) Attempt->ResetAttempt();
 	}
+	Weapon=Inventory->GetPresentationWeapon();
 	if (Weapon)
 	{
-		Weapon->SetActorHiddenInGame(Lethals->IsHolding());
+		Weapon->UpdateCarry();
 		// Attachment to a camera component is reconstructed explicitly for replay actors as well.
 		if (Weapon->GetRootComponent()->GetAttachParent() != Camera) Weapon->AttachToComponent(Camera, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		Weapon->UpdatePresentation(AimAlpha);
 		GetFirstPersonMesh()->SetRelativeTransform(ArmsFromGrip * Weapon->Mesh->GetRelativeTransform());
-		GetFirstPersonMesh()->SetVisibility(!(Weapon->Definition && Weapon->Definition->AimStyle == ECrosshairAimStyle::Scope && AimAlpha >= .95f));
+		GetFirstPersonMesh()->SetVisibility(!(Weapon->Definition && Weapon->Definition->AimStyle == ECrosshairAimStyle::Scope && AimAlpha >= .95f && !Weapon->IsSwitching()));
+        for (UStaticMeshComponent* Gear:CombatAppearance->Gear) Gear->SetVisibility(GetFirstPersonMesh()->IsVisible());
 		if (Weapon->bReloading != bArmsReloading)
 		{
 			bArmsReloading = Weapon->bReloading;
@@ -173,7 +179,7 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 }
 void ACrosshairCharacter::UpdateArmsPresentation()
 {
-	auto* Weapon = Inventory->GetCurrent();
+	auto* Weapon = Inventory->GetPresentationWeapon();
 	auto* Arms = GetFirstPersonMesh();
 	if (!Weapon || !Arms->DoesSocketExist(TEXT("HandGrip_R"))) return;
 	// Correct idle breathing after the animated pose is evaluated. Reload keeps the

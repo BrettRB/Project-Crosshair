@@ -3,6 +3,7 @@
 #include "Project_CrosshairCharacter.h"
 #include "CrosshairCharacter.generated.h"
 
+class UCrosshairCombatAppearance;
 class UCrosshairInventoryComponent;
 class UCrosshairLethalComponent;
 class UCrosshairTraversalComponent;
@@ -41,6 +42,7 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void EndPlay(EEndPlayReason::Type Reason) override;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairInventoryComponent> Inventory;
+ UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<UCrosshairCombatAppearance> CombatAppearance;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairLethalComponent> Lethals;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairTraversalComponent> Traversal;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairPlacementComponent> Placement;
@@ -53,6 +55,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category="Loadout") TArray<TObjectPtr<UCrosshairWeaponDefinition>> DefaultLoadout;
 	UPROPERTY(EditDefaultsOnly, Category="Targets") TSubclassOf<ACrosshairDummy> TargetClass;
 	UPROPERTY(EditDefaultsOnly, Category="Presentation") TObjectPtr<UAnimSequence> IdleAnimation;
+	UPROPERTY(EditDefaultsOnly, Category="Presentation") TObjectPtr<UAnimSequence> BodyIdleAnimation;
 	UPROPERTY(EditDefaultsOnly, Category="Presentation") TObjectPtr<UAnimSequence> ReloadAnimation;
 	/** Arms-only masks preserve the mannequin materials without showing its torso. */
 	UPROPERTY(EditDefaultsOnly, Category="Presentation") TArray<TObjectPtr<UMaterialInterface>> FirstPersonArmMaterials;

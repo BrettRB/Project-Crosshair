@@ -46,6 +46,7 @@ public:
  int32 GetSandboxRow() const { return GetClassRow()+5; }
  int32 GetHomeRow() const { return GetClassRow()+6; }
  int32 GetImportRow() const { return GetClassRow()+7; }
+ int32 GetBotMatchRow() const { return GetImportRow()+1; }
  void ShowHome();
  void StartPlaying();
  bool bHomeScreen=false,bFromHome=false;
@@ -58,7 +59,7 @@ public:
 	void ActivateMenuRow(int32 Row);
 	void AdjustMenuRow(int32 Row, int32 Direction);
 	int32 MenuTab = 0;
-	static constexpr int32 MenuTabCount = 8;
+	static constexpr int32 MenuTabCount = 9;
 private:
 	void ApplyGameplayInputMode();
 	void CalibrateAxis(FKey Key, float Value);

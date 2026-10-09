@@ -44,3 +44,8 @@ This first importer does not ingest FBX, .umap/.uasset, archive files, scripts, 
 CrosshairMapLibrary owns validation, local storage, map selection and the import window. ACrosshairImportedMap rebuilds procedural rendering/collision and records a stable map ID. Weapon inventory owns class slots; data/save structures own class and controller preferences. PlayerController coordinates input and menu navigation. ProceduralMeshComponent and Json are bundled Unreal modules; no external assets or services are required.
 
 Local opt-in -CrosshairSmoke -CrosshairFrontendSmoke covers Home, class editing/equipping/saving, number keys, wheel, Y, sandbox gating/enabling, faster turning, malformed/path-escaping imports, local-copy registration, map travel, supported spawn, preserved class, recorded hit and imported geometry during playback/return, indoor light state and return to built-in practice. Add -CrosshairFrontendVisual -RenderOffscreen -UnattendedInput for screenshots. Crosshair.Map.OBJValidation exercises polygon conversion, negative indices, unit scaling, invalid input and floor winding. Generated logs/screenshots remain under Saved and are not source assets.
+
+
+### Bot FFA setup (2026-10-08)
+
+Home has a Bot FFA setup action and pause has a Bot FFA tab. Both save difficulty, bot count, score limit and time limit. This is preparation; combat AI and match launch are the next stage. See [bot-ffa-preparation.md](bot-ffa-preparation.md).

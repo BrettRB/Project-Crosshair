@@ -1960,3 +1960,275 @@ All commands local, UE 5.8; smoke sessions use isolated test saves/map storage.
 ### Response Summary
 All seven listed features implemented. Highlight corrected indoor lighting, home/classes/maps, 1/2/wheel/Y slots, 720-degree controller yaw with click sprint, and Settings sandbox. State first map format OBJ/map.json, local build/eight automation tests/gameplay/rendered/replay checks passed, and physical-controller verification remains.
 ---
+
+---
+## Interaction 44
+
+Date/time: 2026-10-08 21:07 America/Chicago.
+
+### User Prompt
+Update the character and weapons models to look more war like. Also start preping to add a game mode where you play against bots in a free for all game mode while having multiple difficulties for the bots both in the game and in the start menu before loading into a match[@CrosshairFrontendTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp)
+
+### Interpretation
+Update the visible FPS character and original weapons toward military equipment, and prepare reusable bot FFA configuration/difficulty controls accessible from home and during gameplay. The request says to start preparing the mode, so this stage establishes settings/tuning/menu foundations without claiming playable bot matches.
+
+### Requirements / Acceptance Criteria
+- Military character clothing/gloves and additional original weapon details while preserving the animation/weapon grip basis and existing camos.
+- Reusable saved FFA options and four behavior difficulty presets.
+- Home and pause menu access to difficulty, bot count, score limit and time limit.
+- Future AI can obtain current tuning and subscribe to difficulty changes without reloading.
+- Menu clearly distinguishes preparation from playable bot combat.
+- Local build/tests, visual review, source review and interaction record.
+
+### Actions Taken
+Read AGENTS.md, weapon source README and relevant appearance/frontend documentation. Root README absent. Proposed the short plan and asked optional visual direction/scope questions. No answers arrived; continued after giving time using modern olive/tan tactical styling and preparation as stated in the request.
+
+Added military field fittings to the original AR/SMG (muzzle rings, sling fittings, handguard details, magazine floorplates) and tactical sniper fittings (cheek-rest supports, folded bipod details, muzzle brake). Reimported only the three owned meshes through Unreal. Retained semantic material slots and all saved camo IDs.
+
+Created a dedicated masked fabric/glove material using the existing reference-pose arm mask, plus original rounded elbow-pad geometry. UCrosshairCombatAppearance attaches collision-free gear to arm bones; gear follows existing animations and hides with scoped arms. The existing skeleton/animations remain; this is the visible FPS character appearance, not a new rigged full-body soldier. Template mannequin/target art untouched.
+
+Added UCrosshairBotMatch, Blueprint tuning/options, Easy/Regular/Hardened/Veteran presets, saved bounded count/score/time fields and OnDifficultyChanged for future AI. Home > Bot FFA setup and pause > Bot FFA share saved options and immediate tuning. Page explicitly says combat is in development. Updated dynamic replay-row boundaries to keep setup actions separate. Fixed home Quit routing to leave home state before invoking the quit action.
+
+Added difficulty progression/invalid-save automation coverage, frontend home/pause persistence/tuning checks, cosmetic attachment/collision assertions and rendered views of all three weapons. Documented the next GameMode/GameState, navigation, health/death/respawn, AI combat, spawn/scoring and match-launch stage.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairBotMatch.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairCombatAppearance.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h/.cpp, CrosshairData.h, CrosshairGame.h/.cpp, CrosshairReplaySubsystem.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp, CrosshairLethalTest.cpp, CrosshairRulesTests.cpp
+- Scripts/create_weapon_models.py; create_combat_character.py and restore_weapon_material_slots.py (new)
+- ContentSource/Weapons/SM_AR.obj, SM_SMG.obj, SM_Sniper.obj
+- ContentSource/Character/SM_ElbowPad.obj, Crosshair.mtl, README.md (new)
+- Content/Crosshair/Weapons/Models/SM_AR.uasset, SM_SMG.uasset, SM_Sniper.uasset (editor reimports)
+- Content/Crosshair/Player/Combat/M_CombatArms.uasset, SM_ElbowPad.uasset (new editor assets), BP_PracticeCharacter.uasset
+- docs/bot-ffa-preparation.md (new), weapon-appearance.md, home-classes-and-map-import.md, ai-interaction-log.md
+
+### Verification
+All commands local using UE 5.8; opt-in smoke uses isolated test profiles.
+- Build.bat Project_CrosshairEditor Win64 Development -Project=C:/Users/BrettRB/Project_Crosshair/Project_Crosshair.uproject -WaitMutex -NoHotReloadFromIDE: final Succeeded. Initial TObjectPtr auto-pointer loop compile errors corrected with explicit component pointer types.
+- UnrealEditor-Cmd Project_Crosshair.uproject -run=pythonscript -script=<absolute Scripts/create_weapon_models.py> -unattended -NullRHI -nosound -nosplash: Combat-create_weapon_models.py.log, exit 0, zero script errors/warnings.
+- Attempting the older create_weapon_finishes.py crashed in Unreal DeleteAllMaterialExpressions with a rooted-object assertion. No finish material files changed. Replaced that task step with restore_weapon_material_slots.py, which reuses existing shaders/camos and updates only references; Combat-restore_weapon_material_slots.py.log exit 0, zero script errors/warnings.
+- create_combat_character.py commandlet: final Combat-Character.log exit 0, CROSSHAIR_COMBAT_CHARACTER_OK, zero errors/warnings. Corrected Python CustomInput initialization and UTF-8 BOM handling before final success. Visual review refined the glove boundary and fabric colors.
+- UnrealEditor-Cmd Project_Crosshair.uproject -unattended -NullRHI -nosound -nosplash -ExecCmds='Automation RunTests Crosshair' -TestExit='Automation Test Queue Empty': Combat-Automation.log exit 0, all nine tests Success including Crosshair.Bots.DifficultyPresets.
+- UnrealEditor-Cmd Project_Crosshair.uproject /Game/Crosshair/Maps/L_Practice -game -CrosshairSmoke -CrosshairFrontendSmoke -CrosshairFrontendVisual -unattended -UnattendedInput -RenderOffscreen -windowed -ResX=1280 -ResY=720 -nosound -nosplash -ExecCmds='t.MaxFPS 60': final Combat-FrontendVisual.log CROSSHAIR_FRONTEND_OK. Home setup, saved options, live tuning, pause difficulty, gear attachment/material/collision, class/input, imported map collision/texture, successful shot, replay and return passed. Reviewed final FrontendHome, FrontendBotSetup, CombatSMG, CombatAR, CombatSniper screenshots.
+- Sequential local game regressions with -CrosshairSmoke and optional -CrosshairPolishSmoke/-CrosshairLethalSmoke/-CrosshairExpansionSmoke, NullRHI: Combat-Regression0..3.log all exit 0 and respective CROSSHAIR_SMOKE_OK, CROSSHAIR_POLISH_SMOKE_OK, CROSSHAIR_LETHAL_OK, CROSSHAIR_EXPANSION_OK. Cover firearm/input/ADS/practice, camos/traversal/windows/headshots/wallbangs, lethals and replay regressions.
+- Git status/diff reviewed, tracked whitespace check passes. Initial sandbox Git LFS temp-file access denied; reran review with required tool-level escalation. No commits made.
+
+### Notes / Follow-up
+- Playable bots are the next stage. No AI controller/combat, player death/respawn, match scoring, navigation or Start match action is claimed. Tuning values await combat playtesting.
+- Character keeps the existing mannequin proportions, poses and animations. Further artist-authored soldier geometry, finger contact and custom animations remain possible through the same presentation hooks.
+- Physical controller hardware and packaged/cooked builds remain unverified. Local simulated input and Editor Development rendering tested.
+- No external services, downloaded assets, remote CI, paid resources, template replacement or unrelated map edits. Managed filesystem required tool-level write/build/test approvals.
+
+### Response Summary
+Military FPS character gear and weapon model details updated. Bot FFA preparation includes saved Easy/Regular/Hardened/Veteran settings in home and pause menus, count/score/time controls and reusable tuning/events. Playable bot combat remains the next stage. Local build, nine automation tests, rendered frontend/replay and four regressions passed.
+---
+
+---
+## Interaction 45
+
+Date/time: 2026-10-08 21:47 America/Chicago.
+
+### User Prompt
+Now work on adding better animation such as the gun getting put onto the plays back when switching weapons. I also want you to either find or remake high rise from mw2 as a new playable map[@CrosshairFrontendTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp)
+
+### Interpretation
+Improve weapon switching with shoulder stow, draw and back carry, and create an original playable Highrise-inspired rooftop map using the authorized remake option.
+
+### Requirements / Acceptance Criteria
+- Outgoing gun and hands animate during switching; inactive class gun appears on the back in world views.
+- New draw prevents firing/reloading/ADS until ready, preserving class, camo, reset and replay behavior.
+- New map can be selected from home/pause alongside existing built-in and imported maps.
+- Supported spawn, office/helipad/pit/crane collision, breakable windows and working target/replay practice.
+- Local build/tests, source review and documentation; preserve existing military/bot preparation work.
+
+### Actions Taken
+Read AGENTS and existing README/source and relevant docs before changes. Used the official COD Highrise guide for broad office/helipad/pit/crane layout reference; chose locally authored geometry rather than downloads. Added definition-driven stow/draw motion to weapon/inventory presentation, hand tracking of outgoing gun, replicated carry states and world body idle. Added original L_Highrise, rooftop architecture, office lighting, ten breakable panes, three practice targets, crane/roof routes and skyline. Registered third built-in map, corrected local import offsets, added cook entry. Extended frontend test with travel, floors/windows/spawn, stow/draw/back carry, upright body, target shot and replay checks. Fixed test shutdown to stop the automatically restarted recording before exiting. Rendered inspection identified Python positional rotations tilting world body/rotor; switched to explicit named angles and corrected assets through Unreal Editor APIs. No commits or unrelated asset regeneration.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp and .h
+- Source/Project_Crosshair/Trickshot/CrosshairData.h
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.cpp and .h
+- Source/Project_Crosshair/Trickshot/CrosshairMapLibrary.cpp and .h
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp
+- Config/DefaultGame.ini
+- Content/Crosshair/Player/BP_PracticeCharacter.uasset
+- Content/Crosshair/Maps/L_Highrise.umap and Highrise materials
+- Scripts/create_highrise_map.py, setup_weapon_carry_body.py, refine_highrise_skyline.py
+- docs/highrise-and-weapon-switching.md, home-classes-and-map-import.md, weapon-appearance.md, ai-interaction-log.md
+
+### Verification
+- Local Build.bat Project_CrosshairEditor Win64 Development -Project=<project> -WaitMutex -NoHotReloadFromIDE: succeeded, including final upright-body test build.
+- UnrealEditor-Cmd -run=pythonscript for map creation and targeted body/skyline setup: final success. Initial creation hit read-only blend_mode setter, corrected to set_editor_property before successful generation.
+- Local UnrealEditor-Cmd automation RunTests Crosshair: HighriseAutomation.log shows all nine tests Success; exit 0.
+- Local -game -CrosshairSmoke -CrosshairFrontendSmoke -NullRHI: HighriseSmoke.log frontend passed, exit 0.
+- Local rendered -game -CrosshairSmoke -CrosshairFrontendSmoke -CrosshairFrontendVisual -ResX=1280 -ResY=720 -windowed -unattended -nosound: HighriseVisualFinal.log CROSSHAIR_FRONTEND_OK, no frontend failures, exit 0. Screenshots reviewed for stow, back carry and map overview. Upright-body runtime check passes.
+- Four sequential -CrosshairSmoke game regressions with optional -CrosshairPolishSmoke/-CrosshairLethalSmoke/-CrosshairExpansionSmoke and NullRHI: Highrise-Regression0..3.log respective SMOKE_OK/POLISH_SMOKE_OK/LETHAL_OK/EXPANSION_OK, all exit 0.
+- First rendered run completed gameplay but crashed during engine exit while recording restarted; fixed test teardown and final rendered run exits cleanly. One rerun omitted required CrosshairSmoke/Visual flags, so stopped it and reran with correct flags.
+- Git status/diff reviewed; git diff --check -- . ':!docs/ai-interaction-log.md' passes. Existing exact-prompt whitespace in earlier log entries preserved.
+
+### Notes / Follow-up
+- Original Highrise-inspired first-pass blockout, not an exact asset or dimension reproduction. Detailed architecture, textures and navigation playtesting remain art/polish work.
+- Switching is procedural using existing hand rig. Back gun follows capsule; dedicated sling/spine socket and third-person locomotion/custom montages remain future polish.
+- Packaged/cooked builds and physical controller hardware unverified. Existing bot preparation unchanged; no playable bot combat claim.
+- Managed filesystem required tool-level approvals for writes, local build and Unreal asset/test runs. No external services, downloaded assets or remote CI.
+
+### Response Summary
+Added shoulder stow/draw with inactive weapon back carry and original playable Highrise Rooftops, available through Maps. Local build, nine automation tests, four gameplay regressions and final rendered map/switch/replay checks pass. Map art is a first pass.
+---
+
+---
+## Interaction 46
+
+Date/time: 2026-10-08 America/Chicago.
+
+### User Prompt
+I don't like the look of high rise, find a version of it that can easily be ported into unreal engine for the project[@CrosshairFrontendTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp)
+
+### Interpretation
+Find an existing visually better MW2 Highrise source suitable for this Unreal project rather than further polishing the procedural blockout.
+
+### Requirements / Acceptance Criteria
+- Search actual Highrise versions; distinguish finished downloadable source from game-specific cooked mods and unrelated maps named Highrise.
+- Report verified import suitability and missing information without claiming installation or easy compatibility from screenshots/listings alone.
+- Record research and preserve project assets until suitable source is available.
+
+### Actions Taken
+Read project instructions and Nuketown/Highrise integration docs. Searched web for Unreal projects and FBX/OBJ/Blender/SketchUp models, inspected primary author/Workshop listings and Epic documentation. Identified Chaostry's Pavlov Highrise (description says 4.21 and credits McLovin) as best engine-compatible lead, but editable source download not verified and individual listing fetch failed. Found 3D Warehouse detailed geometry, but author notes missing helicopter/texturing. Rejected Ravenfield source-unavailable mod, paid Rust prefab and Source Workshop package as straightforward Unreal replacements. Wrote source research with links, verified facts, acquisition requirements and limitations. No assets downloaded, purchases, creator messages or gameplay/map changes.
+
+### Files Changed
+- docs/highrise-source-research.md
+- docs/ai-interaction-log.md (append only)
+
+### Verification
+- Browsed creator listings/collections and Epic cooked-content/migration documentation; no complete textured editable Unreal download verified.
+- Reviewed git status and diff. Documentation whitespace checked locally. No build/tests needed for research-only documentation changes.
+
+### Notes / Follow-up
+- Research located leads, not a verified ready-to-import replacement. Editable project or mesh/texture source remains necessary before integration.
+- Original Highrise blockout remains unchanged. Existing uncommitted weapon/military/bot work preserved.
+
+### Response Summary
+Best Unreal-compatible lead is the Pavlov Highrise port, contingent on obtaining editable source. No confirmed easy downloadable replacement found; SketchUp alternative needs significant visual work. Saved the investigation in project documentation.
+---
+
+---
+## Interaction 47
+
+Date/time: 2026-10-08 approximately 22:00 America/Chicago.
+
+### User Prompt
+Nevermind, scrap the highrise map and try to find other COD maps that could be used for this project[@CrosshairFrontendTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp)
+
+### Interpretation
+Cancel/remove Highrise and research other COD map asset sources suitable for Unreal integration, preserving the separately requested weapon animations.
+
+### Requirements / Acceptance Criteria
+- Remove Highrise level/materials/generator scripts and playable/cook references.
+- Restore two built-ins and correct imported-map indexes without breaking home/pause selection or replay.
+- Retain weapon switching and back carry with tests on practice map.
+- Supply alternative asset listings with import suitability and limitations; no unauthorized purchases or creator messages.
+- Local build/test and append-only interaction record.
+
+### Actions Taken
+Read project instructions and relevant README/map-import docs. Removed Highrise registration and cook entry, restored BuiltinMapCount to two, and removed its level/material folder and generation/repair scripts. Verified absolute deletion paths stayed within the named project directory before native PowerShell deletion. Changed frontend test to verify only two built-ins and retained shoulder stow/draw/back-carry checks on L_Practice, eliminating Highrise-dependent test travel. Updated current docs and marked prior Highrise research historical. Searched creator listings for other COD maps; wrote shortlist recommending textured Blenderworks Rust based on FBX/OBJ/glTF and included textures. Raid is a UE5 lead with archive contents unverified; Shipment Arena is a stylized prop pack, not verified exact COD recreation. Terminal free geometry was rejected as a quick polished replacement because C4D-only/untextured. No map purchased, downloaded or installed; no creator contacted.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairMapLibrary.cpp and .h
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp
+- Config/DefaultGame.ini (Highrise cook entry removed; now matches original)
+- Removed Content/Crosshair/Maps/L_Highrise.umap and Content/Crosshair/Maps/Highrise/
+- Removed Scripts/create_highrise_map.py and Scripts/refine_highrise_skyline.py
+- docs/home-classes-and-map-import.md, highrise-and-weapon-switching.md, highrise-source-research.md
+- Created docs/cod-map-candidates.md
+- docs/ai-interaction-log.md (append only)
+
+### Verification
+- Local Build.bat Project_CrosshairEditor Win64 Development -Project=<project> -WaitMutex -NoHotReloadFromIDE: succeeded.
+- Local UnrealEditor-Cmd <project> /Game/Crosshair/Maps/L_Practice -game -CrosshairSmoke -CrosshairFrontendSmoke -NullRHI -unattended -nosound -abslog=<Saved/Logs/MapRemovalFrontend.log>: exit 0; CROSSHAIR_FRONTEND_OK. Checks include import copy/registration, map travel/imported replay, Nuketown lights, two built-in maps, transition fire blocking, back carry and upright body.
+- Source/config/scripts scan finds no executable Highrise map reference; remaining name is a negative regression assertion.
+- Git status/diff reviewed; whitespace check passes after removing trailing config blank line. No commits; earlier uncommitted military/bot/weapon work preserved.
+- Primary creator/listing sources browsed for format/texture/price information. Asset compatibility not locally verified without actual files.
+
+### Notes / Follow-up
+- Rust listed $49; importing its FBX and texture set still needs material, collision, scale, lighting and practice setup.
+- Raid listing identifies UE5 and 4 GB RAR but does not prove editable source; price discrepancy between page/snippet documented.
+- Shipment Arena is stylized and not a verified exact COD recreation. No new map added under this search request.
+- Packaged builds and physical controller hardware unverified for this removal. No external services, purchases or remote CI.
+
+### Response Summary
+Highrise removed; build and frontend regression pass, weapon animations retained. Found Rust, Raid and Shipment-style asset leads; Rust has the clearest documented import route. None purchased or installed.
+---
+
+---
+## Interaction 48
+
+Date: 2026-10-08 America/Chicago.
+
+### User Prompt
+https://open3dlab.com/project/d8756ca2-f51c-4bae-aa67-0e13296b2679/
+
+This link is for a blender model of rust from mw2, would this work?[@CrosshairFrontendTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp)
+
+### Interpretation
+Assess whether the supplied Blender Rust model can be converted into a playable Unreal map.
+
+### Requirements / Acceptance Criteria
+- Explain a feasible conversion route and remaining map setup.
+- Distinguish Blender format suitability from verified archive contents and integration.
+- Report relevant listing terms and access limitations accurately.
+
+### Actions Taken
+Opened the supplied page; web fetch returned an Anubis anti-bot challenge. Search-indexed project collection page identifies Rust (COD: MW2), uploader Acoolrocket, and CC BY-NC-ND 4.0. No archive downloaded or inspected. Checked Epic FBX scene/material import documentation and existing project OBJ importer documentation. Confirmed Blender-to-FBX-to-Unreal is a supported general route, with material reconstruction and collision/spawn/lighting required. Did not assert that this particular model has complete textures or good collision/performance. Identified listed usage restrictions as relevant for any distributed game, without treating format conversion alone as a prohibited derivative.
+
+### Files Changed
+- docs/ai-interaction-log.md (append only)
+
+### Verification
+- Source listing overview fetch blocked by anti-bot page; search-indexed collection metadata available.
+- Epic official documentation confirms full FBX scene import and basic material support.
+- Local docs confirm in-game importer does not directly support .blend and is limited to OBJ plus one atlas.
+- No gameplay/asset changes; no build/tests needed for this assessment. Git diff/status reviewed.
+
+### Notes / Follow-up
+- Need actual .blend and texture files to verify completeness, scale, geometry and performance before claiming this source works.
+- Listing identifies Attribution-NonCommercial-NoDerivatives terms and notes uploader-selected licensing is not verified by site moderators. Distribution suitability needs clarification from appropriate rights holders.
+- No downloads, purchases, imports or creator messages performed.
+
+### Response Summary
+Technically a Blender Rust model is a plausible candidate through FBX export and Unreal import. This particular archive remains unverified, and its listed noncommercial/no-derivatives terms matter for distribution.
+---
+
+---
+## Interaction 49
+
+Date: 2026-10-08 America/Chicago.
+
+### User Prompt
+Then thats fine if we don't include that one. For now, I feel like it is fine to leave as is[@CrosshairFrontendTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp)
+
+### Interpretation
+Do not include the linked Open3DLab Rust model; stop map work and leave the current game unchanged.
+
+### Requirements / Acceptance Criteria
+- No Rust download/import or further map/gameplay changes.
+- Preserve current project state and record the user's decision.
+
+### Actions Taken
+Recorded the decision and stopped map acquisition work. No game code, settings or assets changed.
+
+### Files Changed
+- docs/ai-interaction-log.md (append only)
+
+### Verification
+- Documentation-only acknowledgment; no build/tests required.
+
+### Notes / Follow-up
+- Current playable maps remain Testing Map, Nuketown and installed local imports. Highrise remains removed.
+- Resume additional map work only upon a new request.
+
+### Response Summary
+Leave the game as it is; exclude the linked Rust model.
+---

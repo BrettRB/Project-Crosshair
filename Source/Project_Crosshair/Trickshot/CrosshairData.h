@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "GameFramework/SaveGame.h"
+#include "CrosshairBotMatch.h"
 #include "CrosshairData.generated.h"
 
 class UInputAction;
@@ -48,6 +49,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.03")) float ShotInterval = 0.85f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.1")) float ReloadSeconds = 2.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0")) float EquipSeconds = 0.25f;
+ UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Animation",meta=(ClampMin="0.05",ClampMax="1")) float StowSeconds=.18f;
+ UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Animation",meta=(ClampMin="0.05",ClampMax="1")) float DrawSeconds=.22f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="100")) float Range = 50000.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0")) float HipSpreadDegrees = 1.2f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0")) float AimSpreadDegrees = 0.f;
@@ -129,6 +132,7 @@ struct FCrosshairSettings
  UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 ActiveClass=0;
  UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bSandboxTargets=false;
  UPROPERTY() int32 ControlPresetVersion=0;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FCrosshairBotMatchOptions BotMatch;
 };
 
 USTRUCT(BlueprintType)

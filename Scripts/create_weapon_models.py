@@ -157,6 +157,16 @@ def automatic(smg=False):
     m.box((front,0,10),(1.2,2,3.8),1)
     m.box((front,0,12.65),(.5,.2,.7),1,.025)
     for y in [-.8,.8]: m.box((front,y,12.2),(.7,.15,1.3),1,.05)
+    # Military field fittings: recessed-looking handguard slots, sling mounts,
+    # magazine floorplate and a bored muzzle device instead of a solid barrel cap.
+    end=34 if smg else 48
+    m.ring(end,0,7 if smg else 8,1.28,.38,2.5)
+    for side in [-1,1]:
+        for i in range(4):
+            m.box((17+i*2.5,side*(2.24 if smg else 2.29),8.5),(1.65,.16,.48),2,.14)
+        m.tube((-19,side*2,6),(-19,side*3,6),.24,1,segments=16)
+        m.tube((22,side*2,5),(22,side*3,5),.22,1,segments=16)
+    m.box((15,0,-14.7),(5,3.25,.65),2,.15)
     return m
 
 
@@ -188,6 +198,15 @@ def sniper():
     m.tube((2,0,16),(2,0,18),1.05,1)
     m.tube((2,1,15),(2,3,15),1,1)
     for i in range(10): m.box((26+i*.65,2.68,5),( .25,.12,.8),2,.025)
+    # Tactical precision-rifle fittings: cheek-rest hardware, bipod and muzzle brake.
+    for y in [-1.7,1.7]:
+        m.tube((-24,y,6),(-24,y,9),.25,1,segments=16)
+        m.tube((29,y,4),(48,y,3),.4,1,segments=24)
+        m.box((47,y,2.8),(3,1.2,.7),2,.14)
+    m.ring(72,0,8,1.5,.65,4)
+    for x in [71,72.5]:
+        for y in [-1.48,1.48]: m.box((x,y,8),(.6,.15,.6),2,.08)
+    m.box((11,0,-3.3),(6,3.8,.6),2,.12)
     return m
 
 source=ROOT/'ContentSource'/'Weapons'; source.mkdir(parents=True,exist_ok=True)

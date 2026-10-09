@@ -1,4 +1,9 @@
 #include "CrosshairFrontendTest.h"
+#include "../CrosshairCombatAppearance.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Camera/CameraActor.h"
 #include "../CrosshairGame.h"
 #include "../CrosshairCharacter.h"
 #include "../CrosshairWeapon.h"
@@ -62,7 +67,20 @@ void UCrosshairFrontendTest::Tick(float Delta)
   if (!Check(S.Classes.Num()==5 && S.StickYawSpeed>=720 && !S.bSandboxTargets,TEXT("Five saved classes, faster default controller and sandbox Off"))) return;
   P->Placement->Toggle(); if (!Check(!P->Placement->bPlacing,TEXT("Target editing requires sandbox setting"))) return;
   PC->ShowHome(); if (!Check(PC->bHomeScreen && !P->CanAct(),TEXT("Home screen blocks gameplay input"))) return;
-  Capture(TEXT("FrontendHome.png")); Next(1); return;
+  Capture(TEXT("FrontendHome.png")); Next(16); return;
+ case 16:
+  if (Elapsed<.3) return;
+  PC->ActivateMenuRow(4);
+  if (!Check(PC->MenuTab==8 && !PC->bHomeScreen,TEXT("Home opens bot FFA setup before gameplay"))) return;
+  PC->AdjustMenuRow(PC->GetBotMatchRow(),1); PC->AdjustMenuRow(PC->GetBotMatchRow()+1,1);
+  if (!Check(S.BotMatch.Difficulty==ECrosshairBotDifficulty::Hardened && S.BotMatch.BotCount==6 && FMath::IsNearlyEqual(GetGameInstance()->GetSubsystem<UCrosshairBotMatch>()->GetCurrentTuning().ReactionSeconds,.3f),TEXT("Bot difficulty updates saved options and live tuning"))) return;
+  if (auto* Saved=Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("CrosshairSmoke_v1"),0))) { if (!Check(Saved->Settings.BotMatch.Difficulty==S.BotMatch.Difficulty && Saved->Settings.BotMatch.BotCount==6,TEXT("Bot setup persists on disk"))) return; } else { Check(false,TEXT("Bot setup save missing"));return; }
+  if (!Check(P->CombatAppearance->Gear.Num()==2 && P->GetFirstPersonMesh()->GetMaterial(0)->GetPathName().Contains(TEXT("M_CombatArms")),TEXT("Tactical arm material and animated elbow gear are configured"))) return;
+  for (UStaticMeshComponent* Gear:P->CombatAppearance->Gear) if (!Check(Gear->GetCollisionEnabled()==ECollisionEnabled::NoCollision && Gear->GetAttachParent()==P->GetFirstPersonMesh(),TEXT("Cosmetic gear follows arm bones without collision"))) return;
+  Capture(TEXT("FrontendBotSetup.png")); Next(17);return;
+ case 17:
+  if (Elapsed<.3) return;
+  PC->ShowHome(); Next(1);return;
  case 1:
  {
   if (Elapsed<.3) return;
@@ -83,6 +101,24 @@ void UCrosshairFrontendTest::Tick(float Delta)
   if (!Check(P->Inventory->ActiveIndex==2,TEXT("Y switches from secondary to primary"))) return;
   Key(EKeys::MouseScrollDown,IE_Pressed); if (!Check(P->Inventory->ActiveIndex==0,TEXT("Wheel switches only between class slots"))) return;
   Key(EKeys::One,IE_Pressed); if (!Check(P->Inventory->ActiveIndex==2,TEXT("Number 1 selects primary"))) return;
+  PC->ToggleMenu(); PC->SetMenuTab(8); PC->AdjustMenuRow(PC->GetBotMatchRow(),1);
+  if (!Check(S.BotMatch.Difficulty==ECrosshairBotDifficulty::Veteran,TEXT("Pause menu changes bot difficulty during gameplay"))) return;
+  PC->ToggleMenu(); Capture(TEXT("CombatSMG.png")); Next(30);return;
+ case 30:
+  if (Elapsed<.3) return;
+  P->Inventory->Equip(1); Next(31);return;
+ case 31:
+  if (Elapsed<.4) return;
+  Capture(TEXT("CombatAR.png")); Next(32);return;
+ case 32:
+  if (Elapsed<.3) return;
+  P->Inventory->Equip(0);Next(33);return;
+ case 33:
+  if (Elapsed<.4) return;
+  Capture(TEXT("CombatSniper.png"));Next(34);return;
+ case 34:
+  if (Elapsed<.3) return;
+  P->Inventory->Equip(2);
   PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::Gamepad_LeftY,IE_Axis,1.f)); Next(13); return;
  case 13:
   if (Elapsed<.2) return;
@@ -109,7 +145,7 @@ void UCrosshairFrontendTest::Tick(float Delta)
    if (!Check(Library->Import(FPaths::ProjectDir()/TEXT("ContentSource/UserMapsExample/map.json"),Error),TEXT("Local geometry package copied and registered"))) return;
    int32 Index=INDEX_NONE; for (int32 i=0;i<Library->Maps.Num();++i) if (!BeforeIds.Contains(Library->Maps[i].Id)) { Index=i; ImportedId=Library->Maps[i].Id; }
    if (!Check(Index>=0 && Library->Find(ImportedId),TEXT("Installed map survives library refresh"))) return;
-   PC->StartPlaying(); Library->PlayMap(Index+2); Next(5); return;
+   PC->StartPlaying(); Library->PlayMap(Index+UCrosshairMapLibrary::BuiltinMapCount); Next(5); return;
   }
  case 5:
   if (!World->GetOutermost()->GetName().Contains(TEXT("L_UserMap")) || Elapsed<1) return;
@@ -154,6 +190,34 @@ void UCrosshairFrontendTest::Tick(float Delta)
  case 12:
   if (!World->GetOutermost()->GetName().Contains(TEXT("L_Practice")) || Elapsed<.5) return;
   if (!Check(Library->ActiveMapId.IsEmpty() && !PC->bHomeScreen && P->CanAct(),TEXT("Return to built-in practice clears imported selection without reopening home"))) return;
-  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_FRONTEND_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
+  if (!Check(UCrosshairMapLibrary::BuiltinMapCount==2 && Library->MapName(2)!=TEXT("Highrise Rooftops"),TEXT("Only Testing Map and Nuketown remain built-in; imports begin at index two"))) return;
+  P->Inventory->Equip(0); Next(41);return;
+ case 41:
+  if (Elapsed<.6) return;
+  P->Inventory->Equip(2);
+  if (!Check(P->Inventory->Weapons[0]->bStowing && P->Inventory->GetPresentationWeapon()==P->Inventory->Weapons[0],TEXT("Switch begins outgoing shoulder stow while hands follow old weapon"))) return;
+  { auto* W=P->Inventory->GetCurrent();const int32 Ammo=W->Ammo;W->StartFire();W->StopFire();if(!Check(W->Ammo==Ammo,TEXT("Draw transition blocks firing"))) return; }
+  Next(42);return;
+ case 42:
+  if (Elapsed<.09) return;
+  if (!Check(P->Inventory->Weapons[0]->Mesh->GetRelativeLocation().Y>20,TEXT("Stowing gun and hands move toward the shoulder"))) return;
+  Capture(TEXT("SwitchStow.png"));Next(43);return;
+ case 43:
+  if (Elapsed<.4) return;
+  if (!Check(P->Inventory->Weapons[0]->bHolstered && P->Inventory->Weapons[0]->Mesh->GetAttachParent()==P->GetCapsuleComponent() && !P->Inventory->GetCurrent()->IsSwitching(),TEXT("Old gun is carried on back and new draw finishes"))) return;
+  if (!Check(P->GetMesh()->GetUpVector().Z>.99f,TEXT("World character body is upright for back carry"))) return;
+  { auto* Camera=World->SpawnActor<ACameraActor>(P->GetActorLocation()+FVector(-260,-260,100),(P->GetActorLocation()-(P->GetActorLocation()+FVector(-260,-260,100))).Rotation());PC->SetViewTarget(Camera);
+    P->GetFirstPersonMesh()->SetHiddenInGame(true);P->Inventory->GetCurrent()->PresentationMesh->SetHiddenInGame(true); }
+  Next(44);return;
+ case 44:
+  if (Elapsed<.3) return;
+  Capture(TEXT("WeaponBackCarry.png"));Next(45);return;
+ case 45:
+  if (Elapsed<.3) return;
+  PC->SetViewTarget(P);P->GetFirstPersonMesh()->SetHiddenInGame(false);P->Inventory->GetCurrent()->PresentationMesh->SetHiddenInGame(false);
+  S.bContinuousPractice=true; Replay->BeginAttempt(); Next(50);return;
+ case 50:
+  if (Elapsed<1 || Replay->IsRecording()) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_FRONTEND_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0);return;
  }
 }
