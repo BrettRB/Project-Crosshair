@@ -85,7 +85,7 @@ void UCrosshairReplaySubsystem::PracticeReady(ACrosshairCharacter* Player)
 	const bool RestoreWindows = Phase == ECrosshairReplayPhase::Returning && bHaveSession;
 	if (Phase == ECrosshairReplayPhase::Returning && bHaveSession)
 	{
-		Player->Placement->RestoreLayout(ReturnTargets);
+		Player->Placement->RestoreTargets(ReturnTargets);
 		Player->Attempt->StartTransform = ReturnStart;
 		Player->Inventory->Equip(ReturnWeapon);
 	}
@@ -100,7 +100,7 @@ void UCrosshairReplaySubsystem::CaptureSession()
 {
 	if (!LivePlayer.IsValid()) return;
 	ReturnStart = LivePlayer->Attempt->StartTransform;
-	ReturnTargets = LivePlayer->Placement->GetLayout();
+	ReturnTargets = LivePlayer->Placement->CaptureTargets();
 	ReturnWeapon = LivePlayer->Inventory->ActiveIndex;
 	ReturnBrokenWindows.Reset();
 	for (TActorIterator<ACrosshairWindow> It(LivePlayer->GetWorld());It;++It) ReturnBrokenWindows.Add(It->GetFName(),It->bBroken);

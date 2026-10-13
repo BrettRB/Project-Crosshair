@@ -16,3 +16,8 @@ These are initial tuning values, awaiting combat playtesting. No combat AI is pr
 Next implementation stage: add a dedicated FFA GameMode/GameState with score/time limits and a scoreboard; reusable health/death/respawn handling for player and bots; bot pawns/controllers using visible-enemy perception, cover-aware aiming and navigation; map spawn points and navigation validation; and a Start match action with return-to-home flow. Future active controllers should subscribe to OnDifficultyChanged and re-read tuning without restarting the match. Spawn count, health, lethals, friendly-free target selection and replay policy need integration tests before enabling match launch. Keep trickshot practice separate.
 
 Crosshair.Bots.DifficultyPresets tests monotonic tuning and invalid configuration bounds. FrontendSmoke checks the home setup page, saved options, immediate tuning, and difficulty adjustments during gameplay. Local Editor Development verification does not establish packaged builds or physical controller behavior.
+
+
+## Shared soldier skins (2026-10-13)
+
+Six soldier designs now appear on practice targets. Future bot pawns can use UCrosshairSoldierAppearance and the same DA_SoldierAppearances catalog via InitializeAppearance(WorldBodyMesh). The component selects/replicates the design and creates bone-attached cosmetic equipment; it contains no target-only damage logic. See [soldier appearances](soldier-appearances.md) for design choices, reference-pose attachment and replay details. Combat/match launch remains future work.

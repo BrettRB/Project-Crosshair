@@ -1,4 +1,5 @@
 #include "CrosshairDummy.h"
+#include "CrosshairSoldierAppearance.h"
 #include "CrosshairData.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -13,6 +14,7 @@
 ACrosshairDummy::ACrosshairDummy()
 {
 	bReplicates = true;
+	SoldierAppearance=CreateDefaultSubobject<UCrosshairSoldierAppearance>(TEXT("Soldier appearance"));
 	bAlwaysRelevant = true;
 	SetReplicateMovement(true);
 	Collision = CreateDefaultSubobject<UCapsuleComponent>(TEXT("Target collision"));
@@ -57,6 +59,7 @@ void ACrosshairDummy::BeginPlay()
 	if (HasAuthority()) Health = MaxHealth;
 	Body->SetVisibility(false); Head->SetVisibility(false);
 	Collision->SetCollisionResponseToChannel(ECC_Visibility,ECR_Ignore);
+	SoldierAppearance->InitializeAppearance(Model);
 	if (TargetIdle) Model->PlayAnimation(TargetIdle,true);
 	Model->TickAnimation(0,false); Model->RefreshBoneTransforms();
     Model->SetCollisionEnabled(ECollisionEnabled::QueryOnly);

@@ -1,6 +1,7 @@
 #include "CrosshairPractice.h"
 #include "CrosshairCharacter.h"
 #include "CrosshairDummy.h"
+#include "CrosshairSoldierAppearance.h"
 #include "CrosshairWindow.h"
 #include "CrosshairWeapon.h"
 #include "CrosshairThrowable.h"
@@ -118,6 +119,21 @@ TArray<FTransform> UCrosshairPlacementComponent::GetLayout() const
 	TArray<FTransform> Result;
 	for (TActorIterator<ACrosshairDummy> It(GetWorld()); It; ++It) if (!It->IsActorBeingDestroyed()) Result.Add(It->GetActorTransform());
 	return Result;
+}
+TArray<FCrosshairTargetSnapshot> UCrosshairPlacementComponent::CaptureTargets() const
+{
+ TArray<FCrosshairTargetSnapshot> Result;
+ for(TActorIterator<ACrosshairDummy> It(GetWorld());It;++It) if(!It->IsActorBeingDestroyed()) Result.Add({It->GetActorTransform(),It->SoldierAppearance->DesignIndex});
+ return Result;
+}
+void UCrosshairPlacementComponent::RestoreTargets(const TArray<FCrosshairTargetSnapshot>& Targets)
+{
+ for(TActorIterator<ACrosshairDummy> It(GetWorld());It;++It) It->Destroy();
+ for(const auto& Saved:Targets) if(TargetClass)
+ {
+  auto* Target=GetWorld()->SpawnActorDeferred<ACrosshairDummy>(TargetClass,Saved.Transform,nullptr,nullptr,ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+  if(Target){Target->SoldierAppearance->DesignIndex=Saved.SoldierDesign;Target->FinishSpawning(Saved.Transform);}
+ }
 }
 void UCrosshairPlacementComponent::RestoreLayout(const TArray<FTransform>& Layout)
 {

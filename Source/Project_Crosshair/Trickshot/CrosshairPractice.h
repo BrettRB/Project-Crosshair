@@ -3,6 +3,12 @@
 #include "Components/ActorComponent.h"
 #include "CrosshairPractice.generated.h"
 
+struct FCrosshairTargetSnapshot
+{
+ FTransform Transform;
+ int32 SoldierDesign=INDEX_NONE;
+};
+
 class ACrosshairDummy;
 class USkeletalMeshComponent;
 
@@ -29,6 +35,8 @@ UPROPERTY(EditAnywhere, Category="Targets") TSubclassOf<ACrosshairDummy> TargetC
 	/** Recomputed both on tick and on confirm; never trust a stale preview. */
 	void UpdatePreview();
 	TArray<FTransform> GetLayout() const;
+	TArray<FCrosshairTargetSnapshot> CaptureTargets() const;
+	void RestoreTargets(const TArray<FCrosshairTargetSnapshot>& Targets);
 	void RestoreLayout(const TArray<FTransform>& Layout);
 	static bool IsSupportedSurface(const FVector& Normal) { return Normal.Z >= 0.7f; }
 private:

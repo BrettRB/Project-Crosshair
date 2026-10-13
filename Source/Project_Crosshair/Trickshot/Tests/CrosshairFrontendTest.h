@@ -3,6 +3,7 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Tickable.h"
 #include "CrosshairFrontendTest.generated.h"
+class ACameraActor;
 UCLASS()
 class UCrosshairFrontendTest : public UGameInstanceSubsystem,public FTickableGameObject
 {
@@ -21,4 +22,7 @@ private:
  double Started=0,StepStarted=0;
  bool bDone=false,bSawImportedReplay=false;
  FString ImportedId;
+ int32 SoldierPhoto=0;
+ bool bSawSoldierReplay=false;
+ UPROPERTY() TObjectPtr<ACameraActor> SoldierCamera;
 };

@@ -8,6 +8,7 @@ class UMaterialInterface;
 class UStaticMeshComponent;
 class USkeletalMeshComponent;
 class UAnimSequence;
+class UCrosshairSoldierAppearance;
 
 UCLASS(Blueprintable)
 class PROJECT_CROSSHAIR_API ACrosshairDummy : public AActor
@@ -15,6 +16,7 @@ class PROJECT_CROSSHAIR_API ACrosshairDummy : public AActor
 	GENERATED_BODY()
 public:
 	ACrosshairDummy();
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Presentation") TObjectPtr<UCrosshairSoldierAppearance> SoldierAppearance;
 	virtual float TakeDamage(float Amount, const FDamageEvent& Event, AController* EventInstigator, AActor* Causer) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UFUNCTION(BlueprintCallable) void ResetTarget();

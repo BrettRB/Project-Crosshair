@@ -2232,3 +2232,59 @@ Recorded the decision and stopped map acquisition work. No game code, settings o
 ### Response Summary
 Leave the game as it is; exclude the linked Rust model.
 ---
+
+---
+## Interaction 50
+
+Date/time: 2026-10-13 approximately 13:58 America/Chicago.
+
+### User Prompt
+Please add more realism including changing the target dummy model to make them look more like soldiers. Create about 5-6 different designs that they randomly cycle between when placing them. These skins will also be used in the gamemode where you play against computer characters[@CrosshairFrontendTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp)
+
+### Interpretation
+Give practice targets six distinct soldier appearances with randomized placement selection and reusable assets/component for future bot FFA pawns. Preserve hitboxes, reset behavior and recorded replay appearance.
+
+### Requirements / Acceptance Criteria
+- Six distinct uniforms and equipment combinations that look like soldiers rather than bare mannequins.
+- Authority selects appearances using shuffled cycles; each complete cycle covers all six and avoids adjacent repeats at boundaries.
+- Resets preserve designs; replay playback and return preserve assigned appearances.
+- Existing head/torso/limb shot geometry and damage remain intact; cosmetic gear has no collision.
+- Shared catalog/component usable by future bot pawns without target-only logic.
+- Local build, rendered inspection, regression tests, documentation and interaction record.
+
+### Actions Taken
+Read AGENTS, character-source README, bot preparation and relevant target/placement/replay code. Added shared soldier catalog, equipment definitions, replicated appearance component and per-world shuffled selector. Created original curved ballistic helmet, field cap, boonie hat, protective goggles, comms headset, full/light plate carriers with straps/MOLLE/pouches, field pack, utility pouches and knee armor. Created six uniform/fabric/armor material sets (Woodland Infantry, Desert Patrol, Urban Assault, Arctic Ranger, Night Operations, Olive Recon) on a project-owned copy of the existing mannequin rig. Configured BP_Target through Unreal APIs, preserving template skeleton and physics assets. Bone attachment converts authored mesh reference-pose placement into bone-local transforms. Added target snapshots containing both transforms and design indexes for replay return; playback uses replicated design rather than random selection. Added fixed visual fallback for recordings without a design field. Expanded frontend tests and captured all six outfits. Rendered inspection and imported bounding-box check identified OBJ Y-axis mirroring; corrected authored source orientation so magazines, goggle lenses and pad detail face outward. Preserved material graphs on regeneration after Unreal rejected deleting rooted material expressions. Updated soldier and future-bot documentation. No commits, downloaded assets, paid APIs, external services or unrelated map changes.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairSoldierAppearance.cpp and .h (new)
+- Source/Project_Crosshair/Trickshot/CrosshairDummy.cpp and .h
+- Source/Project_Crosshair/Trickshot/CrosshairPractice.cpp and .h
+- Source/Project_Crosshair/Trickshot/CrosshairReplaySubsystem.cpp and .h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp and .h
+- Scripts/create_soldier_appearances.py (new)
+- Content/Crosshair/Soldiers/: shared catalog, body copy, ten gear meshes and eighteen materials (new)
+- Content/Crosshair/Targets/BP_Target.uasset
+- ContentSource/Character/Soldiers/: ten original OBJ gear sources and MTL (new)
+- ContentSource/Character/README.md
+- docs/soldier-appearances.md (new), docs/bot-ffa-preparation.md
+- docs/ai-interaction-log.md (append only)
+
+### Verification
+- Local Build.bat Project_CrosshairEditor Win64 Development -Project=<project> -WaitMutex -NoHotReloadFromIDE: final build succeeded. Initial UHT INDEX_NONE default and test pointer/switch-scope compilation errors corrected.
+- Local UnrealEditor-Cmd -run=pythonscript -script=<create_soldier_appearances.py> -unattended -NullRHI -nosound: SoldierAssetsFinal.log CROSSHAIR_SOLDIER_ASSETS_OK designs=6, exit 0. Initial bootstrap reported absent newly-created catalog/incorrect lens reference; corrected lens path. Regeneration initially asserted during DeleteAllMaterialExpressions on rooted materials; generator now preserves existing graphs and final regeneration passes.
+- Final rendered UnrealEditor-Cmd <project> /Game/Crosshair/Maps/L_Practice -game -CrosshairSmoke -CrosshairFrontendSmoke -CrosshairFrontendVisual -unattended -nosound -ResX=1280 -ResY=720 -windowed: SoldierFrontendFinal.log CROSSHAIR_FRONTEND_OK, exit 0. Tests cover four six-design shuffle cycles, automatic assignment, full body/material/gear configuration, collision-free bone attachment, reset stability, target snapshot restore, recorded design playback and practice return, plus retained frontend/class/import/switch behavior.
+- Six Saved/Screenshots/Soldier*.png screenshots reviewed after final gear orientation correction. Diagnostic bounding-box commandlet confirmed mirrored Y before correction; temporary script removed.
+- Local -game -CrosshairSmoke -CrosshairExpansionSmoke -NullRHI: SoldierExpansion.log CROSSHAIR_EXPANSION_OK, exit 0. Covers posed head/torso/leg traces, headshot feedback, wallbangs, glass/mantle and replay.
+- Local -game -CrosshairSmoke -CrosshairLethalSmoke -NullRHI: SoldierLethal.log CROSSHAIR_LETHAL_OK, exit 0; throwable damage/replay passed with new targets.
+- First uncapped core NullRHI run logged movement-direction failure at step 15, despite process exit 0. Reran without changing gameplay/test assertions with -ExecCmds="t.MaxFPS 60": SoldierCoreFinal.log CROSSHAIR_SMOKE_OK, exit 0, no smoke failures. Do not rely on process exit alone for these smoke runs.
+- Python generator AST parse succeeds; git status/diff reviewed and git diff --check -- . ':!docs/ai-interaction-log.md' passes. Managed Git LFS temporary-file access required escalation for review.
+
+### Notes / Follow-up
+- Soldier silhouettes retain mannequin proportions/idle animation, with original tactical equipment and uniform shaders. No scanned/sculpted human mesh or custom soldier animation is claimed.
+- Shared component/catalog ready for future bot pawns; playable bot combat/match launch remains the separate planned stage.
+- Current map-provided targets participate in each world's appearance deck. Keep catalog index order stable for recordings and append future designs.
+- Equipment remains cosmetic and does not extend bullet hitboxes or grant armor bonuses. Physical controller, packaged/cooked build and network multiplayer verification not performed.
+
+### Response Summary
+Six soldier designs added with randomized placement cycling and stable appearances through reset/replay, using a shared component/catalog for future bots. Final build, rendered six-design/replay checks, expansion and lethal regressions, and capped core regression pass.
+---

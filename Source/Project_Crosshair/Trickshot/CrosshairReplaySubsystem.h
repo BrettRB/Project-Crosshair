@@ -3,6 +3,7 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Tickable.h"
 #include "CrosshairData.h"
+#include "CrosshairPractice.h"
 #include "CrosshairReplaySubsystem.generated.h"
 
 class ACrosshairCharacter;
@@ -53,7 +54,7 @@ private:
 	TArray<FString> PendingDeletes;
 	FString ReturnMap = TEXT("/Game/Crosshair/Maps/L_Practice");
 	FTransform ReturnStart;
-	TArray<FTransform> ReturnTargets;
+	TArray<FCrosshairTargetSnapshot> ReturnTargets;
 	int32 ReturnWeapon = 0;
 	bool bHaveSession = false;
 	bool bFinalizeWarning = false;

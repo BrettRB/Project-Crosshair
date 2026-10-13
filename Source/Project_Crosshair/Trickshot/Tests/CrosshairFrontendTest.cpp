@@ -1,5 +1,6 @@
 #include "CrosshairFrontendTest.h"
 #include "../CrosshairCombatAppearance.h"
+#include "../CrosshairSoldierAppearance.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -50,7 +51,8 @@ void UCrosshairFrontendTest::Tick(float Delta)
  const double Elapsed=FPlatformTime::Seconds()-StepStarted;
  auto* EarlyReplay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
  if (Step==20 && EarlyReplay->IsPlayback())
- { for(TActorIterator<ACrosshairImportedMap> It(World);It;++It) if (It->MapId==ImportedId && It->Mesh->GetNumSections()>0) bSawImportedReplay=true; return; }
+ { for(TActorIterator<ACrosshairDummy> It(World);It;++It) if(It->GetActorLocation().Equals(FVector(500,0,96),3) && It->SoldierAppearance->DesignIndex==4) bSawSoldierReplay=true;
+   for(TActorIterator<ACrosshairImportedMap> It(World);It;++It) if (It->MapId==ImportedId && It->Mesh->GetNumSections()>0) bSawImportedReplay=true; return; }
  auto* PC=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController()); auto* P=PC ? Cast<ACrosshairCharacter>(PC->GetPawn()) : nullptr;
  if (!P || !P->Inventory->GetCurrent()) return;
  auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>(); auto& S=Replay->GetSettings(); auto* Library=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>();
@@ -159,7 +161,9 @@ void UCrosshairFrontendTest::Tick(float Delta)
   if (Elapsed<.3) return;
   if (FParse::Param(FCommandLine::Get(),TEXT("CrosshairIndoorBefore"))) { Library->PlayMap(1); Next(7); return; }
   S.bContinuousPractice=false;
-  World->SpawnActor<ACrosshairDummy>(P->TargetClass,FVector(500,0,96),FRotator(0,180,0));
+  { auto* ImportedTarget=World->SpawnActor<ACrosshairDummy>(P->TargetClass,FVector(500,0,96),FRotator(0,180,0));
+  if (!Check(ImportedTarget!=nullptr,TEXT("Imported soldier target spawned"))) return;
+  ImportedTarget->SoldierAppearance->SetDesign(4); }
   P->Attempt->SaveStart(); Next(18); return;
  case 18:
   if (Elapsed<.6 || !Replay->IsRecording()) return;
@@ -170,6 +174,9 @@ void UCrosshairFrontendTest::Tick(float Delta)
  case 20:
   if (!bSawImportedReplay || !P->CanAct()) return;
   if (!Check(Library->ActiveMapId==ImportedId && P->Inventory->PrimaryIndex==2,TEXT("Replay reconstructs imported geometry and restores class/map"))) return;
+  if (!Check(bSawSoldierReplay,TEXT("Replay keeps recorded soldier appearance"))) return;
+  { bool Restored=false;for(TActorIterator<ACrosshairDummy> It(World);It;++It) if(It->GetActorLocation().Equals(FVector(500,0,96),3) && It->SoldierAppearance->DesignIndex==4) Restored=true;
+    if(!Check(Restored,TEXT("Practice return preserves soldier design"))) return; }
   S.bContinuousPractice=true; Replay->BeginAttempt(); Library->PlayMap(1); Next(7); return;
  case 7:
   if (!World->GetOutermost()->GetName().Contains(TEXT("L_Nuketown")) || Elapsed<2) return;
@@ -191,7 +198,33 @@ void UCrosshairFrontendTest::Tick(float Delta)
   if (!World->GetOutermost()->GetName().Contains(TEXT("L_Practice")) || Elapsed<.5) return;
   if (!Check(Library->ActiveMapId.IsEmpty() && !PC->bHomeScreen && P->CanAct(),TEXT("Return to built-in practice clears imported selection without reopening home"))) return;
   if (!Check(UCrosshairMapLibrary::BuiltinMapCount==2 && Library->MapName(2)!=TEXT("Highrise Rooftops"),TEXT("Only Testing Map and Nuketown remain built-in; imports begin at index two"))) return;
-  P->Inventory->Equip(0); Next(41);return;
+  {
+   auto* Selector=NewObject<UCrosshairSoldierSelection>(World);int32 Last=INDEX_NONE;
+   for(int32 Cycle=0;Cycle<4;++Cycle){TSet<int32> Seen;for(int32 i=0;i<6;++i){const int32 Design=Selector->Draw(6);if(!Check(Design!=Last,TEXT("Shuffled soldier deck avoids adjacent repeats"))) return;Seen.Add(Design);Last=Design;}if(!Check(Seen.Num()==6,TEXT("Every shuffled cycle includes six soldier designs"))) return;}
+   for(int32 i=0;i<6;++i)
+   {
+    auto* Target=World->SpawnActor<ACrosshairDummy>(P->TargetClass,FVector(650,-375+i*150,96),FRotator(0,180,0));
+    if(!Check(Target && Target->SoldierAppearance->Catalog && Target->SoldierAppearance->Catalog->Designs.Num()==6 && Target->SoldierAppearance->DesignIndex>=0 && Target->SoldierAppearance->DesignIndex<6,TEXT("New target automatically receives a valid soldier design"))) return;
+    Target->SoldierAppearance->SetDesign(i);const auto* Appearance=Target->SoldierAppearance.Get();
+    if(!Check(Target->Model->GetSkeletalMeshAsset()==Appearance->Catalog->BodyMesh && Target->Model->GetMaterial(0)==Appearance->Catalog->Designs[i].Uniform && Appearance->Gear.Num()==Appearance->Catalog->Designs[i].Equipment.Num(),TEXT("Soldier body, uniform and complete equipment are configured"))) return;
+    for(UStaticMeshComponent* Gear:Appearance->Gear) if(!Check(Gear->GetCollisionEnabled()==ECollisionEnabled::NoCollision && Gear->GetAttachParent()==Target->Model,TEXT("Soldier equipment follows rig without altering shot collision"))) return;
+    Target->ResetTarget();if(!Check(Appearance->DesignIndex==i,TEXT("Reset keeps assigned soldier design"))) return;
+   }
+   const auto Saved=P->Placement->CaptureTargets();P->Placement->RestoreTargets(Saved);
+   for(const auto& At:Saved){bool Found=false;for(TActorIterator<ACrosshairDummy> It(World);It;++It) if(It->GetActorTransform().Equals(At.Transform,.01) && It->SoldierAppearance->DesignIndex==At.SoldierDesign) Found=true;if(!Check(Found,TEXT("Snapshot restore keeps each target transform and soldier design"))) return;}
+  }
+  P->Inventory->Equip(0);P->GetFirstPersonMesh()->SetHiddenInGame(true,true);P->Inventory->GetCurrent()->PresentationMesh->SetHiddenInGame(true);
+  SoldierPhoto=0;SoldierCamera=World->SpawnActor<ACameraActor>(FVector(280,-395,145),FRotator(-7,3,0));PC->SetViewTarget(SoldierCamera);Next(55);return;
+ case 55:
+  if(Elapsed<1) return;
+  {const TCHAR* Photos[]={TEXT("SoldierWoodland.png"),TEXT("SoldierDesert.png"),TEXT("SoldierUrban.png"),TEXT("SoldierArctic.png"),TEXT("SoldierNight.png"),TEXT("SoldierRecon.png")};Capture(Photos[SoldierPhoto]);}
+  Next(56);return;
+ case 56:
+  if(Elapsed<.3) return;
+  if(++SoldierPhoto<6){SoldierCamera->SetActorLocation(FVector(280,-395+SoldierPhoto*150,145));Next(55);return;}
+  PC->SetViewTarget(P);SoldierCamera->Destroy();P->GetFirstPersonMesh()->SetHiddenInGame(false,true);P->Inventory->GetCurrent()->PresentationMesh->SetHiddenInGame(false);
+  for(TActorIterator<ACrosshairDummy> It(World);It;++It) if(FMath::IsNearlyEqual(It->GetActorLocation().X,650.f,1.f)) It->Destroy();
+  Next(41);return;
  case 41:
   if (Elapsed<.6) return;
   P->Inventory->Equip(2);
