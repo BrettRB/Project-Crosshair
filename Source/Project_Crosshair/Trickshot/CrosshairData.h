@@ -144,6 +144,8 @@ struct FCrosshairReplayEntry
 	UPROPERTY(BlueprintReadOnly) FString RecordedAt;
  UPROPERTY() FString ImportedMapId;
 	UPROPERTY(BlueprintReadOnly) float HitSeconds = 0.f;
+	/** Match kill description; empty for practice hits. */
+	UPROPERTY(BlueprintReadOnly) FString Label;
 	UPROPERTY(BlueprintReadOnly) int32 FormatVersion = 1;
 };
 

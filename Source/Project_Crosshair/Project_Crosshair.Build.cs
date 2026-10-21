@@ -20,7 +20,10 @@ public class Project_Crosshair : ModuleRules
 			"UMG",
             "ProceduralMeshComponent",
             "Json",
-			"Slate"
+			"Slate",
+			"NavigationSystem",
+			"OnlineSubsystem",
+			"OnlineSubsystemUtils"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "NetworkReplayStreaming", "LocalFileNetworkReplayStreaming", "AssetRegistry", "RenderCore" });

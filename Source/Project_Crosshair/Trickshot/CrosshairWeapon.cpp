@@ -6,6 +6,7 @@
 #include "CrosshairWindow.h"
 #include "CrosshairBallistics.h"
 #include "CrosshairReplaySubsystem.h"
+#include "CrosshairMatch.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "Camera/CameraComponent.h"
@@ -161,6 +162,20 @@ bool ACrosshairWeapon::IsSwitching() const
 void ACrosshairWeapon::UpdateCarry()
 {
  auto* P=Cast<ACrosshairCharacter>(GetOwner()); if (!P || !Definition) return;
+ if (P->UsesWorldPresentation())
+ {
+  // Third-person carry for bots and other players: the equipped weapon sits in the soldier's right hand.
+  USkeletalMeshComponent* Body=P->GetMesh();
+  const FName Socket=Body->DoesSocketExist(TEXT("HandGrip_R")) ? FName(TEXT("HandGrip_R")) : FName(TEXT("hand_r"));
+  if (Mesh->GetAttachParent()!=Body || Mesh->GetAttachSocketName()!=Socket) AttachToComponent(Body,FAttachmentTransformRules::SnapToTargetNotIncludingScale,Socket);
+  Mesh->SetRelativeLocationAndRotation(FVector::ZeroVector,Definition->MeshRotation);
+  const bool Authored=Definition->PresentationMesh!=nullptr;
+  PresentationMesh->SetOwnerNoSee(false); PresentationMesh->SetVisibility(Authored);
+  Mesh->SetVisibility(!Authored);
+  for (UStaticMeshComponent* Detail:Details) Detail->SetVisibility(false);
+  SetActorHiddenInGame(!bEquipped || P->Health->bDead);
+  return;
+ }
  const float Now=GetWorld()->GetTimeSeconds();
  const bool Playback=P->IsReplayPlayback();
  if (bStowing && Now>=StowStartedAt+FMath::Max(.05f,Definition->StowSeconds) && !Playback)
@@ -224,13 +239,18 @@ void ACrosshairWeapon::TryFire()
 	--Ammo;
 	NextShotAt = Now + FMath::Max(0.03f, Definition->ShotInterval);
 	const UCameraComponent* Camera = Player->GetFirstPersonCameraComponent();
+	// The camera only follows control rotation when it is someone's view. Bots and remote players
+	// therefore aim from their eyes along the controller rotation.
+	const bool bWorldView = Player->UsesWorldPresentation();
+	const FRotationMatrix Aim(bWorldView ? Player->GetControlRotation() : Camera->GetComponentRotation());
+	const FVector Forward = Aim.GetUnitAxis(EAxis::X), Right = Aim.GetUnitAxis(EAxis::Y), Up = Aim.GetUnitAxis(EAxis::Z);
 	const float Spread = FMath::Lerp(Definition->HipSpreadDegrees, Definition->AimSpreadDegrees, Player->GetAimAlpha());
-	const FVector Direction = FMath::VRandCone(Camera->GetForwardVector(), FMath::DegreesToRadians(Spread));
-	const FVector Start = Camera->GetComponentLocation();
+	const FVector Direction = FMath::VRandCone(Forward, FMath::DegreesToRadians(Spread));
+	const FVector Start = bWorldView ? Player->GetPawnViewLocation() : Camera->GetComponentLocation();
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairShot), true, Player);
 	Params.AddIgnoredActor(this);
 	const FVector TraceEnd = Start + Direction * Definition->Range;
-	const FVector Muzzle = Start + Camera->GetForwardVector()*40 + Camera->GetRightVector()*10 - Camera->GetUpVector()*10;
+	const FVector Muzzle = Start + Forward*40 + Right*10 - Up*10;
 	FHitResult CameraHit,NearHit,MuzzleHit;
 	const bool NearBlocked=GetWorld()->LineTraceSingleByChannel(NearHit,Start,Muzzle,ECC_Visibility,Params);
 	GetWorld()->LineTraceSingleByChannel(CameraHit,Start,TraceEnd,ECC_Visibility,Params);
@@ -252,6 +272,17 @@ void ACrosshairWeapon::TryFire()
 	if (ACrosshairDummy* Dummy = Cast<ACrosshairDummy>(Hit.GetActor()))
 	{
 		if (UGameplayStatics::ApplyPointDamage(Dummy, (Dummy->IsHeadHit(Hit) ? Definition->HeadDamage : Definition->BodyDamage)*DamageScale, Direction, Hit, Player->GetController(), this, nullptr) > 0) Player->TargetHit(Dummy,Dummy->IsHeadHit(Hit),PenetratedLayers>0);
+	}
+	else if (ACrosshairCharacter* Victim = Cast<ACrosshairCharacter>(Hit.GetActor()))
+	{
+		// Match combat: same head/body damage and wallbang scaling as practice targets.
+		const bool bHead = Hit.GetComponent() == Victim->GetMesh() && Hit.BoneName == TEXT("head");
+		const float Amount = (bHead ? Definition->HeadDamage : Definition->BodyDamage) * DamageScale;
+		if (Victim->Health->ApplyDamage(Amount, Player->GetController(), this, bHead, Definition->DisplayName.ToString()) > 0)
+		{
+			Player->TargetHit(nullptr, bHead, PenetratedLayers > 0);
+			if (Victim->Health->bDead) Player->RecordMatchKill(Victim, bHead, PenetratedLayers > 0, Definition->DisplayName.ToString(), Definition->AimStyle == ECrosshairAimStyle::Scope, false);
+		}
 	}
 	ForceNetUpdate();
 }
@@ -374,9 +405,16 @@ void UCrosshairInventoryComponent::ApplyClass()
  auto* Replay=Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
  auto& S=Replay->GetSettings();
  if (!S.Classes.IsValidIndex(S.ActiveClass)) return;
+ const auto& C=S.Classes[S.ActiveClass]; S.LethalType=C.Lethal;
+ ApplyLoadout(C.Primary,C.Secondary,C.Lethal);
+}
+void UCrosshairInventoryComponent::ApplyLoadout(int32 Primary,int32 Secondary,ECrosshairLethalType Lethal)
+{
+ auto* Player=Cast<ACrosshairCharacter>(GetOwner());
+ if (!Player || Player->IsReplayPlayback()) return;
  Player->StopActions();
- const auto& C=S.Classes[S.ActiveClass]; PrimaryIndex=C.Primary; SecondaryIndex=C.Secondary;
- Player->Lethals->Selected=C.Lethal; S.LethalType=C.Lethal;
+ PrimaryIndex=Primary; SecondaryIndex=Secondary;
+ Player->Lethals->Selected=Lethal;
  ResetWeapons(); Player->Lethals->Reset(); EquipSlot(0);
 }
 void UCrosshairInventoryComponent::ResetWeapons() { for (ACrosshairWeapon* Weapon : Weapons) if (Weapon) { Weapon->ResetWeapon(); Weapon->SetEquipped(false); } if (GetCurrent()) Equip(ActiveIndex); }

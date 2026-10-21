@@ -9,6 +9,8 @@ class UCrosshairLethalComponent;
 class UCrosshairTraversalComponent;
 class UCrosshairPlacementComponent;
 class UCrosshairAttemptComponent;
+class UCrosshairHealthComponent;
+class UCrosshairSoldierAppearance;
 class UCrosshairInputConfig;
 class UCrosshairWeaponDefinition;
 class UAnimSequence;
@@ -47,6 +49,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairTraversalComponent> Traversal;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairPlacementComponent> Placement;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairAttemptComponent> Attempt;
+	/** Match-only health; practice never damages players. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairHealthComponent> Health;
+	/** Match soldier uniform on the world body (bots and other players). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairSoldierAppearance> MatchAppearance;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) TObjectPtr<UCrosshairInputConfig> Inputs;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float WalkSpeed = 450;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float SprintSpeed = 680;
@@ -65,6 +71,21 @@ public:
 	void ApplyRecoil(float Degrees);
 	void TargetHit(ACrosshairDummy* Target, bool bHeadshot = false, bool bWallbang = false);
 	void StopActions();
+	virtual void PossessedBy(AController* NewController) override;
+	bool IsBot() const;
+	bool IsInMatch() const;
+	/** Bots and remote players present a third-person soldier carrying the weapon. */
+	bool UsesWorldPresentation() const;
+	void HandleDeath();
+	/** Local player's match kill: labels it (tricks, weapon, distance) and saves it to Replays. */
+	void RecordMatchKill(const ACrosshairCharacter* Victim, bool bHeadshot, bool bWallbang, const FString& Weapon, bool bScopedWeapon, bool bLethal);
+	/** Absolute yaw turned within the last Window seconds (spin detection for 360s). */
+	float GetRecentSpin(double Window = 1.5) const;
+	/** Marks the recording player so replay playback follows them rather than a bot. */
+	UPROPERTY(Replicated) bool bReplayFocus = false;
+	FString TrickshotBanner;
+	float TrickshotUntil = 0;
+	void SetBotInput(bool bAim, bool bSprint) { bAimHeld = bAim; bSprintHeld = bSprint; }
  void SelectWeaponSlot(int32 Slot);
  void ControllerSprintPressed();
 	void ApplyLookInput(FVector2D MouseDelta, FVector2D StickAxis, float DeltaSeconds);
@@ -102,6 +123,11 @@ private:
 	FTransform ArmsFromGrip = FTransform::Identity;
 	FDelegateHandle ArmsPoseHandle;
 	void UpdateArmsPresentation();
+	void ConfigureMatchBody();
+	bool bMatchBodyConfigured = false;
+	TArray<TPair<double, float>> YawHistory;
+	float LastYaw = 0;
+	bool bHasLastYaw = false;
 	float AimAlpha = 0;
 	int32 PresentedHit = 0;
 };

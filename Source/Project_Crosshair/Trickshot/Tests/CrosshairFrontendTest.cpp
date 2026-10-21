@@ -97,10 +97,11 @@ void UCrosshairFrontendTest::Tick(float Delta)
  case 16:
   if (Elapsed<.3) return;
   PC->ActivateMenuRow(4);
-  if (!Check(PC->MenuTab==8 && !PC->bHomeScreen,TEXT("Home opens bot FFA setup before gameplay"))) return;
+  if (!Check(PC->MenuTab==8 && !PC->bHomeScreen,TEXT("Home opens match setup before gameplay"))) return;
+  S.BotMatch=FCrosshairBotMatchOptions(); // COD defaults: FFA, seven bots
   PC->AdjustMenuRow(PC->GetBotMatchRow(),1); PC->AdjustMenuRow(PC->GetBotMatchRow()+1,1);
-  if (!Check(S.BotMatch.Difficulty==ECrosshairBotDifficulty::Hardened && S.BotMatch.BotCount==6 && FMath::IsNearlyEqual(GetGameInstance()->GetSubsystem<UCrosshairBotMatch>()->GetCurrentTuning().ReactionSeconds,.3f),TEXT("Bot difficulty updates saved options and live tuning"))) return;
-  if (auto* Saved=Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("CrosshairSmoke_v1"),0))) { if (!Check(Saved->Settings.BotMatch.Difficulty==S.BotMatch.Difficulty && Saved->Settings.BotMatch.BotCount==6,TEXT("Bot setup persists on disk"))) return; } else { Check(false,TEXT("Bot setup save missing"));return; }
+  if (!Check(S.BotMatch.Difficulty==ECrosshairBotDifficulty::Hardened && S.BotMatch.BotCount==8 && FMath::IsNearlyEqual(GetGameInstance()->GetSubsystem<UCrosshairBotMatch>()->GetCurrentTuning().ReactionSeconds,.3f),TEXT("Bot difficulty updates saved options and live tuning"))) return;
+  if (auto* Saved=Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("CrosshairSmoke_v1"),0))) { if (!Check(Saved->Settings.BotMatch.Difficulty==S.BotMatch.Difficulty && Saved->Settings.BotMatch.BotCount==8,TEXT("Bot setup persists on disk"))) return; } else { Check(false,TEXT("Bot setup save missing"));return; }
   if (!Check(P->CombatAppearance->Gear.Num()==2 && P->GetFirstPersonMesh()->GetMaterial(0)->GetPathName().Contains(TEXT("M_CombatArms")),TEXT("Tactical arm material and animated elbow gear are configured"))) return;
   for (UStaticMeshComponent* Gear:P->CombatAppearance->Gear) if (!Check(Gear->GetCollisionEnabled()==ECollisionEnabled::NoCollision && Gear->GetAttachParent()==P->GetFirstPersonMesh(),TEXT("Cosmetic gear follows arm bones without collision"))) return;
   Capture(TEXT("FrontendBotSetup.png")); Next(17);return;

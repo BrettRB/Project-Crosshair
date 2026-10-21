@@ -17,10 +17,18 @@ FString UCrosshairBotMatch::DifficultyName(ECrosshairBotDifficulty Difficulty)
 {
  switch(Difficulty) { case ECrosshairBotDifficulty::Easy:return TEXT("Easy"); case ECrosshairBotDifficulty::Hardened:return TEXT("Hardened"); case ECrosshairBotDifficulty::Veteran:return TEXT("Veteran"); default:return TEXT("Regular"); }
 }
+FString UCrosshairBotMatch::ModeName(ECrosshairMatchMode Mode)
+{ return Mode==ECrosshairMatchMode::TeamDeathmatch ? TEXT("Team Deathmatch") : TEXT("Free-for-all"); }
+FString UCrosshairBotMatch::MapName(ECrosshairMatchMap Map) { return Map==ECrosshairMatchMap::Grid ? TEXT("Grid") : TEXT("Nuketown"); }
+FName UCrosshairBotMatch::MapPackage(ECrosshairMatchMap Map)
+{ return Map==ECrosshairMatchMap::Grid ? FName(TEXT("/Game/Crosshair/Maps/L_Grid")) : FName(TEXT("/Game/Crosshair/Maps/L_Nuketown")); }
 void UCrosshairBotMatch::Validate(FCrosshairBotMatchOptions& O)
 {
  if (uint8(O.Difficulty)>uint8(ECrosshairBotDifficulty::Veteran)) O.Difficulty=ECrosshairBotDifficulty::Regular;
  O.BotCount=FMath::Clamp(O.BotCount,1,11); O.ScoreLimit=FMath::Clamp(O.ScoreLimit,5,100); O.TimeLimitMinutes=FMath::Clamp(O.TimeLimitMinutes,1,30);
+ if (uint8(O.Mode)>uint8(ECrosshairMatchMode::TeamDeathmatch)) O.Mode=ECrosshairMatchMode::FreeForAll;
+ if (uint8(O.Map)>uint8(ECrosshairMatchMap::Grid)) O.Map=ECrosshairMatchMap::Nuketown;
+ O.TeamSize=FMath::Clamp(O.TeamSize,1,6); O.TeamScoreLimit=FMath::Clamp(O.TeamScoreLimit,10,200);
 }
 void UCrosshairBotMatch::SetDifficulty(ECrosshairBotDifficulty Difficulty)
 {

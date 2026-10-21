@@ -1,0 +1,126 @@
+# Offline matches (FFA / TDM) and LAN foundation
+
+Added 2026-10-21. Offline Free-for-all and Team Deathmatch against bots on the COD maps (Nuketown and Grid), plus the first stage of same-network (LAN) multiplayer.
+
+## Menus (2026-10-21 redesign)
+
+The main menu separates the ways to play: **Trickshot practice** (the solo trickshot mode, unchanged), **Offline match vs bots** and **LAN match** as large cards, with Weapon classes, Maps / Import, Replays, Settings and Quit as option tiles. A strip shows your active class and next match setup. The pause menu uses the same style: sidebar tabs, label/value rows with `< value >` chips (click the arrows or use Left / Right), help text for the highlighted row and key hints along the bottom. Practice tabs are dimmed during a match.
+
+**Offline match** has its own page: Mode, Match map, Bot difficulty, Bots (FFA) or Team size (TDM), Score limit and Time limit on the left, a live match summary card on the right, and a **START MATCH** button. **LAN** is a separate tab (host, find, join, network status).
+
+## Playing
+
+Main menu > **Offline match vs bots**, or Escape / Start > **Offline Match** tab. Rows:
+
+| Row | Values | Default (COD) |
+| --- | --- | --- |
+| Mode | Free-for-all / Team Deathmatch | Free-for-all |
+| Match map | Nuketown / Grid | Nuketown |
+| Bot difficulty | Easy / Regular / Hardened / Veteran | Regular |
+| Bot count (FFA) / Team size (TDM) | 1-11 bots / 1v1-6v6 | 7 bots (8 players) / 6v6 |
+| Score limit | FFA kills 5-100 / TDM team kills 10-200 | 30 / 75 |
+| Time limit | 1-30 minutes | 10 |
+| Start offline match | travels to the selected map | |
+
+Matches are only available on Nuketown and Grid. The Testing map and imported local maps stay practice-only: the match mode refuses any other map, spawns no bots and returns to practice.
+
+During a match:
+
+- Health is 100 and regenerates after 4 seconds without damage (40 per second). Red screen edges show damage.
+- Weapons use their existing head/body damage and wallbang scaling; frags and tomahawks also damage players. TDM friendly fire is off.
+- Death drops a ragdoll; you respawn after 3 seconds at a COD-style spawn (see below).
+- Hold **Tab / Back (View)** for the scoreboard. The kill feed is top right; TDM teammates show blue names.
+- Reaching the score limit or the time limit ends the match. The results screen shows the winner and standings; press **Enter / A** to leave, or it returns to Home after 20 seconds.
+- Escape / Start pauses an offline match. The pause menu offers Resume, Classes, **Leave match** and Quit. Target editing, saved positions/reset, map changes and replay viewing are practice tools and are unavailable in matches.
+- **Every kill you make is saved to Replays** (any weapon or lethal), without pausing the match. Each clip is labelled with what happened, e.g. `Mid-air 360 No-scope Headshot - Bolt-Action Sniper, 42 m`. Labels: Mid-air, 360 / 720 (yaw turned in the 1.5 s before the kill), No-scope (sniper not aimed) or Hip-fire (other guns not aimed), Wallbang, Headshot, Long shot (40 m+, or 15 m+ for lethals). Kills within one second share a clip (`Double kill`, `Triple kill`, `Multi kill`). Real tricks also flash a **TRICKSHOT** banner. Watch them from Main menu > Replays (or the pause Replays tab outside matches); playback follows your soldier in first person with the bots shown. Bot kills are not saved.
+- Equipping a class mid-match applies on your next spawn, as in COD. Bots carry a random two-weapon class and lethal.
+
+## Spawns
+
+Spawns are `ACrosshairSpawnPoint` actors placed in `L_Nuketown` and `L_Grid` (not `APlayerStart`, so practice spawning is unchanged). Each has:
+
+- `bFreeForAll` / `bTeamDeathmatch`: which modes may respawn there.
+- `InitialTeam` (Alpha/Bravo): the TDM start area used for each team's first spawn.
+- `Area`: a short name for diagnostics.
+
+Respawn selection follows COD's approach: candidate points are scored away from and out of sight of living enemies, toward teammates in TDM, and away from points used in the last few seconds; occupied points are skipped. Rules live in `CrosshairMatchRules::ScoreSpawn` and are covered by `Crosshair.Match.Rules`.
+
+Exact Call of Duty spawn coordinates are not publicly available, so placement approximates the published layouts and is editable in the Unreal Editor: move, add or retag spawn actors (World Outliner folder `Match/Spawns`) and save the level. `Scripts/setup_match_spawns.py` reproduces the placement (it refuses to duplicate existing spawns unless `CROSSHAIR_RESET_MATCH_SPAWNS=1`).
+
+### Nuketown (21 spawns)
+
+Black Ops Nuketown is two facing houses across a cul-de-sac; team modes start each side in its house's backyard. In this Source-engine port the houses sit at +X and -X with the street along Y.
+
+| Spawns | Area | Use |
+| --- | --- | --- |
+| 6 | Backyard behind the +X house | Alpha TDM start; FFA and TDM respawns |
+| 6 | Backyard behind the -X house | Bravo TDM start; FFA and TDM respawns |
+| 9 | House side passages, street corners, Alpha front yard | FFA and TDM respawns |
+
+### Grid (23 spawns)
+
+Grid's built area sits inside a large snow plane; the playable space (fences/buildings, as measured by navigation) is about X -5700..4800, Y -5000..3000. Team starts are at opposite ends of the long X axis.
+
+| Spawns | Area | Use |
+| --- | --- | --- |
+| 6 | North-east yard (+X end) | Alpha TDM start; respawns |
+| 6 | South end beyond the trench (-X end) | Bravo TDM start; respawns |
+| 11 | Lanes and yards around the buildings | FFA and TDM respawns |
+
+The navigation bounds limit bots to the playable area; the player can still walk out onto Grid's open snow plane.
+
+### Placement tooling
+
+- `-CrosshairSmoke -CrosshairMatchLayoutProbe` logs a top-down collision height grid and large meshes for both maps (`MATCH_LAYOUT` lines).
+- `-CrosshairSmoke -CrosshairMatchSmoke -CrosshairMatchSpawnAudit` reports every spawn that lacks ground, a clear capsule, navmesh or a full path to the map's central start, suggests the nearest valid spot, and prints a reachability map of the play space (`CROSSHAIR_MATCH_REACH`).
+- The normal match smoke test fails if any spawn on either map is invalid.
+
+## Bots
+
+Bots carry their weapon in the soldier's right hand with the mannequin idle/walk/run blend (`ABP_Unarmed`); dedicated armed third-person animation is future art work. In TDM, Alpha wears the first three soldier designs and Bravo the last three.
+
+Bots fire along their actual aim from eye height (the first-person camera only follows aim for whoever is viewing it, so world-view shooters use the controller rotation).
+
+`ACrosshairBotController` uses the same character, weapons and damage as the player. It notices enemies in a 150 degree view cone (or within 15 m in any direction), needs line of sight to the head or chest (no wall vision), waits its reaction time, then tracks with limited turn speed and a per-decision aim error before firing. Difficulty presets (`UCrosshairBotMatch`) are read live, so changing difficulty from the pause menu applies immediately. Bots roam using runtime navmesh inside each map's NavMeshBoundsVolume and fall back to direct movement if navigation is not ready.
+
+## LAN multiplayer (foundation)
+
+The Match tab also has **Host LAN match (same network)**, **Find LAN matches** and up to four **Join** rows.
+
+- Uses Unreal's built-in `OnlineSubsystemNull`: LAN broadcast discovery on the local network only. No internet, account, cloud or paid service is involved.
+- The host advertises a session and opens the selected map as a listen server with the selected mode. Match rules, scoring, spawns and bots run on the host and replicate to clients.
+- Joining resolves the host's address and travels to it. Windows Firewall may ask to allow the game on private networks the first time.
+
+Current limitation (next stage): gameplay code from practice is still host-authoritative without client RPCs, so a joined client can move and see the match, but client firing, lethals, reload/weapon switching and some HUD feedback are not yet sent to the host. Full LAN combat needs server RPCs for those actions, client-side hit feedback replication and multi-machine testing.
+
+## Implementation map
+
+| Piece | Where |
+| --- | --- |
+| Rules, spawn scoring, health, player/game state, FFA/TDM game mode | `Trickshot/CrosshairMatch.h/.cpp` (`CrosshairMatchRules`, `ACrosshairSpawnPoint`, `UCrosshairHealthComponent`, `ACrosshairMatchState`, `ACrosshairMatchGameMode`) |
+| Bot AI | `Trickshot/CrosshairBot.h/.cpp` (`ACrosshairBotController`) |
+| Offline start, LAN host/find/join, leave | `Trickshot/CrosshairMatchSession.h/.cpp` (`UCrosshairMatchSession`) |
+| Saved options (mode, map, team size, limits) | `FCrosshairBotMatchOptions` in `CrosshairBotMatch.h` |
+| Menus, scoreboard, kill feed, results | `CrosshairGame.cpp` (Match tab, `ACrosshairHUD::DrawMatch`) |
+| Player/bot damage, ragdoll, world-view weapon carry | `CrosshairCharacter.cpp`, `CrosshairWeapon.cpp`, `CrosshairThrowable.cpp`, `CrosshairBallistics.cpp` |
+| Spawn/navmesh placement | `Scripts/setup_match_spawns.py`; saved in `L_Nuketown`/`L_Grid` |
+
+Engine-bundled additions: `NavigationSystem`, `OnlineSubsystem`, `OnlineSubsystemUtils` modules; `OnlineSubsystemNull` plugin; `DefaultPlatformService=Null` and runtime navmesh generation in `DefaultEngine.ini`.
+
+## Local verification (2026-10-21)
+
+- `Build.bat Project_CrosshairEditor Win64 Development` and `Build.bat Project_Crosshair Win64 Development`: succeeded.
+- `UnrealEditor-Cmd <project> -unattended -NullRHI -nosound -ExecCmds="Automation RunTests Crosshair" -TestExit="Automation Test Queue Empty"`: 10 of 10 succeeded, including new `Crosshair.Match.Rules` (spawn scoring, friendly fire, limits, regeneration, team fill, option bounds, COD-map-only rule).
+- `-game -CrosshairSmoke -CrosshairMatchSmoke -NullRHI`: `CROSSHAIR_MATCH_OK`. Covers Testing-map rejection, 8-player FFA on Nuketown at spawn points, no practice targets/replay recording, damage/regeneration/kill credit/kill feed/respawn, bots roaming and firing (bot kills observed), real weapon fire into bot hitboxes, kill limit and results, leaving, 6v6 TDM on Grid with team starts and friendly fire off, team scoring, scoreboard, offline pause, match menu, LAN host session as listen server and LAN search. Every spawn on both maps passes the ground/capsule/navmesh/reachability audit (21/21 and 23/23).
+- Same command with `-CrosshairMatchVisual -RenderOffscreen -ResX=1280 -ResY=720`: `CROSSHAIR_MATCH_OK`; `Saved/Screenshots/Match*.png` inspected (HUD, kill feed, damage edges, soldier bots, results, TDM scoreboard).
+- Two processes on one PC, `-CrosshairLanHost` then `-CrosshairLanClient`: client found "Free-for-all on Nuketown (1/8)", joined, received the replicated match (9 players) and spawned (`CROSSHAIR_LAN_CLIENT_OK`); host saw the second human (`CROSSHAIR_LAN_HOST_OK`).
+- Regression: core `-CrosshairSmoke` (`CROSSHAIR_SMOKE_OK`), `-CrosshairFrontendSmoke`, `-CrosshairLethalSmoke`, `-CrosshairExpansionSmoke` all OK.
+
+### Menus, difficulty and match replays (2026-10-21, second pass)
+
+- The match smoke test now starts FFA through the menus (Main menu > Offline match vs bots > START MATCH) and additionally verifies: bots kill other bots and damage the player; a player sniper kill is saved to Replays with its label while the match continues; the saved clip plays from Replays after the match, following the player in first person with bots present.
+- Difficulty duel on Grid's open snow (all other bots frozen; one bot with an assault rifle vs a durable passive target 12 m away, starting 60 degrees off-target; changing difficulty live): headless Easy first hit 2.70 s / 40 damage vs Veteran 0.37 s / 800 damage; rendered Easy 3.92 s / 160 vs Veteran 0.56 s / 680. The test also asserts the active bot's live tuning switches to the selected preset.
+- The duel exposed and fixed a real bug: bots fired along their body facing with no pitch (their camera never received aim), so distant shots missed. They now fire along their aim.
+- New automation test `Crosshair.Match.KillLabels`. Screenshots `MenuHome.png`, `MenuMatchSetup.png`, `MatchReplay.png` inspected.
+
+Not verified: two separate PCs on a real LAN, Windows Firewall prompts, packaged/cooked builds, physical controller play, and match balance (bots and weapons are untuned; `Scripts/create_crosshair_assets.py` gives every weapon except the AR 100 body damage, so the SMG kills in one hit like the sniper; weapon tuning was not changed).

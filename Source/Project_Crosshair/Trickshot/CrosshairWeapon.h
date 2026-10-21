@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Components/ActorComponent.h"
+#include "CrosshairData.h"
 #include "CrosshairWeapon.generated.h"
 
 class UCrosshairWeaponDefinition;
@@ -74,6 +75,8 @@ public:
 	void Cycle();
  void EquipSlot(int32 Slot);
  void ApplyClass();
+ /** Equips two inventory weapons and a lethal, then restocks. Does not touch saved settings. */
+ void ApplyLoadout(int32 Primary,int32 Secondary,ECrosshairLethalType Lethal);
  int32 PrimaryIndex=0,SecondaryIndex=1;
 	void ResetWeapons();
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<TObjectPtr<UCrosshairWeaponDefinition>> Loadout;

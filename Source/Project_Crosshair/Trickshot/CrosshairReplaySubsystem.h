@@ -25,9 +25,15 @@ public:
 	virtual UWorld* GetTickableGameObjectWorld() const override { return GetWorld(); }
 	void PracticeReady(ACrosshairCharacter* Player);
 	void BeginAttempt();
-	/** Discards the active unsaved attempt and starts fresh on another practice map. */
-	UFUNCTION(BlueprintCallable) bool ChangePracticeMap(FName Map);
+	/** Discards the active unsaved attempt and starts fresh on another map. Options are URL options such as a match game mode. */
+	UFUNCTION(BlueprintCallable) bool ChangePracticeMap(FName Map, const FString& Options = TEXT(""));
 	void CompleteAttempt();
+	/** Starts continuous recording for the local player in a match (no-op if already recording). */
+	void BeginMatchRecording(ACrosshairCharacter* Player);
+	/** Saves the last moments up to this kill as a replay without interrupting play. Kills within the
+	 *  one-second tail join the same clip. Returns false if the recorder was not ready. */
+	bool SaveMatchKill(const FString& Label);
+	bool IsMatchRecording() const { return bMatchSession; }
 	UFUNCTION(BlueprintCallable) void PlaySaved(int32 Index);
 	UFUNCTION(BlueprintCallable) void ReplayAgain();
 	UFUNCTION(BlueprintCallable) void ReturnToPractice();
@@ -57,6 +63,9 @@ private:
 	TArray<FCrosshairTargetSnapshot> ReturnTargets;
 	int32 ReturnWeapon = 0;
 	bool bHaveSession = false;
+	bool bMatchSession = false;
+	bool bMatchClip = false;
+	int32 ClipKills = 0;
 	bool bFinalizeWarning = false;
 	bool bSeekStarted = false;
 	bool bSeekComplete = false;

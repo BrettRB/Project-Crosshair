@@ -141,3 +141,73 @@ bool FCrosshairBotTuningTest::RunTest(const FString& Parameters)
  TestTrue(TEXT("Corrupt/unsupported saved options are bounded"),Invalid.Difficulty==ECrosshairBotDifficulty::Regular && Invalid.BotCount==11 && Invalid.ScoreLimit==5 && Invalid.TimeLimitMinutes==1);
  return true;
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+#include "../CrosshairMatch.h"
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairMatchRulesTest, "Crosshair.Match.Rules", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairMatchRulesTest::RunTest(const FString& Parameters)
+{
+ using namespace CrosshairMatchRules;
+ // Spawn safety: distance from enemies, enemy sight lines, teammates and repeat use.
+ FSpawnContext Safe; Safe.NearestEnemy=3500.f;
+ FSpawnContext Near=Safe; Near.NearestEnemy=600.f;
+ FSpawnContext Seen=Safe; Seen.VisibleEnemies=1;
+ FSpawnContext Reused=Safe; Reused.SecondsSinceUsed=1.f;
+ TestTrue(TEXT("Spawns far from enemies beat spawns beside them"),ScoreSpawn(Safe)>ScoreSpawn(Near)+150.f);
+ TestTrue(TEXT("Spawns in enemy sight lines are heavily penalised"),ScoreSpawn(Safe)>ScoreSpawn(Seen)+200.f);
+ TestTrue(TEXT("A just-used spawn is avoided"),ScoreSpawn(Safe)>ScoreSpawn(Reused));
+ FSpawnContext Team=Safe; Team.bTeamMode=true; Team.NearestFriend=800.f;
+ FSpawnContext Alone=Team; Alone.NearestFriend=6000.f;
+ TestTrue(TEXT("TDM prefers spawning near teammates"),ScoreSpawn(Team)>ScoreSpawn(Alone));
+ FSpawnContext Ffa=Team; Ffa.bTeamMode=false;
+ TestEqual(TEXT("FFA ignores teammates"),ScoreSpawn(Ffa),ScoreSpawn(Alone));
+ // Damage permissions.
+ TestFalse(TEXT("TDM friendly fire is off"),CanDamage(true,Alpha,Alpha,false));
+ TestTrue(TEXT("TDM enemies can be damaged"),CanDamage(true,Alpha,Bravo,false));
+ TestTrue(TEXT("FFA allows damaging anyone"),CanDamage(false,NoTeam,NoTeam,false));
+ TestTrue(TEXT("Self-damage is always allowed"),CanDamage(true,Alpha,Alpha,true));
+ // Score limit and regeneration.
+ TestTrue(TEXT("Limit reached at the limit"),ReachedLimit(30,30));
+ TestFalse(TEXT("Below the limit continues"),ReachedLimit(29,30));
+ TestFalse(TEXT("A zero limit never ends the match"),ReachedLimit(99,0));
+ TestEqual(TEXT("No regeneration during the delay"),RegenerateHealth(40.f,100.f,3.9f,.5f),40.f);
+ TestEqual(TEXT("Regeneration after the delay"),RegenerateHealth(40.f,100.f,4.1f,.5f),60.f);
+ TestEqual(TEXT("Regeneration caps at max health"),RegenerateHealth(95.f,100.f,10.f,1.f),100.f);
+ // Team fill: 6v6 with the player on Alpha.
+ TestEqual(TEXT("Player's team gets five bots"),BotsForTeam(6,1),5);
+ TestEqual(TEXT("Opposing team gets six bots"),BotsForTeam(6,0),6);
+ TestEqual(TEXT("Never negative bots"),BotsForTeam(1,3),0);
+ // Saved option bounds and COD defaults.
+ FCrosshairBotMatchOptions Defaults;
+ TestTrue(TEXT("COD defaults: 8-player FFA to 30, 6v6 TDM to 75, 10 minutes, Nuketown"),Defaults.BotCount==7 && Defaults.ScoreLimit==30 && Defaults.TeamSize==6 && Defaults.TeamScoreLimit==75 && Defaults.TimeLimitMinutes==10 && Defaults.Map==ECrosshairMatchMap::Nuketown);
+ FCrosshairBotMatchOptions Invalid; Invalid.Mode=ECrosshairMatchMode(9); Invalid.Map=ECrosshairMatchMap(9); Invalid.TeamSize=40; Invalid.TeamScoreLimit=1;
+ UCrosshairBotMatch::Validate(Invalid);
+ TestTrue(TEXT("Corrupt mode/map/team options are bounded"),Invalid.Mode==ECrosshairMatchMode::FreeForAll && Invalid.Map==ECrosshairMatchMap::Nuketown && Invalid.TeamSize==6 && Invalid.TeamScoreLimit==10);
+ TestTrue(TEXT("Matches run only on Nuketown and Grid"),ACrosshairMatchGameMode::IsMatchMap(TEXT("L_Nuketown")) && ACrosshairMatchGameMode::IsMatchMap(TEXT("UEDPIE_0_L_Grid")) && !ACrosshairMatchGameMode::IsMatchMap(TEXT("L_Practice")) && !ACrosshairMatchGameMode::IsMatchMap(TEXT("L_UserMap")));
+ TestEqual(TEXT("Match maps travel to the COD map packages"),UCrosshairBotMatch::MapPackage(ECrosshairMatchMap::Grid),FName(TEXT("/Game/Crosshair/Maps/L_Grid")));
+ return true;
+}
+#include "../CrosshairTrickshot.h"
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairTrickshotLabelTest, "Crosshair.Match.KillLabels", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairTrickshotLabelTest::RunTest(const FString& Parameters)
+{
+ using namespace CrosshairTrickshotRules;
+ FKillContext Plain; Plain.Weapon=TEXT("Assault Rifle"); Plain.bAiming=true; Plain.DistanceMeters=12.f;
+ TestEqual(TEXT("Aimed close kill is a plain kill"),Describe(Plain),FString(TEXT("Kill - Assault Rifle, 12 m")));
+ TestFalse(TEXT("Plain kill gets no trickshot banner"),IsTrickshot(Plain));
+ FKillContext Blind=Plain; Blind.bAiming=false;
+ TestTrue(TEXT("Unaimed rifle kill is labelled hip-fire"),Describe(Blind).StartsWith(TEXT("Hip-fire")));
+ TestFalse(TEXT("Hip-fire alone is not a banner trickshot"),IsTrickshot(Blind));
+ FKillContext Classic; Classic.Weapon=TEXT("Sniper"); Classic.bScopedWeapon=true; Classic.bAirborne=true; Classic.SpinDegrees=400.f; Classic.bHeadshot=true; Classic.DistanceMeters=45.f;
+ TestEqual(TEXT("Classic trickshot label"),Describe(Classic),FString(TEXT("Mid-air 360 No-scope Headshot Long shot - Sniper, 45 m")));
+ TestTrue(TEXT("Classic trickshot gets the banner"),IsTrickshot(Classic));
+ FKillContext Spin=Classic; Spin.SpinDegrees=760.f;
+ TestTrue(TEXT("Two full spins label as 720"),Describe(Spin).Contains(TEXT("720")) && !Describe(Spin).Contains(TEXT("360")));
+ FKillContext Bang=Plain; Bang.bWallbang=true;
+ TestTrue(TEXT("Wallbang with any gun is a trickshot"),IsTrickshot(Bang) && Describe(Bang).StartsWith(TEXT("Wallbang")));
+ FKillContext Axe; Axe.Weapon=TEXT("Tomahawk"); Axe.bLethal=true; Axe.DistanceMeters=16.f;
+ TestTrue(TEXT("Lethals never count as no-scope/hip-fire; 15 m+ tomahawk is a long shot"),Describe(Axe)==TEXT("Long shot - Tomahawk, 16 m") && IsTrickshot(Axe));
+ TestFalse(TEXT("Labels never contain the menu separator"),Describe(Classic).Contains(TEXT(": ")));
+ return true;
+}
+#endif

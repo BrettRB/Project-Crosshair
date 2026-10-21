@@ -13,6 +13,8 @@
 #include "CrosshairWeapon.h"
 #include "CrosshairThrowable.h"
 #include "CrosshairReplaySubsystem.h"
+#include "CrosshairMatch.h"
+#include "CrosshairMatchSession.h"
 #include "Engine/Canvas.h"
 #include "Engine/GameInstance.h"
 #include "InputKeyEventArgs.h"
@@ -74,6 +76,78 @@ void ACrosshairPlayerController::FlushPressedKeys()
 	CalibrationAxis = FVector2D::ZeroVector;
 	Super::FlushPressedKeys();
 }
+// Watching a match replay is a practice-side activity, not a live match.
+bool ACrosshairPlayerController::IsInMatch() const
+{ return ACrosshairMatchState::Get(this)!=nullptr && !GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->IsPlayback(); }
+FString ACrosshairPlayerController::GetRowHelp(int32 Row) const
+{
+ if (bHomeScreen)
+  switch (Row)
+  {
+  case 0: return TEXT("Place targets, save your spot and record every hit.");
+  case 1: return TEXT("Build two-weapon classes with a lethal.");
+  case 2: return TEXT("Choose a practice map or import your own.");
+  case 3: return TEXT("Controls, sensitivity and display.");
+  case 4: return TEXT("Free-for-all or Team Deathmatch against bots.");
+  case 5: return TEXT("Save settings and close Crosshair.");
+  case 6: return TEXT("Host or join a match on your local network.");
+  case 7: return TEXT("Watch saved trickshots and match kills.");
+  default: return FString();
+  }
+ const int32 B=GetBotMatchRow();
+ const auto& O=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().BotMatch;
+ const bool bTeams=O.Mode==ECrosshairMatchMode::TeamDeathmatch;
+ if (Row==B)
+ {
+  switch (O.Difficulty)
+  {
+  case ECrosshairBotDifficulty::Easy: return TEXT("Easy: slow reactions and wide aim error.");
+  case ECrosshairBotDifficulty::Hardened: return TEXT("Hardened: quick reactions and tight aim.");
+  case ECrosshairBotDifficulty::Veteran: return TEXT("Veteran: elite reactions and punishing aim.");
+  default: return TEXT("Regular: balanced reactions and aim.");
+  }
+ }
+ if (Row==B+1) return bTeams ? TEXT("Players on each team, including you. Bots fill the rest.") : TEXT("Bot opponents in the free-for-all.");
+ if (Row==B+2) return bTeams ? TEXT("Team kills needed to win.") : TEXT("Kills needed to win.");
+ if (Row==B+3) return TEXT("The highest score wins when time runs out.");
+ if (Row==B+4) return TEXT("Free-for-all: everyone for themselves. Team Deathmatch: Alpha vs Bravo.");
+ if (Row==B+5) return TEXT("Matches run on the COD maps only: Nuketown and Grid.");
+ if (Row==B+6) return TEXT("Load the map and start. Every kill you land is saved to Replays.");
+ if (Row==B+7) return TEXT("Advertise a match to players on this network. Windows may ask for firewall access.");
+ if (Row==B+8) return TEXT("Search this network for hosted matches.");
+ if (Row>B+8 && Row<B+MatchRowCount) return TEXT("Join this match.");
+ if (Row>=GetFirstReplayRow()) return TEXT("Watch this replay. X / Delete removes it.");
+ if (Row>=GetClassRow() && Row<GetClassRow()+4) return TEXT("Left / Right changes the selection for this class.");
+ if (Row==GetClassRow()+4) return IsInMatch() ? TEXT("Equip this class on your next spawn.") : TEXT("Equip this class and restock.");
+ if (Row==GetSandboxRow()) return TEXT("Allow placing, rotating and removing practice targets.");
+ if (Row==GetHomeRow()) return IsInMatch() ? TEXT("Leave the match and return to the home screen.") : TEXT("Return to the home screen.");
+ if (Row==GetImportRow()) return TEXT("Import an OBJ or map.json package from your computer.");
+ if (Row==GetLethalRow()) return TEXT("Frag grenade or tomahawk.");
+ if ((Row>=SkinRow && Row<=DesertRow) || (Row>=FirstReplayRow && Row<GetLethalRow())) return TEXT("Apply this finish to the current weapon.");
+ switch (Row)
+ {
+ case 0: return TEXT("Close the menu and continue.");
+ case 1: return TEXT("Right-stick horizontal turn speed.");
+ case 2: return TEXT("Right-stick vertical turn speed.");
+ case 3: return TEXT("Ignore small stick movement near the centre.");
+ case 4: return TEXT("Higher values give finer control of small stick movements.");
+ case 5: return TEXT("Mouse look speed.");
+ case 6: return TEXT("Look speed multiplier while aiming down sights.");
+ case 7: return TEXT("Horizontal field of view.");
+ case 8: return TEXT("Off saves a replay of every hit. On keeps practising without replays.");
+ case 9: return TEXT("Store your current position and view as the reset point.");
+ case 10: return TEXT("Return to your saved position and reset the targets.");
+ case 11: return TEXT("Remove the target under your crosshair.");
+ case 12: return TEXT("Remove every placed target.");
+ case WeaponRow: return TEXT("Cycle the equipped weapon.");
+ case MapRow: return TEXT("Choose a practice map, then press Enter / A to load it.");
+ case QuitRow: return TEXT("Save settings and close the game.");
+ case InvertHorizontalRow: return TEXT("Reverse right-stick left/right look.");
+ case InvertVerticalRow: return TEXT("Reverse right-stick up/down look.");
+ case CalibrationRow: return TEXT("Run this if your controller looks the wrong way.");
+ default: return FString();
+ }
+}
 void ACrosshairPlayerController::ShowHome()
 {
  if (!bMenuOpen) ToggleMenu();
@@ -117,6 +191,8 @@ void ACrosshairPlayerController::ToggleMenu()
 		bEnableMouseOverEvents = true;
 	}
 	if (!bMenuOpen) GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->SaveSettings();
+	// Offline matches pause behind the menu; a LAN host keeps the match running for others.
+	if (IsInMatch() && GetNetMode()==NM_Standalone) SetPause(bMenuOpen);
 }
 bool ACrosshairPlayerController::InputKey(const FInputKeyEventArgs& Params)
 {
@@ -131,6 +207,13 @@ bool ACrosshairPlayerController::InputKey(const FInputKeyEventArgs& Params)
 	}
 	if (!bMenuOpen)
 	{
+		if (const auto* Match=ACrosshairMatchState::Get(this))
+		{
+			if (Key==EKeys::Tab || Key==EKeys::Gamepad_Special_Left)
+			{ if (Pressed) bScoreboardHeld=true; else if (Params.Event==IE_Released) bScoreboardHeld=false; return true; }
+			if (Match->bMatchOver && Pressed && (Key==EKeys::Enter || Key==EKeys::Gamepad_FaceButton_Bottom))
+			{ GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->LeaveMatch(); return true; }
+		}
 		if (auto* PracticePawn=Cast<ACrosshairCharacter>(GetPawn()))
 		{
 			if (Pressed && (Key==EKeys::One || Key==EKeys::Two || Key==EKeys::MouseScrollUp || Key==EKeys::MouseScrollDown))
@@ -180,10 +263,10 @@ int32 ACrosshairPlayerController::GetSkinCount() const
 	return Weapon && Weapon->Definition ? Weapon->Definition->Skins.Num() : 0;
 }
 int32 ACrosshairPlayerController::GetLethalRow() const { return FirstReplayRow + FMath::Max(0, GetSkinCount()-2); }
-int32 ACrosshairPlayerController::GetFirstReplayRow() const { return GetBotMatchRow()+5; }
+int32 ACrosshairPlayerController::GetFirstReplayRow() const { return GetBotMatchRow()+MatchRowCount; }
 TArray<FString> ACrosshairPlayerController::GetMenuRows() const
 {
-	if (bHomeScreen) return {TEXT("Play"),TEXT("Weapon classes"),TEXT("Maps / Import"),TEXT("Settings"),TEXT("Bot FFA setup"),TEXT("Quit to Desktop")};
+	if (bHomeScreen) return {TEXT("Trickshot practice"),TEXT("Weapon classes"),TEXT("Maps / Import"),TEXT("Settings"),TEXT("Offline match vs bots"),TEXT("Quit to Desktop"),TEXT("LAN match"),TEXT("Replays")};
  auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
  const FCrosshairSettings& S = Replay->GetSettings();
 	TArray<FString> Rows = {
@@ -230,13 +313,24 @@ TArray<FString> ACrosshairPlayerController::GetMenuRows() const
  Rows.Add(TEXT("Lethal: ")+FString(C.Lethal==ECrosshairLethalType::Frag ? TEXT("Frag grenade") : TEXT("Tomahawk")));
  Rows.Add(TEXT("Equip this class"));
  Rows.Add(FString::Printf(TEXT("Sandbox target editing: %s"),S.bSandboxTargets ? TEXT("On") : TEXT("Off")));
- Rows.Add(TEXT("Home")); Rows.Add(TEXT("Import map from local file"));
- Rows.Add(TEXT("Bot difficulty: ")+UCrosshairBotMatch::DifficultyName(S.BotMatch.Difficulty));
- Rows.Add(FString::Printf(TEXT("Bot count: %d"),S.BotMatch.BotCount));
- Rows.Add(FString::Printf(TEXT("Score limit: %d"),S.BotMatch.ScoreLimit));
- Rows.Add(FString::Printf(TEXT("Time limit: %d minutes"),S.BotMatch.TimeLimitMinutes));
- Rows.Add(TEXT("Bot combat: In development"));
- for (const auto& Entry : Replay->GetReplays()) Rows.Add(TEXT("Play: ") + Entry.RecordedAt);
+ Rows.Add(IsInMatch() ? TEXT("Leave match") : TEXT("Home")); Rows.Add(TEXT("Import map from local file"));
+ const auto& O=S.BotMatch; const bool bTeams=O.Mode==ECrosshairMatchMode::TeamDeathmatch;
+ const auto* Session=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>();
+ Rows.Add(TEXT("Bot difficulty: ")+UCrosshairBotMatch::DifficultyName(O.Difficulty));
+ Rows.Add(bTeams ? FString::Printf(TEXT("Team size: %dv%d"),O.TeamSize,O.TeamSize) : FString::Printf(TEXT("Bot count: %d"),O.BotCount));
+ Rows.Add(FString::Printf(TEXT("Score limit: %d"),bTeams ? O.TeamScoreLimit : O.ScoreLimit));
+ Rows.Add(FString::Printf(TEXT("Time limit: %d minutes"),O.TimeLimitMinutes));
+ Rows.Add(TEXT("Mode: ")+UCrosshairBotMatch::ModeName(O.Mode));
+ Rows.Add(TEXT("Match map: ")+UCrosshairBotMatch::MapName(O.Map));
+ Rows.Add(IsInMatch() ? TEXT("Restart with these settings") : TEXT("Start match"));
+ Rows.Add(Session->HasLanSession() ? TEXT("Hosting LAN match") : TEXT("Host LAN match (same network)"));
+ Rows.Add(Session->bSearching ? TEXT("Searching this network...") : TEXT("Find LAN matches"));
+ for (int32 i=0;i<UCrosshairMatchSession::MaxLanResults;++i) Rows.Add(Session->LanResults.IsValidIndex(i) ? TEXT("Join: ")+Session->LanResults[i] : FString(TEXT("No LAN match")));
+ for (const auto& Entry : Replay->GetReplays())
+ {
+  const FString MapLabel=Entry.Map.Contains(TEXT("L_Nuketown")) ? TEXT("Nuketown") : Entry.Map.Contains(TEXT("L_Grid")) ? TEXT("Grid") : Entry.Map.Contains(TEXT("L_UserMap")) ? TEXT("Imported map") : TEXT("Testing Map");
+  Rows.Add(FString::Printf(TEXT("%s  |  %s  |  %s"),Entry.Label.IsEmpty() ? TEXT("Practice hit") : *Entry.Label,*MapLabel,*Entry.RecordedAt));
+ }
 	return Rows;
 }
 void ACrosshairPlayerController::CalibrateAxis(FKey Key, float Value)
@@ -268,7 +362,20 @@ void ACrosshairPlayerController::CalibrateAxis(FKey Key, float Value)
 }
 TArray<int32> ACrosshairPlayerController::GetVisibleMenuRows() const
 {
-	if (bHomeScreen) return {0,1,2,3,4,5};
+	// Home order: play modes first, then loadout/options. Row indices stay stable for input and tests.
+	if (bHomeScreen) return {0,4,6,1,2,7,3,5};
+	const int32 B=GetBotMatchRow();
+	if (MenuTab==8) return {B+4,B+5,B+0,B+1,B+2,B+3,B+6};
+	if (MenuTab==9)
+	{
+		TArray<int32> Rows={B+7,B+8};
+		const auto* Session=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>();
+		for (int32 i=0;i<Session->LanResults.Num() && i<UCrosshairMatchSession::MaxLanResults;++i) Rows.Add(B+9+i);
+		return Rows;
+	}
+	// Practice tools (targets, replays, map travel, save/reset) are unavailable in a match.
+	if (IsTabLockedInMatch(MenuTab)) return {0,GetHomeRow()};
+	if (IsInMatch() && MenuTab==0) return {0,GetClassRow(),GetHomeRow(),QuitRow};
  switch (MenuTab)
  {
 	case 1: return {1, 2, InvertHorizontalRow, InvertVerticalRow, CalibrationRow, 3, 4, 5, 6, GetSandboxRow()};
@@ -276,7 +383,6 @@ TArray<int32> ACrosshairPlayerController::GetVisibleMenuRows() const
 	case 3: return {GetSandboxRow(),11,12};
  case 6: return {GetClassRow(),GetClassRow()+1,GetClassRow()+2,GetClassRow()+3,GetClassRow()+4};
  case 7: return {MapRow,GetImportRow(),GetHomeRow()};
- case 8: return {GetBotMatchRow(),GetBotMatchRow()+1,GetBotMatchRow()+2,GetBotMatchRow()+3,GetBotMatchRow()+4};
 	case 5:
 	{
 		TArray<int32> Rows = {WeaponRow, SkinRow, WoodlandRow, DesertRow};
@@ -317,11 +423,17 @@ void ACrosshairPlayerController::AdjustSelection(int32 Direction)
  if (bHomeScreen) return;
  auto* ClassReplay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>(); auto& Settings=ClassReplay->GetSettings();
  const int32 BotOffset=MenuSelection-GetBotMatchRow();
- if (BotOffset>=0 && BotOffset<5)
+ if (BotOffset>=0 && BotOffset<MatchRowCount)
  {
-  if (ClassReplay->IsPlayback() || ClassReplay->IsFinishing()) return;
-  if (BotOffset==0) GetGameInstance()->GetSubsystem<UCrosshairBotMatch>()->SetDifficulty(ECrosshairBotDifficulty((int32(Settings.BotMatch.Difficulty)+Direction+4)%4));
-  else { if (BotOffset==1) Settings.BotMatch.BotCount+=Direction; if (BotOffset==2) Settings.BotMatch.ScoreLimit+=Direction*5; if (BotOffset==3) Settings.BotMatch.TimeLimitMinutes+=Direction; ClassReplay->SaveSettings(); }
+  if (ClassReplay->IsPlayback() || ClassReplay->IsFinishing() || BotOffset>5) return;
+  auto& O=Settings.BotMatch; const bool bTeams=O.Mode==ECrosshairMatchMode::TeamDeathmatch;
+  if (BotOffset==0) { GetGameInstance()->GetSubsystem<UCrosshairBotMatch>()->SetDifficulty(ECrosshairBotDifficulty((int32(O.Difficulty)+Direction+4)%4)); return; }
+  if (BotOffset==1) (bTeams ? O.TeamSize : O.BotCount)+=Direction;
+  if (BotOffset==2) (bTeams ? O.TeamScoreLimit : O.ScoreLimit)+=Direction*5;
+  if (BotOffset==3) O.TimeLimitMinutes+=Direction;
+  if (BotOffset==4) O.Mode=bTeams ? ECrosshairMatchMode::FreeForAll : ECrosshairMatchMode::TeamDeathmatch;
+  if (BotOffset==5) O.Map=O.Map==ECrosshairMatchMap::Grid ? ECrosshairMatchMap::Nuketown : ECrosshairMatchMap::Grid;
+  UCrosshairBotMatch::Validate(O); ClassReplay->SaveSettings();
   return;
  }
  const int32 Offset=MenuSelection-GetClassRow();
@@ -377,18 +489,41 @@ void ACrosshairPlayerController::ActivateSelection()
 	auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
 	const int32 Selected = MenuSelection;
  if (bHomeScreen)
- { if (Selected==0) StartPlaying(); else if (Selected==1) SetMenuTab(6); else if (Selected==2) SetMenuTab(7); else if (Selected==3) SetMenuTab(1); else if (Selected==4) SetMenuTab(8); else { bFromHome=false; bHomeScreen=false; MenuSelection=QuitRow; ActivateSelection(); } return; }
- if (Selected==GetHomeRow()) { if (!Replay->IsFinishing() && !Replay->IsPlayback()) ShowHome(); return; }
+ {
+  if (Selected==0) StartPlaying(); else if (Selected==1) SetMenuTab(6); else if (Selected==2) SetMenuTab(7); else if (Selected==3) SetMenuTab(1);
+  else if (Selected==4) SetMenuTab(8); else if (Selected==6) SetMenuTab(9); else if (Selected==7) SetMenuTab(4);
+  else { bFromHome=false; bHomeScreen=false; MenuSelection=QuitRow; ActivateSelection(); }
+  return;
+ }
+ if (Selected==GetHomeRow())
+ {
+  if (IsInMatch()) { FlushPressedKeys(); SetPause(false); GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->LeaveMatch(); }
+  else if (!Replay->IsFinishing() && !Replay->IsPlayback()) ShowHome();
+  return;
+ }
  if (Selected==GetImportRow()) { GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>()->ShowImportDialog(this); return; }
  if (Selected==GetSandboxRow()) { AdjustSelection(1); return; }
- if (Selected>=GetBotMatchRow() && Selected<GetFirstReplayRow()) { AdjustSelection(1); return; }
+ if (Selected>=GetBotMatchRow() && Selected<GetFirstReplayRow())
+ {
+  const int32 Offset=Selected-GetBotMatchRow();
+  auto* Session=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>();
+  if (Offset<6) { AdjustSelection(1); return; }
+  FlushPressedKeys();
+  if (Offset==6 || Offset==7 || Offset>=9) SetPause(false);
+  if (Offset==6) Session->StartOfflineMatch();
+  else if (Offset==7) Session->HostLanMatch();
+  else if (Offset==8) Session->FindLanMatches();
+  else Session->JoinLanMatch(Offset-9);
+  return;
+ }
  const int32 ClassOffset=Selected-GetClassRow();
  if (ClassOffset>=0 && ClassOffset<5)
  {
   if (Replay->IsPlayback() || Replay->IsFinishing()) return;
   if (ClassOffset<4) { if (MenuTab!=6) SetMenuTab(6); else AdjustSelection(1); return; }
   Replay->GetSettings().ActiveClass=EditingClass;
-  if (auto* P=Cast<ACrosshairCharacter>(GetPawn())) P->Inventory->ApplyClass();
+  // As in COD, a class chosen mid-match takes effect on the next spawn.
+  if (auto* P=Cast<ACrosshairCharacter>(GetPawn())) { if (IsInMatch()) P->Notify(TEXT("Class applies on your next spawn.")); else P->Inventory->ApplyClass(); }
   Replay->SaveSettings(); return;
  }
 
@@ -507,7 +642,10 @@ void ACrosshairHUD::DrawHUD()
 			DrawText(Feedback,HitColor,X-TW*.5f,Y+30*HUDScale,GEngine->GetMediumFont(),HUDScale);
 		}
 	}
-	if (!PC || !PC->bMenuOpen)
+	// Match replays use the practice replay HUD, not the live match overlay.
+	ACrosshairMatchState* Match=Replay->IsPlayback() ? nullptr : ACrosshairMatchState::Get(this);
+	if (Match) DrawMatch(Match,HUDScale);
+	if (!Match && (!PC || !PC->bMenuOpen))
 	{
 		Panel(24,24,310,74);
 		Label(TEXT("CROSSHAIR"),White,40,34,1.15f);
@@ -539,7 +677,14 @@ void ACrosshairHUD::DrawHUD()
 		}
 		if (GetWorld()->GetTimeSeconds() < PracticePawn->NoticeUntil) Label(PracticePawn->Notice, Accent, 40, 172,.8f);
 	}
-	if (!PC || !PC->bMenuOpen)
+	if (Match && (!PC || !PC->bMenuOpen))
+	{
+		const float Bottom=Canvas->ClipY/HUDScale-80;
+		Panel(24,Bottom,470,56);
+		Label(TEXT("Tab / Back scoreboard   /   G / RB lethal"),White,40,Bottom+9,.7f);
+		Label(TEXT("Space / A jump + mantle   /   Esc / Start menu"),Muted,40,Bottom+31,.65f);
+	}
+	else if (!PC || !PC->bMenuOpen)
 	{
 		const float Bottom=Canvas->ClipY/HUDScale-102;
 		Panel(24,Bottom,470,78);
@@ -548,98 +693,322 @@ void ACrosshairHUD::DrawHUD()
 		Label(TEXT("Space / A jump + mantle   /   Esc / Start menu"),Muted,40,Bottom+53,.65f);
 	}
 
-	if (PC && PC->bMenuOpen)
+	if (PC && PC->bMenuOpen) DrawMenu(PC,Match);
+}
+void ACrosshairHUD::DrawMatch(ACrosshairMatchState* Match,float Scale)
+{
+	auto* PC=Cast<ACrosshairPlayerController>(PlayerOwner);
+	if (PC && PC->bMenuOpen) return;
+	const FLinearColor White(.92f,.95f,.98f), Accent(.32f,.85f,.78f), Muted(.58f,.66f,.72f), Friendly(.35f,.65f,1.f), Enemy(1.f,.38f,.32f), Gold(1.f,.78f,.3f);
+	UFont* Font=GEngine->GetMediumFont();
+	auto Label=[&](const FString& Value,FLinearColor Color,float LX,float LY,float Size=1.f)
+	{ DrawText(Value,Color,LX*Scale,LY*Scale,Font,Size*1.4f*Scale); };
+	auto Centered=[&](const FString& Value,FLinearColor Color,float LY,float Size=1.f)
+	{ float W,H; GetTextSize(Value,W,H,Font,Size*1.4f*Scale); DrawText(Value,Color,(Canvas->ClipX-W)*.5f,LY*Scale,Font,Size*1.4f*Scale); };
+	auto Panel=[&](float PX,float PY,float W,float H,float Alpha=.86f)
+	{ DrawRect(FLinearColor(.018f,.026f,.036f,Alpha),PX*Scale,PY*Scale,W*Scale,H*Scale); };
+	const auto* Me=PC ? PC->GetPlayerState<ACrosshairMatchPlayerState>() : nullptr;
+	const uint8 MyTeam=Me ? Me->Team : CrosshairMatchRules::NoTeam;
+	const auto* MyPawn=Cast<ACrosshairCharacter>(PlayerOwner->GetPawn());
+	const float Width=Canvas->ClipX/Scale;
+
+	// Damage: red screen edges that fade as health regenerates.
+	if (MyPawn && !MyPawn->Health->bDead && MyPawn->Health->Health<MyPawn->Health->MaxHealth)
 	{
-		const float Scale = FMath::Min(Canvas->ClipX / 1280.f, Canvas->ClipY / 720.f);
-		const float Left = (Canvas->ClipX - 1000.f * Scale) * .5f;
-		const float Top = (Canvas->ClipY - 560.f * Scale) * .5f;
-		const FLinearColor MenuPanel(.022f,.03f,.045f,.99f);
-		auto Rect = [&](FLinearColor Color, float RX, float RY, float W, float H)
-		{ DrawRect(Color, Left + RX * Scale, Top + RY * Scale, W * Scale, H * Scale); };
-		auto Text = [&](const FString& Label, FLinearColor Color, float TX, float TY, float Size = 1.f)
-		{ DrawText(Label, Color, Left + TX * Scale, Top + TY * Scale, GEngine->GetMediumFont(), Size * 1.1f * Scale); };
-		auto HitBox = [&](FName Name, float HX, float HY, float W, float H)
-		{ AddHitBox(FVector2D(Left + HX * Scale, Top + HY * Scale), FVector2D(W * Scale, H * Scale), Name, true); };
-		DrawRect(FLinearColor(0, 0, 0, .72f), 0, 0, Canvas->ClipX, Canvas->ClipY);
-		Rect(MenuPanel, 0, 0, 1000, 560);
-		Rect(Accent, 0, 0, 1000, 3);
-		Text(TEXT("CROSSHAIR"), White, 28, 18, 1.7f);
-		Text(Replay->IsPlayback() ? TEXT("REPLAY SESSION") : TEXT("PRACTICE SESSION"), Muted, 28, 52,.85f);
-		Text(PC->bHomeScreen ? TEXT("HOME") : PC->bFromHome ? TEXT("Esc / B to home") : TEXT("Esc / Start to resume"), Muted, 755, 34);
-		Rect(FLinearColor(.07f, .09f, .12f), 0, 88, 1000, 1);
-		if (PC->bHomeScreen)
-        {
-         Text(TEXT("WELCOME TO CROSSHAIR"),White,230,115,1.6f);
-         Text(TEXT("Build your class. Pick a map. Land your next trickshot."),Muted,230,156,.95f);
-         auto HomeRows=PC->GetMenuRows();
-         for (int32 i=0;i<HomeRows.Num();++i) { const float HomeY=192+i*45; Rect(PC->MenuSelection==i ? FLinearColor(.085f,.16f,.21f) : FLinearColor(.04f,.055f,.075f),230,HomeY,540,40); Text(HomeRows[i],PC->MenuSelection==i ? Accent : White,250,HomeY+9,1.1f); HitBox(FName(*FString::Printf(TEXT("Row_%d"),i)),230,HomeY,540,40); }
-         Text(TEXT("Arrows / D-pad select   |   Enter / A play or open"),Muted,230,490,.85f); return;
-        }
- const TCHAR* Tabs[] = {TEXT("Practice"), TEXT("Controls"), TEXT("Display"), TEXT("Targets"), TEXT("Replays"), TEXT("Camos"),TEXT("Classes"),TEXT("Maps"),TEXT("Bot FFA")};
-		for (int32 Tab = 0; Tab < ACrosshairPlayerController::MenuTabCount; ++Tab)
+		const float Alpha=(1.f-MyPawn->Health->Health/MyPawn->Health->MaxHealth)*.55f;
+		const float Edge=90.f*Scale;
+		for (int32 Ring=0;Ring<3;++Ring)
 		{
-			const float TY = 104 + Tab * 43;
-			const bool Selected = PC->MenuTab == Tab;
-			if (Selected) { Rect(FLinearColor(.07f, .16f, .21f), 16, TY, 178, 40); Rect(Accent, 16, TY, 3, 40); }
-			Text(Tabs[Tab], Selected ? Accent : Muted, 34, TY + 12, 1.15f);
-			HitBox(FName(*FString::Printf(TEXT("Tab_%d"), Tab)), 16, TY, 178, 40);
+			const float E=Edge*(1.f-Ring*.3f); const FLinearColor Red(.55f,0,0,Alpha*(.35f+Ring*.2f));
+			DrawRect(Red,0,0,Canvas->ClipX,E); DrawRect(Red,0,Canvas->ClipY-E,Canvas->ClipX,E);
+			DrawRect(Red,0,E,E,Canvas->ClipY-2*E); DrawRect(Red,Canvas->ClipX-E,E,E,Canvas->ClipY-2*E);
 		}
-		const TArray<FString> Rows = PC->GetMenuRows();
-		const TArray<int32> Visible = PC->GetVisibleMenuRows();
-		int32 Index = Visible.IndexOfByKey(PC->MenuSelection);
-		if (Index == INDEX_NONE) { PC->MenuSelection = Visible[0]; Index = 0; }
-		const int32 PageSize = PC->MenuTab == 1 ? 9 : 7;
-		const float RowPitch = PC->MenuTab == 1 ? 34.f : 44.f;
-		const float RowHeight = RowPitch - 4.f;
-		const int32 First = FMath::Max(0, Index - PageSize + 1);
-		Text(Tabs[PC->MenuTab], White, 224, 102, 1.4f);
-		const TCHAR* Descriptions[]={TEXT("Set up your next attempt"),TEXT("Tune your mouse and controller"),TEXT("Adjust your field of view"),TEXT("Manage your practice targets"),TEXT("Watch your saved attempts"),TEXT("Choose a finish for your weapon"),TEXT("Build and equip your weapon class"),TEXT("Play and import local maps"),TEXT("Prepare a free-for-all bot match")};
-		Text(Descriptions[PC->MenuTab],Muted,450,109,.85f);
-		if (PC->MenuTab == 4 && Visible.Num() == 1) Text(TEXT("No saved replays yet. Land a shot to record an attempt."), Muted, 224, 176);
-		for (int32 i = First; i < FMath::Min(Visible.Num(), First + PageSize); ++i)
+	}
+
+	// Score and clock.
+	Panel(24,24,360,92);
+	const int32 Seconds=FMath::CeilToInt(Match->GetRemainingSeconds());
+	Label(FString::Printf(TEXT("%s  /  %s"),Match->IsTeamMode() ? TEXT("TEAM DEATHMATCH") : TEXT("FREE-FOR-ALL"),*Match->MapName.ToUpper()),Muted,40,32,.6f);
+	Label(FString::Printf(TEXT("%d:%02d"),Seconds/60,Seconds%60),White,312,32,.75f);
+	if (Match->IsTeamMode())
+	{
+		const uint8 Us=MyTeam==CrosshairMatchRules::Bravo ? CrosshairMatchRules::Bravo : CrosshairMatchRules::Alpha;
+		const uint8 Them=Us==CrosshairMatchRules::Alpha ? CrosshairMatchRules::Bravo : CrosshairMatchRules::Alpha;
+		Label(FString::Printf(TEXT("%s  %d"),*ACrosshairMatchState::TeamName(Us).ToUpper(),Match->GetTeamScore(Us)),Friendly,40,56,1.f);
+		Label(FString::Printf(TEXT("%s  %d"),*ACrosshairMatchState::TeamName(Them).ToUpper(),Match->GetTeamScore(Them)),Enemy,210,56,1.f);
+	}
+	else
+	{
+		const auto Standings=Match->GetStandings();
+		Label(FString::Printf(TEXT("YOU  %d"),Me ? Me->Kills : 0),Accent,40,56,1.f);
+		Label(FString::Printf(TEXT("LEADER  %d"),Standings.IsEmpty() ? 0 : Standings[0]->Kills),White,210,56,1.f);
+	}
+	Label(FString::Printf(TEXT("First to %d"),Match->ScoreLimit),Muted,40,92,.55f);
+
+	// Kill feed, newest first, top right.
+	const float Now=Match->GetServerWorldTimeSeconds();
+	float FeedY=24.f;
+	for (int32 i=Match->KillFeed.Num()-1;i>=0;--i)
+	{
+		const FCrosshairKillEntry& Entry=Match->KillFeed[i];
+		if (Now-Entry.ServerTime>6.f) continue;
+		const FString Line=Entry.Killer.IsEmpty() ? FString::Printf(TEXT("%s  [%s]"),*Entry.Victim,*Entry.Weapon)
+			: FString::Printf(TEXT("%s  [%s%s]  %s"),*Entry.Killer,*Entry.Weapon,Entry.bHeadshot ? TEXT(" / HEADSHOT") : TEXT(""),*Entry.Victim);
+		const bool Mine=Me && (Entry.Killer==Me->GetPlayerName() || Entry.Victim==Me->GetPlayerName());
+		const FLinearColor Color=Match->IsTeamMode() ? (Entry.KillerTeam==MyTeam ? Friendly : Enemy) : (Mine ? Accent : White);
+		float W,H; GetTextSize(Line,W,H,Font,.65f*1.4f*Scale);
+		Panel(Width-W/Scale-48,FeedY,W/Scale+24,30,.7f);
+		Label(Line,Color,Width-W/Scale-36,FeedY+5,.65f);
+		FeedY+=34.f;
+	}
+
+	if (MyPawn && GetWorld()->GetTimeSeconds()<MyPawn->TrickshotUntil)
+	{
+		Centered(TEXT("TRICKSHOT"),Gold,150,1.6f);
+		Centered(MyPawn->TrickshotBanner,White,198,.8f);
+	}
+	// Teammate names (TDM): COD-style friendly identification.
+	if (Match->IsTeamMode())
+		for (TActorIterator<ACrosshairCharacter> It(GetWorld());It;++It)
 		{
-			const int32 Row = Visible[i];
-			const float RY = 146 + (i - First) * RowPitch;
-			const bool Selected = Row == PC->MenuSelection;
-			Rect(Selected ? FLinearColor(.085f, .16f, .21f) : FLinearColor(.04f, .055f, .075f), 216, RY, 756, RowHeight);
-			FString RowLabel=Rows[Row],Value;
-			if (Rows[Row].Split(TEXT(": "),&RowLabel,&Value) && Row!=PC->CalibrationRow)
-			{
-				if (PC->MenuTab==5 && Row!=PC->WeaponRow) { RowLabel=Value; Value=TEXT(""); }
-				Text(RowLabel,Selected ? Accent : White,232,RY+10,1.f);
-				Text(Value,White,620,RY+10,.9f);
-			}
-			else Text(Rows[Row],Selected ? Accent : White,232,RY+10,1.f);
-			HitBox(FName(*FString::Printf(TEXT("Row_%d"), Row)), 216, RY, 650, RowHeight);
-			if ((Row >= 1 && Row <= 8) || Row == PC->WeaponRow || Row == PC->GetLethalRow() || (Row>=PC->GetClassRow() && Row<PC->GetClassRow()+4) || Row==PC->GetSandboxRow() || (Row>=PC->GetBotMatchRow() && Row<PC->GetBotMatchRow()+4) || Row == PC->MapRow || Row == PC->InvertHorizontalRow || Row == PC->InvertVerticalRow)
-			{
-				Text(TEXT("<"), Muted, 895, RY + 10, 1.2f);
-				Text(TEXT(">"), Muted, 941, RY + 10, 1.2f);
-				HitBox(FName(*FString::Printf(TEXT("Less_%d"), Row)), 876, RY, 42, RowHeight);
-				HitBox(FName(*FString::Printf(TEXT("More_%d"), Row)), 924, RY, 48, RowHeight);
+			const auto* Other=It->GetPlayerState<ACrosshairMatchPlayerState>();
+			if (*It==MyPawn || It->Health->bDead || !Other || Other->Team!=MyTeam) continue;
+			const FVector Point=Project(It->GetActorLocation()+FVector(0,0,115));
+			if (Point.Z<=0) continue;
+			float W,H; GetTextSize(Other->GetPlayerName(),W,H,Font,.9f*Scale);
+			DrawText(Other->GetPlayerName(),Friendly,Point.X-W*.5f,Point.Y-H,Font,.9f*Scale);
+		}
+
+	if (MyPawn && MyPawn->Health->bDead && !Match->bMatchOver)
+	{
+		DrawRect(FLinearColor(0,0,0,.35f),0,0,Canvas->ClipX,Canvas->ClipY);
+		Centered(MyPawn->Health->KilledBy.IsEmpty() || MyPawn->Health->KilledBy==TEXT("Fell") ? FString(TEXT("YOU DIED")) : TEXT("KILLED BY ")+MyPawn->Health->KilledBy.ToUpper(),Enemy,280,1.4f);
+		Centered(TEXT("Respawning..."),Muted,330,.8f);
+	}
+
+	// Scoreboard while held, and the results screen when the match ends.
+	if ((PC && PC->bScoreboardHeld) || Match->bMatchOver)
+	{
+		const auto Standings=Match->GetStandings();
+		const int32 Rows=FMath::Min(Standings.Num(),12);
+		const float Left=(Width-640.f)*.5f, Top=Match->bMatchOver ? 150.f : 110.f;
+		if (Match->bMatchOver)
+		{
+			Panel(Left,Top-96,640,84,.94f);
+			Centered(TEXT("MATCH OVER  -  ")+Match->Result.ToUpper(),Gold,Top-86,1.3f);
+			Centered(TEXT("Enter / A: leave match"),Muted,Top-46,.75f);
+		}
+		Panel(Left,Top,640,48+Rows*30.f,.94f);
+		Label(TEXT("PLAYER"),Muted,Left+20,Top+12,.65f);
+		Label(TEXT("KILLS"),Muted,Left+430,Top+12,.65f);
+		Label(TEXT("DEATHS"),Muted,Left+530,Top+12,.65f);
+		for (int32 i=0;i<Rows;++i)
+		{
+			const auto* Player=Standings[i];
+			const float RY=Top+44+i*30.f;
+			const FLinearColor Color=Player==Me ? Accent : Match->IsTeamMode() ? (Player->Team==MyTeam ? Friendly : Enemy) : White;
+			const FString Name=Match->IsTeamMode() ? FString::Printf(TEXT("[%s] %s"),*ACrosshairMatchState::TeamName(Player->Team),*Player->GetPlayerName()) : Player->GetPlayerName();
+			Label(Name,Color,Left+20,RY,.7f);
+			Label(FString::FromInt(Player->Kills),Color,Left+440,RY,.7f);
+			Label(FString::FromInt(Player->Deaths),Color,Left+545,RY,.7f);
+		}
 	}
 }
-		if (PC->MenuTab == 0) Text(TEXT("Save your spot on a balcony or platform, then reset for each attempt."), Muted, 224, 468);
-		if (PC->MenuTab == 1) Text(TEXT("Left / Right adjusts settings. Aim sensitivity applies while aiming."), Muted, 224, 468);
-		if (PC->MenuTab == 5) Text(TEXT("Enter / A or click a camo to equip it. Saved separately for each weapon."), Muted, 224, 468);
-		if (PC->MenuTab == 3) Text(TEXT("Enable sandbox editing, then P / D-pad Up places targets."), Muted, 224, 468);
-		if (PC->MenuTab==6) Text(TEXT("Choose two weapons and a lethal. Equip applies the class and restocks."),Muted,224,468,.85f);
-        if (PC->MenuTab==7)
-        {
-         Text(TEXT("Call of Duty Black Ops 1 Grid Inspired Map"),White,224,330,.95f);
-         Text(TEXT("by PIPO (pipo_) | CC BY 4.0"),Muted,224,360,.85f);
-         Text(TEXT("Adapted for Crosshair: Unreal import, collision, lighting and player spawn."),Muted,224,388,.75f);
-         Text(TEXT("View source / creator on Sketchfab"),Accent,224,421,.85f);
-         HitBox(TEXT("GridSource"),216,414,410,32);
-         Text(TEXT("CC BY 4.0 license"),Accent,650,421,.85f);
-         HitBox(TEXT("GridLicense"),642,414,310,32);
-         Text(TEXT("Local OBJ geometry / map.json packages. Import to add a playable map."),Muted,224,468,.85f);
-        }
-        if (PC->MenuTab==8) Text(TEXT("Setup saves now. Bot combat, spawning and scoring are the next stage."),Muted,224,468,.8f);
-        if (PC->MenuTab == 4) Text(TEXT("X / Delete removes the selected replay."), Muted, 224, 468);
-		Rect(FLinearColor(.07f, .09f, .12f), 20, 504, 960, 1);
-		Text(TEXT("Q / E, Tab or LB / RB: tabs    |    Arrows / D-pad: select    |    Enter / A: activate"), Muted, 28, 526);
+void ACrosshairHUD::DrawMenu(ACrosshairPlayerController* PC,ACrosshairMatchState* Match)
+{
+	auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+	const auto* Session=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>();
+	const FCrosshairSettings& Settings=Replay->GetSettings();
+	UFont* Font=GEngine->GetMediumFont();
+	// Layout is authored on a 1120x640 canvas and scaled to the viewport.
+	const float S=FMath::Min(Canvas->ClipX/1280.f,Canvas->ClipY/720.f);
+	const float W=1120.f,H=640.f;
+	const float Left=(Canvas->ClipX-W*S)*.5f,Top=(Canvas->ClipY-H*S)*.5f;
+	const FLinearColor Ink(.93f,.95f,.97f),Muted(.50f,.57f,.64f),Dim(.26f,.30f,.35f);
+	const FLinearColor Amber(.98f,.58f,.13f),AmberDeep(.42f,.22f,.04f),OnAmber(.03f,.025f,.02f);
+	const FLinearColor Base(.005f,.007f,.010f,.97f),PanelColor(.010f,.013f,.018f,1),Raised(.019f,.024f,.031f,1),Hover(.060f,.040f,.016f,1),Line(.045f,.054f,.066f,1);
+	auto Rect=[&](FLinearColor C,float X,float Y,float RW,float RH){ DrawRect(C,Left+X*S,Top+Y*S,RW*S,RH*S); };
+	auto Frame=[&](FLinearColor C,float X,float Y,float RW,float RH){ Rect(C,X,Y,RW,1); Rect(C,X,Y+RH-1,RW,1); Rect(C,X,Y,1,RH); Rect(C,X+RW-1,Y,1,RH); };
+	auto Measure=[&](const FString& T,float Size){ float TW,TH; GetTextSize(T,TW,TH,Font,Size*1.1f*S); return TW/S; };
+	auto Text=[&](const FString& T,FLinearColor C,float X,float Y,float Size=1.f){ DrawText(T,C,Left+X*S,Top+Y*S,Font,Size*1.1f*S); };
+	auto TextRight=[&](const FString& T,FLinearColor C,float RX,float Y,float Size=1.f){ Text(T,C,RX-Measure(T,Size),Y,Size); };
+	auto TextCenter=[&](const FString& T,FLinearColor C,float CX,float Y,float Size=1.f){ Text(T,C,CX-Measure(T,Size)*.5f,Y,Size); };
+	auto HitBox=[&](const FString& Name,float X,float Y,float RW,float RH){ AddHitBox(FVector2D(Left+X*S,Top+Y*S),FVector2D(RW*S,RH*S),FName(*Name),true); };
+	auto Chip=[&](const FString& Key,const FString& Action,float X,float Y)
+	{
+		const float KeyWidth=Measure(Key,.7f)+18;
+		Rect(Raised,X,Y,KeyWidth,24); Frame(Line,X,Y,KeyWidth,24);
+		Text(Key,Ink,X+9,Y+4,.7f); Text(Action,Muted,X+KeyWidth+8,Y+4,.7f);
+		return X+KeyWidth+8+Measure(Action,.7f)+22;
+	};
+	const TArray<FString> Rows=PC->GetMenuRows();
+	const int32 B=PC->GetBotMatchRow();
+	const auto& Options=Settings.BotMatch;
+	const bool bTeams=Options.Mode==ECrosshairMatchMode::TeamDeathmatch;
+
+	DrawRect(FLinearColor(0,0,0,PC->bHomeScreen ? .9f : .74f),0,0,Canvas->ClipX,Canvas->ClipY);
+	Rect(Base,0,0,W,H); Frame(Line,0,0,W,H); Rect(Amber,0,0,W,3);
+	// Header: wordmark, session and where you are.
+	Rect(Amber,32,28,5,32);
+	Text(TEXT("CROSSHAIR"),Ink,48,22,1.7f);
+	const FString SessionName=Match ? FString::Printf(TEXT("%s  /  %s"),Match->IsTeamMode() ? TEXT("TEAM DEATHMATCH") : TEXT("FREE-FOR-ALL"),*Match->MapName.ToUpper())
+		: Replay->IsPlayback() ? FString(TEXT("REPLAY")) : FString(TEXT("TRICKSHOT PRACTICE"));
+	Text(SessionName,Muted,50,60,.72f);
+	const TCHAR* Tabs[]={TEXT("Practice"),TEXT("Controls"),TEXT("Display"),TEXT("Targets"),TEXT("Replays"),TEXT("Camos"),TEXT("Classes"),TEXT("Maps"),TEXT("Offline Match"),TEXT("LAN")};
+	TextRight(PC->bHomeScreen ? FString(TEXT("MAIN MENU")) : FString(Tabs[PC->MenuTab]).ToUpper(),Ink,W-32,30,.95f);
+	TextRight(PC->bHomeScreen ? FString(TEXT("Choose how you want to play")) : PC->bFromHome ? FString(TEXT("Esc / B returns to the main menu")) : FString(TEXT("Esc / Start resumes")),Muted,W-32,58,.68f);
+	Rect(Line,0,92,W,1);
+	Rect(Line,0,H-56,W,1);
+
+	if (PC->bHomeScreen)
+	{
+		Text(TEXT("PLAY"),Amber,32,110,.7f);
+		const int32 Cards[]={0,4,6};
+		for (int32 i=0;i<3;++i)
+		{
+			const int32 Row=Cards[i]; const float Y=134+i*104; const bool Sel=PC->MenuSelection==Row;
+			Rect(Sel ? Hover : Raised,32,Y,604,92); Frame(Sel ? AmberDeep : Line,32,Y,604,92);
+			if (Sel) Rect(Amber,32,Y,4,92);
+			Text(Rows[Row].ToUpper(),Sel ? Amber : Ink,58,Y+17,1.3f);
+			Text(PC->GetRowHelp(Row),Muted,58,Y+55,.78f);
+			TextRight(Sel ? TEXT("ENTER  >") : TEXT(">"),Sel ? Amber : Dim,612,Y+33,.95f);
+			HitBox(FString::Printf(TEXT("Row_%d"),Row),32,Y,604,92);
+		}
+		Text(TEXT("OPTIONS"),Amber,664,110,.7f);
+		const int32 Tiles[]={1,2,7,3,5};
+		for (int32 i=0;i<5;++i)
+		{
+			const int32 Row=Tiles[i]; const float Y=134+i*61; const bool Sel=PC->MenuSelection==Row;
+			Rect(Sel ? Hover : Raised,664,Y,424,53); Frame(Sel ? AmberDeep : Line,664,Y,424,53);
+			if (Sel) Rect(Amber,664,Y,3,53);
+			Text(Rows[Row],Sel ? Amber : Ink,686,Y+7,.98f);
+			Text(PC->GetRowHelp(Row),Muted,686,Y+31,.64f);
+			HitBox(FString::Printf(TEXT("Row_%d"),Row),664,Y,424,53);
+		}
+		// Loadout and match setup at a glance.
+		const auto& Class=Settings.Classes[FMath::Clamp(Settings.ActiveClass,0,Settings.Classes.Num()-1)];
+		static const TCHAR* WeaponNames[]={TEXT("Sniper"),TEXT("Assault rifle"),TEXT("SMG")};
+		Rect(PanelColor,32,456,1056,48); Frame(Line,32,456,1056,48);
+		Text(FString::Printf(TEXT("ACTIVE CLASS   %s  /  %s + %s  /  %s"),*Class.Name.ToUpper(),WeaponNames[FMath::Clamp(Class.Primary,0,2)],WeaponNames[FMath::Clamp(Class.Secondary,0,2)],
+			Class.Lethal==ECrosshairLethalType::Frag ? TEXT("Frag") : TEXT("Tomahawk")),Muted,52,470,.7f);
+		TextRight(FString::Printf(TEXT("NEXT MATCH   %s on %s  /  %s bots"),*UCrosshairBotMatch::ModeName(Options.Mode),*UCrosshairBotMatch::MapName(Options.Map),*UCrosshairBotMatch::DifficultyName(Options.Difficulty)),Muted,1068,470,.7f);
+		float ChipX=32;
+		ChipX=Chip(TEXT("Arrows / D-pad"),TEXT("Select"),ChipX,H-40);
+		Chip(TEXT("Enter / A"),TEXT("Open"),ChipX,H-40);
+		return;
 	}
+
+	// Sidebar tabs.
+	Rect(PanelColor,16,104,220,H-176); Frame(Line,16,104,220,H-176);
+	for (int32 Tab=0;Tab<ACrosshairPlayerController::MenuTabCount;++Tab)
+	{
+		const float TY=112+Tab*45; const bool Sel=PC->MenuTab==Tab; const bool Locked=PC->IsTabLockedInMatch(Tab);
+		if (Sel) { Rect(Hover,20,TY,212,40); Rect(Amber,20,TY,3,40); }
+		Text(Tabs[Tab],Sel ? Amber : Locked ? Dim : Ink,38,TY+10,.92f);
+		HitBox(FString::Printf(TEXT("Tab_%d"),Tab),20,TY,212,40);
+	}
+	const TCHAR* Descriptions[]={TEXT("Set up your next trickshot attempt."),TEXT("Tune your mouse and controller."),TEXT("Adjust your field of view."),TEXT("Manage your practice targets."),
+		TEXT("Watch saved trickshots and match kills."),TEXT("Choose a finish for your weapon."),TEXT("Build and equip your weapon class."),TEXT("Play and import practice maps."),
+		TEXT("Free-for-all or Team Deathmatch against bots on Nuketown and Grid."),TEXT("Play with others on the same network.")};
+	const float ContentX=260,ContentRight=W-32;
+	Text(FString(Tabs[PC->MenuTab]).ToUpper(),Ink,ContentX,104,1.4f);
+	Text(PC->IsTabLockedInMatch(PC->MenuTab) ? FString(TEXT("Unavailable during a match. Leave the match to use practice tools.")) : FString(Descriptions[PC->MenuTab]),Muted,ContentX,140,.78f);
+
+	const TArray<int32> Visible=PC->GetVisibleMenuRows();
+	int32 Index=Visible.IndexOfByKey(PC->MenuSelection);
+	if (Index==INDEX_NONE) { PC->MenuSelection=Visible[0]; Index=0; }
+	const float RowPitch=PC->MenuTab==1 ? 38.f : 46.f, RowHeight=RowPitch-6.f, RowsTop=174.f;
+	const int32 PageSize=PC->MenuTab==1 ? 9 : 8;
+	const int32 First=FMath::Max(0,Index-PageSize+1);
+	if (Visible.Num()>PageSize) TextRight(FString::Printf(TEXT("%d-%d of %d"),First+1,FMath::Min(Visible.Num(),First+PageSize),Visible.Num()),Dim,ContentRight,144,.68f);
+	const bool bSummary=PC->MenuTab==8;
+	const float RowRight=bSummary ? 760.f : ContentRight;
+	if (PC->MenuTab==4 && Visible.Num()==1) Text(TEXT("No saved replays yet. Land a practice hit or a match kill to record one."),Muted,ContentX,RowsTop+RowPitch+8,.8f);
+	for (int32 i=First;i<FMath::Min(Visible.Num(),First+PageSize);++i)
+	{
+		const int32 Row=Visible[i];
+		const float RY=RowsTop+(i-First)*RowPitch; const float RW=RowRight-ContentX;
+		const bool Sel=Row==PC->MenuSelection;
+		const FString RowName=FString::Printf(TEXT("Row_%d"),Row);
+		if (Row==B+6)
+		{
+			// Primary call to action.
+			Rect(Sel ? Amber : AmberDeep,ContentX,RY,RW,RowHeight);
+			TextCenter(Rows[Row].ToUpper()+TEXT("  >"),Sel ? OnAmber : Ink,ContentX+RW*.5f,RY+(RowHeight-24)*.5f,1.05f);
+			HitBox(RowName,ContentX,RY,RW,RowHeight);
+			continue;
+		}
+		Rect(Sel ? Hover : Raised,ContentX,RY,RW,RowHeight);
+		if (Sel) Rect(Amber,ContentX,RY,3,RowHeight);
+		FString RowLabel=Rows[Row],Value;
+		const bool bSplit=Row!=PC->CalibrationRow && Rows[Row].Split(TEXT(": "),&RowLabel,&Value);
+		if (bSplit && PC->MenuTab==5 && Row!=PC->WeaponRow) { RowLabel=Value; Value.Reset(); }
+		const float TextY=RY+(RowHeight-22)*.5f;
+		Text(RowLabel,Sel ? Ink : FLinearColor(.80f,.84f,.88f),ContentX+20,TextY,.92f);
+		const bool bAdjustable=(Row>=1 && Row<=8) || Row==PC->WeaponRow || Row==PC->GetLethalRow() || (Row>=PC->GetClassRow() && Row<PC->GetClassRow()+4) || Row==PC->GetSandboxRow()
+			|| (Row>=B && Row<B+6) || Row==PC->MapRow || Row==PC->InvertHorizontalRow || Row==PC->InvertVerticalRow;
+		if (bAdjustable)
+		{
+			const float ChipWidth=FMath::Min(250.f,RW*.46f), ChipX=RowRight-ChipWidth-8;
+			Rect(PanelColor,ChipX,RY+5,ChipWidth,RowHeight-10);
+			Text(TEXT("<"),Sel ? Amber : Dim,ChipX+12,TextY,.95f);
+			TextRight(TEXT(">"),Sel ? Amber : Dim,ChipX+ChipWidth-12,TextY,.95f);
+			TextCenter(Value.IsEmpty() ? RowLabel : Value,Sel ? Amber : Ink,ChipX+ChipWidth*.5f,TextY+1,.85f);
+			HitBox(RowName,ContentX,RY,RW-ChipWidth-8,RowHeight);
+			HitBox(FString::Printf(TEXT("Less_%d"),Row),ChipX,RY,ChipWidth*.35f,RowHeight);
+			HitBox(FString::Printf(TEXT("More_%d"),Row),ChipX+ChipWidth*.65f,RY,ChipWidth*.35f,RowHeight);
+		}
+		else
+		{
+			if (!Value.IsEmpty()) TextRight(Value,Muted,RowRight-36,TextY+1,.85f);
+			TextRight(TEXT(">"),Sel ? Amber : Dim,RowRight-14,TextY,.9f);
+			HitBox(RowName,ContentX,RY,RW,RowHeight);
+		}
+	}
+	if (bSummary)
+	{
+		// Match summary card beside the settings.
+		const float CX=780,CW=ContentRight-CX,CY=RowsTop,CH=7*46.f-6;
+		Rect(PanelColor,CX,CY,CW,CH); Frame(Line,CX,CY,CW,CH); Rect(Amber,CX,CY,CW,3);
+		Text(TEXT("MATCH SUMMARY"),Amber,CX+20,CY+18,.68f);
+		Text(UCrosshairBotMatch::ModeName(Options.Mode).ToUpper(),Ink,CX+20,CY+40,1.2f);
+		Text(UCrosshairBotMatch::MapName(Options.Map).ToUpper(),Muted,CX+20,CY+74,.9f);
+		const FString Lines[]={
+			bTeams ? FString::Printf(TEXT("%dv%d  /  you + %d bots"),Options.TeamSize,Options.TeamSize,Options.TeamSize*2-1) : FString::Printf(TEXT("%d players  /  you + %d bots"),Options.BotCount+1,Options.BotCount),
+			bTeams ? FString::Printf(TEXT("First team to %d kills"),Options.TeamScoreLimit) : FString::Printf(TEXT("First to %d kills"),Options.ScoreLimit),
+			FString::Printf(TEXT("%d minute time limit"),Options.TimeLimitMinutes),
+			UCrosshairBotMatch::DifficultyName(Options.Difficulty)+TEXT(" bots")};
+		for (int32 i=0;i<4;++i) { Rect(Line,CX+20,CY+112+i*36,CW-40,1); Text(Lines[i],Ink,CX+20,CY+121+i*36,.8f); }
+		Text(PC->GetRowHelp(B),Muted,CX+20,CY+CH-62,.62f);
+		Text(Match ? TEXT("Restarting applies these settings.") : TEXT("Every kill you land is saved to Replays."),Muted,CX+20,CY+CH-36,.62f);
+	}
+	if (PC->MenuTab==9)
+	{
+		Rect(PanelColor,ContentX,470,ContentRight-ContentX,64); Frame(Line,ContentX,470,ContentRight-ContentX,64);
+		Text(TEXT("NETWORK"),Amber,ContentX+20,479,.66f);
+		Text(Session->LanStatus.IsEmpty() ? FString(TEXT("Local network only. Joined players can move and watch; LAN combat is a preview.")) : Session->LanStatus,Ink,ContentX+20,502,.78f);
+	}
+	if (PC->MenuTab==7 && !PC->IsTabLockedInMatch(7))
+	{
+		Rect(PanelColor,ContentX,340,ContentRight-ContentX,150); Frame(Line,ContentX,340,ContentRight-ContentX,150);
+		Text(TEXT("CREDITS"),Amber,ContentX+20,352,.66f);
+		Text(TEXT("Call of Duty Black Ops 1 Grid Inspired Map"),Ink,ContentX+20,374,.9f);
+		Text(TEXT("by PIPO (pipo_)  /  CC BY 4.0  /  Adapted for Crosshair: import, collision, lighting and spawns."),Muted,ContentX+20,402,.68f);
+		Text(TEXT("View source / creator on Sketchfab"),Amber,ContentX+20,436,.8f);
+		HitBox(TEXT("GridSource"),ContentX+12,430,360,32);
+		Text(TEXT("CC BY 4.0 license"),Amber,ContentX+420,436,.8f);
+		HitBox(TEXT("GridLicense"),ContentX+412,430,260,32);
+	}
+	// Help for the highlighted row.
+	const FString Help=PC->GetRowHelp(PC->MenuSelection);
+	if (!Help.IsEmpty()) Text(Help,Muted,ContentX,H-82,.74f);
+	float ChipX=32;
+	ChipX=Chip(TEXT("Q / E"),TEXT("Tabs"),ChipX,H-40);
+	ChipX=Chip(TEXT("Arrows"),TEXT("Select"),ChipX,H-40);
+	ChipX=Chip(TEXT("Left / Right"),TEXT("Adjust"),ChipX,H-40);
+	ChipX=Chip(TEXT("Enter / A"),TEXT("Confirm"),ChipX,H-40);
+	if (PC->MenuTab==4) ChipX=Chip(TEXT("X / Delete"),TEXT("Delete replay"),ChipX,H-40);
+	Chip(TEXT("Esc / B"),PC->bFromHome ? TEXT("Main menu") : TEXT("Resume"),ChipX,H-40);
 }
 void ACrosshairHUD::NotifyHitBoxClick(FName BoxName)
 {

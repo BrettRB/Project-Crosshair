@@ -47,6 +47,10 @@ public:
  int32 GetHomeRow() const { return GetClassRow()+6; }
  int32 GetImportRow() const { return GetClassRow()+7; }
  int32 GetBotMatchRow() const { return GetImportRow()+1; }
+ /** Match rows from GetBotMatchRow(): difficulty, players, score, time, mode, map, start, host, find, then joinable LAN results. */
+ static constexpr int32 MatchRowCount = 13;
+ bool IsInMatch() const;
+ bool bScoreboardHeld=false;
  void ShowHome();
  void StartPlaying();
  bool bHomeScreen=false,bFromHome=false;
@@ -59,7 +63,11 @@ public:
 	void ActivateMenuRow(int32 Row);
 	void AdjustMenuRow(int32 Row, int32 Direction);
 	int32 MenuTab = 0;
-	static constexpr int32 MenuTabCount = 9;
+	static constexpr int32 MenuTabCount = 10;
+	/** One-line explanation of a menu row, shown under the list. */
+	FString GetRowHelp(int32 Row) const;
+	/** Tabs whose practice tools are unavailable during a match. */
+	bool IsTabLockedInMatch(int32 Tab) const { return IsInMatch() && (Tab==3 || Tab==4 || Tab==7); }
 private:
 	void ApplyGameplayInputMode();
 	void CalibrateAxis(FKey Key, float Value);
@@ -80,4 +88,7 @@ class PROJECT_CROSSHAIR_API ACrosshairHUD : public AHUD
 public:
 	virtual void DrawHUD() override;
 	virtual void NotifyHitBoxClick(FName BoxName) override;
+private:
+	void DrawMatch(class ACrosshairMatchState* Match, float Scale);
+	void DrawMenu(ACrosshairPlayerController* PC, class ACrosshairMatchState* Match);
 };

@@ -1,5 +1,7 @@
 # Bot free-for-all preparation
 
+> **Superseded 2026-10-21.** Offline FFA and TDM matches with combat bots are now implemented. The setup page became the **Match** tab, and the defaults changed to COD's (seven FFA bots, 6v6 TDM to 75). See [offline-match-and-lan.md](offline-match-and-lan.md). This page records the original preparation stage.
+
 Home > Bot FFA setup and pause > Bot FFA expose the same saved options. Use mouse arrows, keyboard Left/Right or controller D-pad to select Easy, Regular, Hardened or Veteran, 1?11 bots, a 5?100 score limit and a 1?30 minute limit. Defaults are Regular, five bots, 30 points and ten minutes. Settings persist in the existing profile. Practice remains playable; this stage does not launch a bot match.
 
 UCrosshairBotMatch is a reusable game-instance subsystem. SetDifficulty validates and saves the selected preset, then broadcasts OnDifficultyChanged for future active AI controllers. GetCurrentTuning reads the selected preset immediately, including when adjusted from pause. Replay playback/finalization blocks changes. Settings initialization and saving bound unsupported/corrupt values.

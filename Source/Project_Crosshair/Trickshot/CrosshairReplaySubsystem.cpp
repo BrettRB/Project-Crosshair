@@ -83,6 +83,7 @@ void UCrosshairReplaySubsystem::PracticeReady(ACrosshairCharacter* Player)
 {
 	if (IsPlayback() || Player->IsReplayPlayback()) return;
 	LivePlayer = Player;
+	bMatchSession = false;
 	const bool RestoreWindows = Phase == ECrosshairReplayPhase::Returning && bHaveSession;
 	if (Phase == ECrosshairReplayPhase::Returning && bHaveSession)
 	{
@@ -125,9 +126,11 @@ void UCrosshairReplaySubsystem::BeginAttempt()
 	Phase = Save->Settings.bContinuousPractice ? ECrosshairReplayPhase::Idle : ECrosshairReplayPhase::StartPending;
 	PhaseStarted = FPlatformTime::Seconds();
 }
-bool UCrosshairReplaySubsystem::ChangePracticeMap(FName Map)
+bool UCrosshairReplaySubsystem::ChangePracticeMap(FName Map, const FString& Options)
 {
-	if (IsPlayback() || IsFinishing())
+	// A match kill clip may still be saving when the player leaves; it finishes across travel.
+	const bool bKeepClip = bMatchClip && IsFinishing();
+	if (IsPlayback() || (IsFinishing() && !bKeepClip))
 	{
 		Report(TEXT("Return to practice and wait for replay saving before changing maps."));
 		return false;
@@ -138,15 +141,23 @@ bool UCrosshairReplaySubsystem::ChangePracticeMap(FName Map)
 		return false;
 	}
 	if (LivePlayer.IsValid()) LivePlayer->StopActions();
-	StopRecording(false);
+	if (bKeepClip)
+	{
+		if (Phase == ECrosshairReplayPhase::Tail) { StopRecording(true); Phase = ECrosshairReplayPhase::Finalizing; PhaseStarted = FPlatformTime::Seconds(); }
+	}
+	else
+	{
+		StopRecording(false);
+		Phase = ECrosshairReplayPhase::Idle;
+	}
+	bMatchSession = false;
 	SaveSettings();
 	bHaveSession = false;
 	ReturnTargets.Empty();
 	LivePlayer.Reset();
-	Phase = ECrosshairReplayPhase::Idle;
 	ReturnMap = Map.ToString();
 	Status.Empty();
-	UGameplayStatics::OpenLevel(GetGameInstance(), Map);
+	UGameplayStatics::OpenLevel(GetGameInstance(), Map, true, Options);
 	return true;
 }
 void UCrosshairReplaySubsystem::CompleteAttempt()
@@ -162,6 +173,41 @@ void UCrosshairReplaySubsystem::CompleteAttempt()
 	Phase = ECrosshairReplayPhase::Tail;
 	TailEndsAt = GetWorld()->GetTimeSeconds() + 1.0;
 	Report(TEXT("Hit confirmed — saving replay"));
+}
+void UCrosshairReplaySubsystem::BeginMatchRecording(ACrosshairCharacter* Player)
+{
+	if (IsPlayback() || !Player || Player->IsReplayPlayback()) return;
+	LivePlayer = Player;
+	bMatchSession = true;
+	if (Phase != ECrosshairReplayPhase::Idle) return; // already recording or saving a clip
+	StopRecording(false);
+	Phase = ECrosshairReplayPhase::StartPending;
+	PhaseStarted = FPlatformTime::Seconds();
+}
+bool UCrosshairReplaySubsystem::SaveMatchKill(const FString& Label)
+{
+	UWorld* World = GetWorld();
+	if (!bMatchSession || !World || !World->GetDemoNetDriver()) return false;
+	if (Phase == ECrosshairReplayPhase::Tail && bMatchClip)
+	{
+		// Another kill inside the tail: extend the same clip and point playback at the latest kill.
+		++ClipKills;
+		Current.Label = FString::Printf(TEXT("%s kill  -  %s"), ClipKills == 2 ? TEXT("Double") : ClipKills == 3 ? TEXT("Triple") : TEXT("Multi"), *Label);
+		Current.HitSeconds = World->GetDemoNetDriver()->GetDemoCurrentTime();
+		TailEndsAt = World->GetTimeSeconds() + 1.0;
+		return true;
+	}
+	if (Phase != ECrosshairReplayPhase::Recording)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Crosshair: match kill not saved (recorder busy): %s"), *Label);
+		return false;
+	}
+	Current.HitSeconds = World->GetDemoNetDriver()->GetDemoCurrentTime();
+	Current.Label = Label;
+	bMatchClip = true; ClipKills = 1;
+	Phase = ECrosshairReplayPhase::Tail;
+	TailEndsAt = World->GetTimeSeconds() + 1.0;
+	return true;
 }
 void UCrosshairReplaySubsystem::PlaySaved(int32 Index)
 {
@@ -236,7 +282,7 @@ void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 	{
 		Current.Name = TEXT("Crosshair_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
 		Current.ImportedMapId=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>()->ActiveMapId;
-	Current.Map = ReturnMap;
+	Current.Map = UWorld::RemovePIEPrefix(World->GetOutermost()->GetName());
 		Current.RecordedAt = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
 		Current.FormatVersion = ReplayFormatVersion;
 		if (IConsoleVariable* Rate = IConsoleManager::Get().FindConsoleVariable(TEXT("demo.RecordHz"))) Rate->Set(60.f, ECVF_SetByCode);
@@ -266,7 +312,8 @@ void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 	else if (Phase == ECrosshairReplayPhase::Recording && World->GetDemoNetDriver() && World->GetDemoNetDriver()->GetDemoCurrentTime() > 120)
 	{
 		// Bound temporary recording size for long idle/practice sessions without moving the player.
-		BeginAttempt();
+		if (bMatchSession) { StopRecording(false); Phase = ECrosshairReplayPhase::StartPending; PhaseStarted = Now; }
+		else BeginAttempt();
 	}
 	else if (Phase == ECrosshairReplayPhase::Tail && World->GetTimeSeconds() >= TailEndsAt)
 	{
@@ -280,7 +327,15 @@ void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 		SaveSettings();
 		const FCrosshairReplayEntry Entry = Current;
 		Current = FCrosshairReplayEntry();
-		StartPlayback(Entry);
+		if (bMatchClip)
+		{
+			// Match kills are saved silently; play continues and recording resumes.
+			bMatchClip = false; ClipKills = 0;
+			Report(TEXT("Kill saved to Replays"));
+			Phase = bMatchSession ? ECrosshairReplayPhase::StartPending : ECrosshairReplayPhase::Idle;
+			PhaseStarted = Now;
+		}
+		else StartPlayback(Entry);
 	}
 	else if (Phase == ECrosshairReplayPhase::Finalizing && Now - PhaseStarted > 20 && !bFinalizeWarning)
 	{
@@ -308,11 +363,14 @@ void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 			if (bSeekComplete)
 			{
 				Phase = ECrosshairReplayPhase::Playing;
+				// Follow the recording player; match replays also contain bots.
+				ACrosshairCharacter* Focus = nullptr;
 				for (TActorIterator<ACrosshairCharacter> It(World); It; ++It)
 				{
-					if (APlayerController* PC = World->GetFirstPlayerController()) PC->SetViewTarget(*It);
-					break;
+					if (!Focus || It->bReplayFocus) Focus = *It;
+					if (It->bReplayFocus) break;
 				}
+				if (APlayerController* PC = World->GetFirstPlayerController(); PC && Focus && PC->GetViewTarget() != Focus) PC->SetViewTarget(Focus);
 				if (Demo->GetDemoCurrentTime() >= FMath::Min(Viewing.HitSeconds + 0.85f, Demo->GetDemoTotalTime() - 0.05f)) ReturnToPractice();
 			}
 		}

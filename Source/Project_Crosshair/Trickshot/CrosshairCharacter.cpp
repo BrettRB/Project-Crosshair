@@ -9,6 +9,12 @@
 #include "CrosshairDummy.h"
 #include "CrosshairTraversal.h"
 #include "CrosshairThrowable.h"
+#include "CrosshairMatch.h"
+#include "CrosshairSoldierAppearance.h"
+#include "CrosshairTrickshot.h"
+#include "AIController.h"
+#include "Animation/AnimInstance.h"
+#include "GameFramework/PlayerState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -38,6 +44,8 @@ ACrosshairCharacter::ACrosshairCharacter()
 	Placement = CreateDefaultSubobject<UCrosshairPlacementComponent>(TEXT("Placement"));
 	Traversal = CreateDefaultSubobject<UCrosshairTraversalComponent>(TEXT("Traversal"));
 	Attempt = CreateDefaultSubobject<UCrosshairAttemptComponent>(TEXT("Attempt"));
+	Health = CreateDefaultSubobject<UCrosshairHealthComponent>(TEXT("Health"));
+	MatchAppearance = CreateDefaultSubobject<UCrosshairSoldierAppearance>(TEXT("Match appearance"));
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
 	GetCharacterMovement()->SetCrouchedHalfHeight(58.f);
 	GetCharacterMovement()->JumpZVelocity = 460;
@@ -69,7 +77,8 @@ void ACrosshairCharacter::PostInitializeComponents()
 void ACrosshairCharacter::BeginPlay()
 {
 	Super::BeginPlay();
- if (GetMesh()->GetSkeletalMeshAsset()) { GetMesh()->SetVisibility(true); GetMesh()->SetOwnerNoSee(true); if (BodyIdleAnimation) GetMesh()->PlayAnimation(BodyIdleAnimation,true); }
+ if (IsInMatch()) ConfigureMatchBody();
+ else if (GetMesh()->GetSkeletalMeshAsset()) { GetMesh()->SetVisibility(true); GetMesh()->SetOwnerNoSee(true); if (BodyIdleAnimation) GetMesh()->PlayAnimation(BodyIdleAnimation,true); }
 	if (IdleAnimation)
 	{
 		auto* Arms = GetFirstPersonMesh();
@@ -97,9 +106,98 @@ void ACrosshairCharacter::BeginPlay()
 	}
 	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
 	{
-		Inventory->ApplyClass();
-        GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->PracticeReady(this);
+		if (!IsInMatch()) { Inventory->ApplyClass(); GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->PracticeReady(this); return; }
+		// Match spawns never record practice replays. Bots carry a random two-weapon class.
+		if (!HasAuthority()) return;
+		if (!IsBot() && IsLocallyControlled()) GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->BeginMatchRecording(this);
+		if (IsBot())
+		{
+			const int32 Count = FMath::Max(1, Inventory->Weapons.Num());
+			const int32 Primary = FMath::RandRange(0, Count - 1);
+			Inventory->ApplyLoadout(Primary, (Primary + FMath::RandRange(1, FMath::Max(1, Count - 1))) % Count, FMath::RandBool() ? ECrosshairLethalType::Frag : ECrosshairLethalType::Tomahawk);
+		}
+		else Inventory->ApplyClass();
 	}));
+}
+void ACrosshairCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	bReplayFocus = NewController && NewController->IsLocalPlayerController();
+	// TDM uniforms: Alpha wears the first half of the soldier catalog, Bravo the second.
+	const auto* Match = NewController ? NewController->GetPlayerState<ACrosshairMatchPlayerState>() : nullptr;
+	if (!Match || !MatchAppearance->Catalog || MatchAppearance->Catalog->Designs.IsEmpty()) return;
+	const int32 Count = MatchAppearance->Catalog->Designs.Num(), Half = FMath::Max(1, Count / 2);
+	if (Match->Team == CrosshairMatchRules::Alpha) MatchAppearance->SetDesign(FMath::RandRange(0, Half - 1));
+	else if (Match->Team == CrosshairMatchRules::Bravo) MatchAppearance->SetDesign(FMath::RandRange(FMath::Min(Half, Count - 1), Count - 1));
+}
+void ACrosshairCharacter::ConfigureMatchBody()
+{
+	USkeletalMeshComponent* Body = GetMesh();
+	bMatchBodyConfigured = true;
+	MatchAppearance->InitializeAppearance(Body);
+	Body->SetVisibility(true);
+	Body->SetOwnerNoSee(true);
+	if (UClass* Locomotion = LoadClass<UAnimInstance>(nullptr, TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.ABP_Unarmed_C")))
+		Body->SetAnimInstanceClass(Locomotion);
+	else if (BodyIdleAnimation) Body->PlayAnimation(BodyIdleAnimation, true);
+	// Like practice targets: posed physics bodies take shots (head/body), the capsule only blocks movement.
+	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Body->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Body->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+}
+bool ACrosshairCharacter::IsBot() const
+{
+	const APlayerState* State = GetPlayerState();
+	return (State && State->IsABot()) || (GetController() && GetController()->IsA<AAIController>());
+}
+bool ACrosshairCharacter::IsInMatch() const { return ACrosshairMatchState::Get(this) != nullptr; }
+bool ACrosshairCharacter::UsesWorldPresentation() const
+{
+	// In a match replay only the recording player keeps the first-person view.
+	if (IsReplayPlayback()) return IsInMatch() && !bReplayFocus;
+	return IsInMatch() && (IsBot() || !IsLocallyControlled());
+}
+float ACrosshairCharacter::GetRecentSpin(double Window) const
+{
+	const double Now = GetWorld()->GetTimeSeconds();
+	float Total = 0;
+	for (const TPair<double, float>& Step : YawHistory) if (Now - Step.Key <= Window) Total += Step.Value;
+	return Total;
+}
+void ACrosshairCharacter::RecordMatchKill(const ACrosshairCharacter* Victim, bool bHeadshot, bool bWallbang, const FString& Weapon, bool bScopedWeapon, bool bLethal)
+{
+	if (!Victim || !IsInMatch() || IsBot() || !IsLocallyControlled() || IsReplayPlayback()) return;
+	CrosshairTrickshotRules::FKillContext Kill;
+	Kill.Weapon = Weapon; Kill.bHeadshot = bHeadshot; Kill.bWallbang = bWallbang; Kill.bScopedWeapon = bScopedWeapon; Kill.bLethal = bLethal;
+	Kill.bAirborne = GetCharacterMovement()->IsFalling();
+	Kill.bAiming = AimAlpha >= .5f;
+	Kill.SpinDegrees = GetRecentSpin();
+	Kill.DistanceMeters = FVector::Dist(GetActorLocation(), Victim->GetActorLocation()) / 100.f;
+	const FString Label = CrosshairTrickshotRules::Describe(Kill);
+	if (CrosshairTrickshotRules::IsTrickshot(Kill)) { TrickshotBanner = Label; TrickshotUntil = GetWorld()->GetTimeSeconds() + 2.5f; }
+	UE_LOG(LogTemp, Display, TEXT("Crosshair match kill: %s"), *Label);
+	GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->SaveMatchKill(Label);
+}
+void ACrosshairCharacter::HandleDeath()
+{
+	StopActions();
+	if (HasAuthority()) for (ACrosshairWeapon* Weapon : Inventory->Weapons) if (Weapon) { Weapon->SetEquipped(false); Weapon->bHolstered = false; }
+	for (ACrosshairWeapon* Weapon : Inventory->Weapons) if (Weapon) Weapon->SetActorHiddenInGame(true);
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->DisableMovement();
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetFirstPersonMesh()->SetVisibility(false);
+	for (UStaticMeshComponent* Gear : CombatAppearance->Gear) Gear->SetVisibility(false);
+	USkeletalMeshComponent* Body = GetMesh();
+	if (Body->GetPhysicsAsset())
+	{
+		Body->SetCollisionProfileName(TEXT("Ragdoll"));
+		Body->SetAllBodiesSimulatePhysics(true);
+		Body->SetSimulatePhysics(true);
+		Body->WakeAllRigidBodies();
+	}
 }
 void ACrosshairCharacter::EndPlay(EEndPlayReason::Type Reason)
 {
@@ -115,6 +213,7 @@ void ACrosshairCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME_CONDITION(ACrosshairCharacter, RecordedView, COND_ReplayOnly);
+	DOREPLIFETIME_CONDITION(ACrosshairCharacter, bReplayFocus, COND_ReplayOnly);
 }
 bool ACrosshairCharacter::IsReplayPlayback() const
 {
@@ -122,6 +221,9 @@ bool ACrosshairCharacter::IsReplayPlayback() const
 }
 bool ACrosshairCharacter::CanAct() const
 {
+	if (Health->bDead) return false;
+	if (const auto* Match = ACrosshairMatchState::Get(this); Match && Match->bMatchOver) return false;
+	if (IsBot()) return !IsReplayPlayback();
 	const ACrosshairPlayerController* PC = Cast<ACrosshairPlayerController>(GetController());
 	return !GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing() && !IsReplayPlayback() && PC && !PC->bMenuOpen && !Attempt->bSucceeded;
 }
@@ -132,11 +234,14 @@ void ACrosshairCharacter::Notify(const FString& Text) { Notice = Text; NoticeUnt
 void ACrosshairCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (Health->bDead) return;
  if (bControllerSprint && (GetLastMovementInputVector().IsNearlyZero() || bIsCrouched)) { bControllerSprint=false; bSprintHeld=false; }
 	UCameraComponent* Camera = GetFirstPersonCameraComponent();
 	ACrosshairWeapon* Weapon = Inventory->GetCurrent();
 	if (IsReplayPlayback())
 	{
+		// Replay actors can begin play before the match game state arrives.
+		if (!bMatchBodyConfigured && IsInMatch()) ConfigureMatchBody();
 		Camera->bUsePawnControlRotation = false;
 		Camera->SetWorldLocationAndRotation(RecordedView.Location, RecordedView.Rotation);
 		Camera->SetFieldOfView(RecordedView.FOV);
@@ -159,10 +264,30 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		RecordedView.Rotation = Camera->GetComponentRotation();
 		RecordedView.FOV = Camera->FieldOfView;
 		RecordedView.AimAlpha = AimAlpha;
-		if (GetActorLocation().Z < -1500) Attempt->ResetAttempt();
+		if (IsLocallyControlled() && !IsBot())
+		{
+			// Yaw history for spin (360) detection on kills.
+			const float Yaw = GetControlRotation().Yaw;
+			const double Now = GetWorld()->GetTimeSeconds();
+			if (bHasLastYaw) YawHistory.Add({Now, FMath::Abs(FRotator::NormalizeAxis(Yaw - LastYaw))});
+			LastYaw = Yaw; bHasLastYaw = true;
+			YawHistory.RemoveAll([Now](const TPair<double, float>& Step) { return Now - Step.Key > 2.0; });
+		}
+		if (GetActorLocation().Z < -1500)
+		{
+			if (!IsInMatch()) Attempt->ResetAttempt();
+			else if (HasAuthority()) Health->Kill(TEXT("Fell"));
+		}
 	}
 	Weapon=Inventory->GetPresentationWeapon();
-	if (Weapon)
+	if (UsesWorldPresentation())
+	{
+		// The weapon rides the soldier body (see ACrosshairWeapon::UpdateCarry); no viewmodel.
+		GetFirstPersonMesh()->SetVisibility(false);
+		for (UStaticMeshComponent* Gear:CombatAppearance->Gear) Gear->SetVisibility(false);
+		if (Weapon) Weapon->UpdateCarry();
+	}
+	else if (Weapon)
 	{
 		Weapon->UpdateCarry();
 		// Attachment to a camera component is reconstructed explicitly for replay actors as well.
@@ -241,12 +366,13 @@ void ACrosshairCharacter::AimPressed() { if (!CanAct() || Lethals->IsBusy()) ret
 void ACrosshairCharacter::AimReleased() { bAimHeld = false; }
 void ACrosshairCharacter::ReloadPressed() { if (CanAct() && !Lethals->IsBusy()) { if (Placement->bPlacing) Placement->Rotate(); else if (auto* W = Inventory->GetCurrent()) W->Reload(); } }
 void ACrosshairCharacter::SwitchPressed() { if (CanAct() && !Lethals->IsBusy()) { bAimHeld = false; Inventory->Cycle(); } }
-void ACrosshairCharacter::PlacementPressed() { Placement->Toggle(); }
-void ACrosshairCharacter::RotatePressed() { Placement->Rotate(); }
-void ACrosshairCharacter::RemovePressed() { Placement->RemoveAimedTarget(); }
-void ACrosshairCharacter::ClearPressed() { Placement->ClearTargets(); }
-void ACrosshairCharacter::SavePressed() { Attempt->SaveStart(); }
-void ACrosshairCharacter::ResetPressed() { if (!IsReplayPlayback()) Attempt->ResetAttempt(); }
+// Target editing and attempt save/reset are practice tools; matches ignore them.
+void ACrosshairCharacter::PlacementPressed() { if (!IsInMatch()) Placement->Toggle(); }
+void ACrosshairCharacter::RotatePressed() { if (!IsInMatch()) Placement->Rotate(); }
+void ACrosshairCharacter::RemovePressed() { if (!IsInMatch()) Placement->RemoveAimedTarget(); }
+void ACrosshairCharacter::ClearPressed() { if (!IsInMatch()) Placement->ClearTargets(); }
+void ACrosshairCharacter::SavePressed() { if (!IsInMatch()) Attempt->SaveStart(); }
+void ACrosshairCharacter::ResetPressed() { if (!IsReplayPlayback() && !IsInMatch()) Attempt->ResetAttempt(); }
 void ACrosshairCharacter::MenuPressed() { if (auto* PC = Cast<ACrosshairPlayerController>(GetController())) PC->ToggleMenu(); }
 void ACrosshairCharacter::ApplyRecoil(float Degrees)
 {

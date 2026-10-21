@@ -13,6 +13,18 @@
 	"Plugins": [
         {"Name": "ProceduralMeshComponent", "Enabled": true},
 		{
+			"Name": "OnlineSubsystem",
+			"Enabled": true
+		},
+		{
+			"Name": "OnlineSubsystemUtils",
+			"Enabled": true
+		},
+		{
+			"Name": "OnlineSubsystemNull",
+			"Enabled": true
+		},
+		{
 			"Name": "ModelingToolsEditorMode",
 			"Enabled": true
 		},

@@ -3,6 +3,7 @@
 #include "CrosshairDummy.h"
 #include "CrosshairWindow.h"
 #include "Components/PrimitiveComponent.h"
+#include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "Engine/DamageEvents.h"
@@ -25,7 +26,7 @@ FHitResult CrosshairBallistics::ContinueShot(UWorld* World,FHitResult Hit,FVecto
             World->LineTraceSingleByChannel(Hit,Hit.ImpactPoint+Direction*.1f,End,ECC_Visibility,Params);
             continue;
         }
-        if (!bAllowPenetration || !Component || Cast<ACrosshairDummy>(Actor)
+        if (!bAllowPenetration || !Component || Cast<ACrosshairDummy>(Actor) || Cast<APawn>(Actor)
             || (Actor && Actor->ActorHasTag(TEXT("NoWallbang"))) || Component->ComponentHasTag(TEXT("NoWallbang"))
             || Layers>=FMath::Clamp(Definition->PenetrationLayers,0,4) || Remaining<=0
             || FMath::Abs(Hit.ImpactNormal.Z)>.7f) return Hit;

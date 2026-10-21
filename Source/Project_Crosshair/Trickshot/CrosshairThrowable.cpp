@@ -6,6 +6,7 @@
 #include "CrosshairWeapon.h"
 #include "CrosshairWindow.h"
 #include "CrosshairReplaySubsystem.h"
+#include "CrosshairMatch.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -129,7 +130,7 @@ void ACrosshairThrowable::Impact(const FHitResult& Hit)
     { Window->TakeDamage(1,FDamageEvent(),GetInstigatorController(),this); return; }
     if (Spec.Type==ECrosshairLethalType::Frag)
     {
-        if (Cast<ACrosshairDummy>(Hit.GetActor()))
+        if (Cast<ACrosshairDummy>(Hit.GetActor()) || Cast<ACrosshairCharacter>(Hit.GetActor()))
         {
             SetActorLocation(Hit.ImpactPoint+Hit.ImpactNormal*5);
             Movement->Velocity=FMath::GetReflectionVector(Movement->Velocity,Hit.ImpactNormal)*Spec.Bounciness;
@@ -140,6 +141,16 @@ void ACrosshairThrowable::Impact(const FHitResult& Hit)
     {
         if (Target->TakeDamage(Spec.Damage,FDamageEvent(),GetInstigatorController(),this)>0)
             if (auto* Player=Cast<ACrosshairCharacter>(GetInstigator())) Player->TargetHit(Target,Target->IsHeadHit(Hit));
+    }
+    else if (auto* Victim=Cast<ACrosshairCharacter>(Hit.GetActor()); Victim && Victim!=GetInstigator())
+    {
+        const bool bHead=Hit.GetComponent()==Victim->GetMesh() && Hit.BoneName==TEXT("head");
+        if (Victim->Health->ApplyDamage(Spec.Damage,GetInstigatorController(),this,bHead,TEXT("Tomahawk"))>0)
+            if (auto* Player=Cast<ACrosshairCharacter>(GetInstigator()))
+            {
+                Player->TargetHit(nullptr,bHead);
+                if (Victim->Health->bDead) Player->RecordMatchKill(Victim,bHead,false,TEXT("Tomahawk"),false,true);
+            }
     }
     bResting=true; Movement->StopMovementImmediately(); Movement->Deactivate();
     SetActorLocation(Hit.ImpactPoint); OnRep_State(); SetLifeSpan(8); ForceNetUpdate();
@@ -170,6 +181,24 @@ void ACrosshairThrowable::Detonate()
         if (It->TakeDamage(Damage,FDamageEvent(),GetInstigatorController(),this)>0)
             if (auto* Player=Cast<ACrosshairCharacter>(GetInstigator())) Player->TargetHit(*It);
     }
+    // Match players use the same falloff and cover rules. The thrower is excluded, as in practice.
+    if (ACrosshairMatchState::Get(this))
+        for (TActorIterator<ACrosshairCharacter> It(GetWorld());It;++It)
+        {
+            if (*It==GetInstigator() || It->Health->bDead) continue;
+            const FVector Point=It->GetMesh()->GetBoneLocation(TEXT("spine_03"));
+            const float Distance=FVector::Dist(Origin,Point);
+            if (Distance>Spec.BlastRadius) continue;
+            FHitResult Hit;
+            if (GetWorld()->LineTraceSingleByChannel(Hit,Origin,Point,ECC_Visibility,Params) && Hit.GetActor()!=*It) continue;
+            const float Alpha=FMath::Clamp((Distance-Spec.InnerRadius)/FMath::Max(1.f,Spec.BlastRadius-Spec.InnerRadius),0.f,1.f);
+            if (It->Health->ApplyDamage(Spec.Damage*FMath::Lerp(1.f,.2f,Alpha),GetInstigatorController(),this,false,TEXT("Frag grenade"))>0)
+                if (auto* Player=Cast<ACrosshairCharacter>(GetInstigator()))
+                {
+                    Player->TargetHit(nullptr);
+                    if (It->Health->bDead) Player->RecordMatchKill(*It,false,false,TEXT("Frag grenade"),false,true);
+                }
+        }
     OnRep_State(); SetLifeSpan(.55f); ForceNetUpdate();
 }
 void ACrosshairThrowable::Tick(float Delta)

@@ -49,3 +49,5 @@ Local opt-in -CrosshairSmoke -CrosshairFrontendSmoke covers Home, class editing/
 ### Bot FFA setup (2026-10-08)
 
 Home has a Bot FFA setup action and pause has a Bot FFA tab. Both save difficulty, bot count, score limit and time limit. This is preparation; combat AI and match launch are the next stage. See [bot-ffa-preparation.md](bot-ffa-preparation.md).
+
+Update 2026-10-21: Home's **Offline match / LAN** and the pause **Match** tab now start offline FFA and TDM matches on Nuketown and Grid, and host or join same-network LAN matches. See [offline-match-and-lan.md](offline-match-and-lan.md).

@@ -93,3 +93,7 @@ Launch now displays PREPARING GAME while map dependencies, equipment, shaders an
 ## Grid practice map (2026-10-20)
 
 Maps now offers Testing Map, Nuketown and Grid, followed by local imports. Choose Grid and press Enter / A. The Maps tab credits PIPO with source and CC BY 4.0 links. See [Grid integration and attribution](grid-map.md).
+
+## Offline matches and LAN (2026-10-21)
+
+Main menu > Offline match vs bots, or Escape / Start > Offline Match, starts Free-for-all or Team Deathmatch against bots on Nuketown or Grid (not the Testing map or imports). Every kill you land is saved to Replays with a label (mid-air, 360, no-scope, wallbang, headshot, long shot). In a match, hold Tab / Back (View) for the scoreboard; Escape / Start pauses an offline match and offers Leave match. Practice keys (P, K, T and target editing) do nothing in matches. Same-network LAN hosting and joining are on the LAN tab. See [offline matches and LAN](offline-match-and-lan.md).
