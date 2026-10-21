@@ -1,0 +1,19 @@
+{
+  "downloaded_file": "call_of_duty_black_ops_1_grid_inspired_map.glb",
+  "byte_length": 79821704,
+  "sha256": "9c0830cd16d265d426ab44230d46df597b49f1015c2840d062ecd98eb9055a22",
+  "attribution": {
+    "author": "PIPO (https://sketchfab.com/pipo_)",
+    "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+    "source": "https://sketchfab.com/3d-models/call-of-duty-black-ops-1-grid-inspired-map-68c0b8b9ffe34a468876044b4c1da00a",
+    "title": "Call of Duty Black Ops 1 Grid Inspired Map"
+  },
+  "texture_variant": "Sketchfab GLB, user-selected 2K",
+  "modifications": [
+    "Imported with Unreal Interchange preserving scene hierarchy and supplied materials/textures",
+    "Configured static triangle collision",
+    "Added Crosshair practice GameMode, player spawn and native daylight",
+    "Added built-in selection, startup warmup, packaging entry and in-game attribution",
+    "Grid mesh distance-field resolution follows component scene scale, capped at 0.25; rendered triangles and collision preserved"
+  ]
+}

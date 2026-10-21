@@ -22,7 +22,9 @@ private:
  double Started=0,StepStarted=0;
  bool bDone=false,bSawImportedReplay=false;
  FString ImportedId;
+ FVector GridStart=FVector::ZeroVector;
  int32 SoldierPhoto=0;
  bool bSawSoldierReplay=false;
+ bool bCheckedStartupGate=false,bCheckedStartupReady=false;
  UPROPERTY() TObjectPtr<ACameraActor> SoldierCamera;
 };

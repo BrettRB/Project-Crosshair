@@ -1,4 +1,6 @@
 #include "CrosshairFrontendTest.h"
+#include "../CrosshairStartup.h"
+#include "UObject/GarbageCollection.h"
 #include "../CrosshairCombatAppearance.h"
 #include "../CrosshairSoldierAppearance.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -47,6 +49,27 @@ void UCrosshairFrontendTest::Next(int32 NewStep) { Step=NewStep; StepStarted=FPl
 void UCrosshairFrontendTest::Tick(float Delta)
 {
  auto* World=GetWorld(); if (!World || !World->IsGameWorld() || bDone) return;
+ auto* Startup=GetGameInstance()->GetSubsystem<UCrosshairStartup>();
+ if (!Startup->IsReady())
+ {
+  if (FPlatformTime::Seconds()-Started>900) { Check(false,TEXT("Startup preparation timeout")); return; }
+  if (auto* LoadingPC=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController()); LoadingPC && Startup->IsPreparing() && !bCheckedStartupGate)
+  {
+   auto* LoadingPawn=Cast<ACrosshairCharacter>(LoadingPC->GetPawn()); if (!LoadingPawn) return;
+   LoadingPC->ShowHome(); LoadingPC->StartPlaying();
+   if (!Check(LoadingPC->bHomeScreen && !LoadingPawn->CanAct(),TEXT("Startup blocks play and gameplay input"))) return;
+   if (!Check(!GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>()->PlayMap(1),TEXT("Startup blocks map travel while preparing content"))) return;
+   bCheckedStartupGate=true;
+   if (FParse::Param(FCommandLine::Get(),TEXT("CrosshairFrontendVisual"))) FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/StartupPreparation.png"),false,false);
+  }
+  return;
+ }
+ if (!bCheckedStartupReady)
+ {
+  if (!Check(bCheckedStartupGate && Startup->GetPreparationCount()==1 && Startup->GetCachedAssetCount()>0,TEXT("Startup finishes once with retained content"))) return;
+  if (!Check(Startup->HasCachedAsset(TEXT("/Game/Crosshair/Maps/M_ImportedMap.M_ImportedMap")),TEXT("Imported-map base material is preloaded"))) return;
+  bCheckedStartupReady=true; Started=StepStarted=FPlatformTime::Seconds();
+ }
  if (FPlatformTime::Seconds()-Started>180) { Check(false,TEXT("Timeout")); return; }
  const double Elapsed=FPlatformTime::Seconds()-StepStarted;
  auto* EarlyReplay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
@@ -65,6 +88,7 @@ void UCrosshairFrontendTest::Tick(float Delta)
  {
  case 0:
   if (Elapsed<2) return;
+  PC->bFromHome=false; if (PC->bMenuOpen) PC->ToggleMenu();
   S.bContinuousPractice=true; Replay->BeginAttempt();
   if (!Check(S.Classes.Num()==5 && S.StickYawSpeed>=720 && !S.bSandboxTargets,TEXT("Five saved classes, faster default controller and sandbox Off"))) return;
   P->Placement->Toggle(); if (!Check(!P->Placement->bPlacing,TEXT("Target editing requires sandbox setting"))) return;
@@ -193,11 +217,59 @@ void UCrosshairFrontendTest::Tick(float Delta)
  case 11:
   if (Elapsed<.3) return;
   if (!FParse::Param(FCommandLine::Get(),TEXT("CrosshairIndoorBefore"))) { int32 Lights=0; for(TActorIterator<APointLight> It(World);It;++It) if (It->GetLightComponent()->Intensity>100) ++Lights; if (!Check(Lights>=7,TEXT("Nuketown indoor lights are active at corrected intensities"))) return; }
-  Library->PlayMap(0); Next(12); return;
+  if (!Check(Library->PlayMap(2),TEXT("Grid built-in map can be selected"))) return;
+  Next(70); return;
+ case 70:
+  if (!World->GetOutermost()->GetName().Contains(TEXT("L_Grid")) || Elapsed<2) return;
+  if (!Check(P->GetCharacterMovement()->IsMovingOnGround() && P->GetActorLocation().Z>-1000,TEXT("Grid spawn has supported walkable collision"))) return;
+  if (!Check(Library->ActiveMapId.IsEmpty() && S.ActiveClass==2 && Startup->IsReady(),TEXT("Grid travel preserves class and startup cache without imported-map identity"))) return;
+  PC->ToggleMenu(); PC->SetMenuTab(7);
+  if (!Check(PC->GetMenuRows()[PC->MapRow].Contains(TEXT("Grid")),TEXT("Maps menu identifies Grid after travel"))) return;
+  Capture(TEXT("GridCredits.png")); Next(71); return;
+ case 71:
+  if (Elapsed<.3) return;
+  PC->ToggleMenu(); PC->SetControlRotation(FRotator(0,0,0));
+  P->Attempt->SaveStart(); GridStart=P->GetActorLocation(); Next(72); return;
+ case 72:
+  if (Elapsed<.35) { P->AddMovementInput(FVector::ForwardVector,1); return; }
+  if (!Check(FVector::Dist2D(P->GetActorLocation(),GridStart)>20,TEXT("Player can walk on Grid"))) return;
+  { auto* Weapon=P->Inventory->GetCurrent(); const int32 Ammo=Weapon->Ammo; Weapon->StartFire(); Weapon->StopFire();
+    if (!Check(Weapon->Ammo==Ammo-1,TEXT("Weapons fire normally on Grid"))) return; }
+  P->Attempt->ResetAttempt();
+  if (!Check(FVector::Dist2D(P->GetActorLocation(),GridStart)<3,TEXT("Grid attempt reset restores saved position"))) return;
+  PC->SetControlRotation(FRotator(-35,0,0)); Next(73); return;
+ case 73:
+  if (Elapsed<.3) return;
+  P->Placement->Toggle(); P->Placement->UpdatePreview();
+  if (!Check(P->Placement->bValidPlacement,TEXT("Grid ground supports sandbox target placement"))) return;
+  { const int32 Before=P->Placement->GetLayout().Num(); P->Placement->Confirm();
+    if (!Check(P->Placement->GetLayout().Num()==Before+1,TEXT("Grid accepts a soldier target without changing collision"))) return; }
+  if (P->Placement->bPlacing) P->Placement->Toggle();
+  PC->SetControlRotation(FRotator(0,0,0)); Next(74); return;
+ case 74:
+  if (Elapsed<1) return;
+  Capture(TEXT("GridGameplay.png")); Next(75); return;
+ case 75:
+  if (Elapsed<.3) return;
+  { const FVector Position(9000,-10000,9000);
+    SoldierCamera=World->SpawnActor<ACameraActor>(Position,(FVector(0,-1000,200)-Position).Rotation());
+    PC->SetViewTarget(SoldierCamera); }
+  Next(76); return;
+ case 76:
+  if (Elapsed<2) return;
+  Capture(TEXT("GridOverview.png")); Next(77); return;
+ case 77:
+  if (Elapsed<.3) return;
+  PC->SetViewTarget(P); SoldierCamera->Destroy(); SoldierCamera=nullptr;
+  if (!Check(Library->PlayMap(0),TEXT("Return from Grid to practice succeeds"))) return;
+  Next(12); return;
  case 12:
   if (!World->GetOutermost()->GetName().Contains(TEXT("L_Practice")) || Elapsed<.5) return;
   if (!Check(Library->ActiveMapId.IsEmpty() && !PC->bHomeScreen && P->CanAct(),TEXT("Return to built-in practice clears imported selection without reopening home"))) return;
-  if (!Check(UCrosshairMapLibrary::BuiltinMapCount==2 && Library->MapName(2)!=TEXT("Highrise Rooftops"),TEXT("Only Testing Map and Nuketown remain built-in; imports begin at index two"))) return;
+  CollectGarbage(RF_NoFlags);
+  Startup->BeginPreparation();
+  if (!Check(Startup->IsReady() && Startup->GetPreparationCount()==1 && Startup->HasCachedAsset(TEXT("/Game/Crosshair/Maps/M_ImportedMap.M_ImportedMap")),TEXT("Startup cache survives garbage collection and round-trip map travel without restarting"))) return;
+  if (!Check(UCrosshairMapLibrary::BuiltinMapCount==3 && Library->MapName(2)==TEXT("Grid"),TEXT("Testing Map, Nuketown and Grid are built-in; imports begin at index three"))) return;
   {
    auto* Selector=NewObject<UCrosshairSoldierSelection>(World);int32 Last=INDEX_NONE;
    for(int32 Cycle=0;Cycle<4;++Cycle){TSet<int32> Seen;for(int32 i=0;i<6;++i){const int32 Design=Selector->Draw(6);if(!Check(Design!=Last,TEXT("Shuffled soldier deck avoids adjacent repeats"))) return;Seen.Add(Design);Last=Design;}if(!Check(Seen.Num()==6,TEXT("Every shuffled cycle includes six soldier designs"))) return;}

@@ -1,4 +1,5 @@
 #include "CrosshairGame.h"
+#include "CrosshairStartup.h"
 #include "CrosshairMapLibrary.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -43,7 +44,7 @@ ACrosshairPlayerController::ACrosshairPlayerController()
 void ACrosshairPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
-	if (IsLocalController()) ApplyGameplayInputMode();
+	if (IsLocalController()) { ApplyGameplayInputMode(); GetGameInstance()->GetSubsystem<UCrosshairStartup>()->BeginPreparation(); }
  auto* Library=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>();
  if (IsLocalController() && !Library->bHomeVisited && !FParse::Param(FCommandLine::Get(),TEXT("CrosshairSmoke")) && !GetWorld()->GetDemoNetDriver())
  { Library->bHomeVisited=true; GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this,[this](){ ShowHome(); })); }
@@ -59,6 +60,7 @@ void ACrosshairPlayerController::ApplyGameplayInputMode()
 }
 void ACrosshairPlayerController::UpdateRotation(float DeltaTime)
 {
+	if (GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing()) { PendingMouse=HeldStick=FVector2D::ZeroVector; return; }
 	Super::UpdateRotation(DeltaTime);
 	if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn()))
 		PracticePawn->ApplyLookInput(PendingMouse, HeldStick, DeltaTime);
@@ -79,6 +81,7 @@ void ACrosshairPlayerController::ShowHome()
 }
 void ACrosshairPlayerController::StartPlaying()
 {
+ if (GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing()) return;
  bHomeScreen=bFromHome=false; if (bMenuOpen) ToggleMenu();
  if (auto* PracticePawn=Cast<ACrosshairCharacter>(GetPawn())) { PracticePawn->Inventory->ApplyClass(); PracticePawn->Attempt->ResetAttempt(); }
 }
@@ -93,7 +96,7 @@ void ACrosshairPlayerController::ToggleMenu()
 	if (bMenuOpen)
 		if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn())) PracticePawn->GetCharacterMovement()->StopMovementImmediately();
 	if (bMenuOpen)
- { MapChoice=GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Nuketown")) ? 1 : 0;
+ { MapChoice=GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Nuketown")) ? 1 : GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Grid")) ? 2 : 0;
    const auto* Library=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>();
    for (int32 i=0;i<Library->Maps.Num();++i) if (Library->Maps[i].Id==Library->ActiveMapId) MapChoice=i+UCrosshairMapLibrary::BuiltinMapCount;
    EditingClass=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().ActiveClass;
@@ -117,6 +120,7 @@ void ACrosshairPlayerController::ToggleMenu()
 }
 bool ACrosshairPlayerController::InputKey(const FInputKeyEventArgs& Params)
 {
+	if (GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing()) return true;
 	const FKey Key = Params.Key;
 	const bool Pressed = Params.Event == IE_Pressed;
 	if (Pressed && (Key == EKeys::Escape || Key == EKeys::Gamepad_Special_Right)) { ToggleMenu(); return true; }
@@ -297,6 +301,7 @@ void ACrosshairPlayerController::SetMenuTab(int32 Tab)
 }
 void ACrosshairPlayerController::ActivateMenuRow(int32 Row)
 {
+ if (GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing()) return;
 	if (!bMenuOpen || !GetVisibleMenuRows().Contains(Row)) return;
 	MenuSelection = Row;
 	ActivateSelection();
@@ -452,6 +457,14 @@ void ACrosshairHUD::DrawHUD()
 	auto Panel=[&](float PX,float PY,float W,float H)
 	{ DrawRect(FLinearColor(.018f,.026f,.036f,.86f),PX*HUDScale,PY*HUDScale,W*HUDScale,H*HUDScale); };
 
+ if (const auto* Startup=GetGameInstance()->GetSubsystem<UCrosshairStartup>(); Startup->IsPreparing())
+ {
+  DrawRect(FLinearColor(.018f,.026f,.036f,1),0,0,Canvas->ClipX,Canvas->ClipY);
+  Label(TEXT("PREPARING GAME"),White,390,285,1.6f);
+  Label(Startup->GetStatus(),Accent,240,355,.8f);
+  Label(TEXT("Please wait. Preparing maps, equipment and shaders."),Muted,240,400,.7f);
+  return;
+ }
 	if (PracticePawn)
 	{
 
@@ -611,7 +624,17 @@ void ACrosshairHUD::DrawHUD()
 		if (PC->MenuTab == 5) Text(TEXT("Enter / A or click a camo to equip it. Saved separately for each weapon."), Muted, 224, 468);
 		if (PC->MenuTab == 3) Text(TEXT("Enable sandbox editing, then P / D-pad Up places targets."), Muted, 224, 468);
 		if (PC->MenuTab==6) Text(TEXT("Choose two weapons and a lethal. Equip applies the class and restocks."),Muted,224,468,.85f);
-        if (PC->MenuTab==7) Text(TEXT("Local OBJ geometry / map.json packages. Import to add a playable map."),Muted,224,468,.85f);
+        if (PC->MenuTab==7)
+        {
+         Text(TEXT("Call of Duty Black Ops 1 Grid Inspired Map"),White,224,330,.95f);
+         Text(TEXT("by PIPO (pipo_) | CC BY 4.0"),Muted,224,360,.85f);
+         Text(TEXT("Adapted for Crosshair: Unreal import, collision, lighting and player spawn."),Muted,224,388,.75f);
+         Text(TEXT("View source / creator on Sketchfab"),Accent,224,421,.85f);
+         HitBox(TEXT("GridSource"),216,414,410,32);
+         Text(TEXT("CC BY 4.0 license"),Accent,650,421,.85f);
+         HitBox(TEXT("GridLicense"),642,414,310,32);
+         Text(TEXT("Local OBJ geometry / map.json packages. Import to add a playable map."),Muted,224,468,.85f);
+        }
         if (PC->MenuTab==8) Text(TEXT("Setup saves now. Bot combat, spawning and scoring are the next stage."),Muted,224,468,.8f);
         if (PC->MenuTab == 4) Text(TEXT("X / Delete removes the selected replay."), Muted, 224, 468);
 		Rect(FLinearColor(.07f, .09f, .12f), 20, 504, 960, 1);
@@ -624,6 +647,11 @@ void ACrosshairHUD::NotifyHitBoxClick(FName BoxName)
 	auto* PC = Cast<ACrosshairPlayerController>(PlayerOwner);
 	if (!PC || !PC->bMenuOpen) return;
 	const FString Name = BoxName.ToString();
+ if (PC->MenuTab==7 && (Name==TEXT("GridSource") || Name==TEXT("GridLicense")))
+ {
+  FPlatformProcess::LaunchURL(Name==TEXT("GridSource") ? TEXT("https://sketchfab.com/3d-models/call-of-duty-black-ops-1-grid-inspired-map-68c0b8b9ffe34a468876044b4c1da00a") : TEXT("https://creativecommons.org/licenses/by/4.0/"),nullptr,nullptr);
+  return;
+ }
 	FString Kind, Value;
 	if (!Name.Split(TEXT("_"), &Kind, &Value)) return;
 	const int32 Index = FCString::Atoi(*Value);

@@ -1,4 +1,5 @@
 #include "CrosshairReplaySubsystem.h"
+#include "CrosshairStartup.h"
 #include "CrosshairCharacter.h"
 #include "CrosshairPractice.h"
 #include "CrosshairWeapon.h"
@@ -217,7 +218,7 @@ void UCrosshairReplaySubsystem::DeleteSaved(int32 Index)
 void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 {
 	UWorld* World = GetWorld();
-	if (!World || !World->IsGameWorld()) return;
+	if (!World || !World->IsGameWorld() || GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing()) return;
 	const double Now = FPlatformTime::Seconds();
 	// StopStreaming flushes asynchronously. Never play or delete a file until its writer is done.
 	const bool bWriterReady = !FinishingStreamer || (!FinishingStreamer->IsStreaming() && !FinishingStreamer->HasPendingFileRequests());

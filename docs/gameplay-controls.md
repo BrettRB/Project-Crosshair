@@ -83,3 +83,13 @@ Home now offers Play, Weapon classes, Maps / Import and Settings. Five saved cla
 Controller default yaw/pitch are 720/540 degrees per second, with higher adjustable limits of 2160/1440. Old default speeds migrate once while custom speeds remain. Left-stick click latches sprint while moving. Settings > Controls > Sandbox target editing enables dummy placement/removal/clear controls; it ships Off and is also accessible in Targets. Mouse wheel navigates long menus.
 
 Maps / Import accepts local OBJ geometry or a map.json package with scale/spawn and one optional PNG/JPG atlas. Imports keep a local copy, create collision and participate in replay playback. See [home, classes and map import](home-classes-and-map-import.md) for steps, supported formats, limits and implementation.
+
+
+## Startup preparation (2026-10-20)
+
+Launch now displays PREPARING GAME while map dependencies, equipment, shaders and graphics pipelines warm up. Play and map switching unlock after completion; the asset cache persists across map changes. See [startup preparation](startup-preparation.md) for behavior, local verification and remaining map/streaming costs.
+
+
+## Grid practice map (2026-10-20)
+
+Maps now offers Testing Map, Nuketown and Grid, followed by local imports. Choose Grid and press Enter / A. The Maps tab credits PIPO with source and CC BY 4.0 links. See [Grid integration and attribution](grid-map.md).

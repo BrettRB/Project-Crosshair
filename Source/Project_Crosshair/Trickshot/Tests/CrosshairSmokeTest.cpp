@@ -1,4 +1,5 @@
 #include "CrosshairSmokeTest.h"
+#include "../CrosshairStartup.h"
 #include "../CrosshairCharacter.h"
 #include "../CrosshairData.h"
 #include "../CrosshairDummy.h"
@@ -63,7 +64,9 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 {
 	UWorld* World = GetWorld();
 	if (!World || !World->IsGameWorld() || bFinished) return;
-	const double Now = FPlatformTime::Seconds(), Elapsed = Now - StepStarted;
+	if (GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing())
+ { Started=StepStarted=FPlatformTime::Seconds(); return; }
+ const double Now = FPlatformTime::Seconds(), Elapsed = Now - StepStarted;
 	if (Now - Started > ((FParse::Param(FCommandLine::Get(), TEXT("CrosshairMapVisual")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairVisual")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairFollowupVisual"))) ? 300 : 100)) { Check(false, TEXT("Runtime test timed out")); return; }
 #if WITH_EDITOR
 	// Screenshots must show finished shaders, rather than temporary default materials.

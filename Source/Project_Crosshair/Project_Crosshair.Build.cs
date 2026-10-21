@@ -23,7 +23,7 @@ public class Project_Crosshair : ModuleRules
 			"Slate"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "NetworkReplayStreaming", "LocalFileNetworkReplayStreaming" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "NetworkReplayStreaming", "LocalFileNetworkReplayStreaming", "AssetRegistry", "RenderCore" });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"Project_Crosshair",

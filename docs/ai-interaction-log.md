@@ -2288,3 +2288,117 @@ Read AGENTS, character-source README, bot preparation and relevant target/placem
 ### Response Summary
 Six soldier designs added with randomized placement cycling and stable appearances through reset/replay, using a shared component/catalog for future bots. Final build, rendered six-design/replay checks, expansion and lethal regressions, and capped core regression pass.
 ---
+
+---
+## Interaction 51
+
+Date/time: 2026-10-20 approximately 15:19 America/Chicago.
+
+### User Prompt
+Build a system that compiles all the shaders and everything needed for the game to run that happens when you launch the game so there isn't a weird load when trying to switch maps.[@CrosshairFrontendTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp)
+
+### Interpretation
+Move shipped content loading and shader/pipeline preparation to launch, keep reusable assets resident across map changes, and show a preparation screen before allowing play.
+
+### Requirements / Acceptance Criteria
+- Prepare shipped maps and shared game content once per game instance at launch.
+- Wait for uncooked shader/asset compilation and supported runtime PSO precaching before enabling play/map travel.
+- Retain asset references through garbage collection and map changes without retaining old gameplay worlds.
+- Visible progress/failure feedback, frontend regression coverage, local builds/tests, documentation and interaction log.
+- Preserve existing gameplay, map selection, classes, soldier appearances and replay behavior.
+
+### Actions Taken
+Read AGENTS.md, relevant startup/map/replay/frontend code, gameplay documentation and ContentSource/Character/README.md; repository-root README.md does not exist. Added a modular tickable game-instance startup subsystem. It discovers Crosshair content and transitive runtime dependencies, loads asynchronously, waits for editor shader/asset compilation, requests map component and camo/soldier mesh/material pipeline combinations, and waits for component/global PSO queues plus a quiet interval. Retains non-world assets for the session and releases preview worlds/components. Added PREPARING GAME screen, progress/error text and input/play/travel/recording gates. Enabled resource/component PSO precaching and cooking runtime-discovered Crosshair content. Expanded frontend startup/GC/travel assertions and made existing runtime smoke suites wait for preparation. Reviewed rendered preparation screenshot. Added setup/limits/verification documentation. No commits, external services or unrelated asset regeneration.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairStartup.h and .cpp (new)
+- Source/Project_Crosshair/Project_Crosshair.Build.cs
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairMapLibrary.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairReplaySubsystem.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp and .h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairSmokeTest.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairExpansionTest.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairLethalTest.cpp
+- Config/DefaultEngine.ini, Config/DefaultGame.ini
+- docs/startup-preparation.md (new), docs/gameplay-controls.md
+- docs/ai-interaction-log.md (append only)
+
+### Verification
+- Local Build.bat Project_CrosshairEditor Win64 Development -Project=<project> -WaitMutex -NoHotReloadFromIDE: succeeded. Fixed initial FStreamableHandle class/struct mismatch and TObjectPtr auto-pointer iteration compiler errors.
+- Local Build.bat Project_Crosshair Win64 Development -Project=<project> -WaitMutex -NoHotReloadFromIDE: succeeded, including WITH_EDITOR-disabled compilation.
+- Local headless -game -CrosshairSmoke -CrosshairFrontendSmoke -NullRHI -unattended -nosound -ExecCmds="t.MaxFPS 60": CROSSHAIR_FRONTEND_OK, exit 0. Initial -log argument did not select a filename; this run is in Saved/Logs/Project_Crosshair.log (later runs use -abslog).
+- Final rendered -game -CrosshairSmoke -CrosshairFrontendSmoke -CrosshairFrontendVisual -RenderOffscreen -unattended -nosound -ResX=1280 -ResY=720 -windowed -ExecCmds="t.MaxFPS 60" -abslog=<project>/Saved/Logs/StartupFrontendRendered.log: CROSSHAIR_FRONTEND_OK, exit 0. Loaded 4,316 assets and three maps, ready after 29.67 seconds while standalone game compilation ran concurrently. Verified blocked play/travel, one preparation per session, cached imported material, retained cache after explicit garbage collection, imported map/replay and Nuketown/practice round trip. Existing class/input/soldier assertions pass. StartupPreparation.png visually reviewed.
+- Local UnrealEditor-Cmd <project> -unattended -NullRHI -nosound -ExecCmds="Automation RunTests Crosshair" -TestExit="Automation Test Queue Empty" -abslog=<project>/Saved/Logs/StartupAutomation.log: nine of nine automation tests succeeded, exit 0.
+- Local -game -CrosshairSmoke -NullRHI -unattended -nosound -ExecCmds="t.MaxFPS 60" -abslog=<project>/Saved/Logs/StartupCore.log: CROSSHAIR_SMOKE_OK, exit 0, no smoke failures. Startup ready after 10.44 seconds without concurrent compilation.
+- git status/diff reviewed; git diff --check passes for task files. Existing Build/Windows/FileOpenOrder/EditorOpenOrder.log modification preserved and excluded from task whitespace check.
+
+### Notes / Follow-up
+- Map creation, collision, texture/mesh streaming, GPU uploads, rendering setup and runtime OBJ/image processing still have costs; no instantaneous travel or universal zero-stutter guarantee.
+- Session asset retention increases memory use and startup time. Does not force all texture mips into VRAM or run other maps' gameplay in advance.
+- Packaged shader bytecode requires a normal successful cook; startup prepares GPU pipelines. Standalone game target builds, but packaged cook/runtime and fresh driver-cache benchmarking were not performed.
+- Rendered warmup exposed existing BlackOPSIK material problems (missing Leather textures and invalid virtual texture sampler settings); engine fallback materials remain. No unrelated material graphs or missing assets modified.
+- Dedicated servers/commandlets skip this client warmup. Physical controller and extended network sessions not verified.
+
+### Response Summary
+Added launch-time preparation with visible progress, shader/pipeline warmup and persistent map asset cache. Both local build targets, rendered frontend/map/replay checks, nine automation tests and core smoke regression pass. Ordinary world-loading costs and existing imported material errors remain documented.
+---
+
+---
+## Interaction 52
+
+Date/time: 2026-10-20 approximately 15:50 America/Chicago.
+
+### User Prompt
+I found a new map I want to add to the game. Here is the link, I downloaded the glb file with 2k resolution, use the link to properly credit the creator.
+
+https://sketchfab.com/3d-models/call-of-duty-black-ops-1-grid-inspired-map-68c0b8b9ffe34a468876044b4c1da00a#download[@CrosshairFrontendTest.cpp](file:///C:/Users/BrettRB/Project_Crosshair/Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.cpp)
+
+### Interpretation
+Integrate the downloaded 2K Grid GLB as a playable built-in map and preserve correct creator/source/license attribution using the supplied listing.
+
+### Requirements / Acceptance Criteria
+- Use the user's downloaded GLB, retaining supplied map geometry, materials and textures.
+- Verify creator/license and provide visible, linked attribution and modification notice.
+- Configure playable spawn, collision, lighting, practice rules, menu selection, startup warmup and cooking entry.
+- Preserve Testing Map, Nuketown, local imports, class/settings and replay behavior.
+- Expand frontend coverage, build and test locally, inspect renders, document provenance and append this log.
+
+### Actions Taken
+Read map import/gameplay documentation, import scripts and map/frontend code; preserved the preceding startup task's working-tree changes. Located Downloads/call_of_duty_black_ops_1_grid_inspired_map.glb (79,821,704 bytes). Extracted title, author PIPO (pipo_), source and CC-BY-4.0 metadata from the GLB and independently verified against Sketchfab's public model API; web listing search also identifies PIPO/CC Attribution. Imported through Unreal Interchange into an isolated Grid folder and L_Grid map, with 590 static components/meshes, 38 materials, 30 texture assets and scene import data. Preserved hierarchy and supplied dimensions up to 2048 pixels. Added blocking/double-sided triangle collision, native dynamic daylight/sky, existing practice GameMode and PlayerStart (0,0,300). Added Grid as built-in index 2, moved dynamic import offset to 3, preserved identity-based imported replays, added map cooking entry and existing startup automatic discovery. Maps tab includes full title, creator, CC BY 4.0, adaptation notice and clickable original source/license links. Stored source checksum/metadata and credit documentation without duplicating the 80 MB GLB. Investigated excessive first-render distance-field generation: source meshes have oversized local-space coordinates under scaled scene nodes. Added a scoped asset tuning/audit utility and scale-aware distance-field resolution capped at 0.25, retaining rendered/collision geometry. Expanded rendered frontend travel/movement/fire/reset/placement/cache/selection checks and settled gameplay/overview screenshots. No commits, external asset purchases, unrelated material changes or CI changes.
+
+### Files Changed
+- Content/Crosshair/Maps/L_Grid.umap (new)
+- Content/Crosshair/Maps/Grid/ (659 new Unreal assets: 590 meshes, 38 materials, 30 textures and scene import asset)
+- ContentSource/Grid/README.md and source-manifest.json (new)
+- Scripts/import_grid_map.py, tune_grid_map.py and probe_grid_map.py (new)
+- Source/Project_Crosshair/Trickshot/CrosshairMapLibrary.h and .cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairFrontendTest.h and .cpp
+- Config/DefaultGame.ini
+- docs/grid-map.md and docs/third-party-credits.md (new)
+- docs/home-classes-and-map-import.md, docs/gameplay-controls.md and docs/startup-preparation.md
+- docs/ai-interaction-log.md (append only)
+
+### Verification
+- Local Build.bat Project_CrosshairEditor Win64 Development -Project=<project> -WaitMutex -NoHotReloadFromIDE: succeeded, including final screenshot timing adjustment.
+- Local Build.bat Project_Crosshair Win64 Development -Project=<project> -WaitMutex -NoHotReloadFromIDE: succeeded for Grid integration.
+- Local UnrealEditor-Cmd <project> -run=pythonscript -script=<project>/Scripts/import_grid_map.py -unattended -NullRHI -nosound -abslog=<project>/Saved/Logs/GridImport.log: CROSSHAIR_GRID_IMPORT_OK components=590 meshes=590, exit 0. Corrected initial Python Vector-to-tuple diagnostic error and safely retried partial imports within the new Grid folder.
+- Local equivalent tune_grid_map.py commandlet: final GridTuning.log CROSSHAIR_GRID_TUNING_OK meshes=590 textures=30 materials=38, exit 0. Corrected commandlet StaticMeshEditorSubsystem availability using the class default object's stateless utility methods. Bounds audit confirmed oversized local mesh dimensions and existing scene scaling. Initial uniform 0.25 tuning was replaced with scene-scale-aware resolution. Two preliminary rendered runs were deliberately stopped while diagnosing expensive first-derived-data generation; no pass claimed for them.
+- Final rendered UnrealEditor-Cmd <project> /Game/Crosshair/Maps/L_Practice -game -CrosshairSmoke -CrosshairFrontendSmoke -CrosshairFrontendVisual -RenderOffscreen -unattended -nosound -ResX=1280 -ResY=720 -windowed -ExecCmds="t.MaxFPS 60" -abslog=<project>/Saved/Logs/GridFrontendRendered.log: CROSSHAIR_FRONTEND_OK, exit 0. Grid-specific spawn/walking/fire/reset/placement/menu/class/cache/return assertions pass, alongside existing imported-map replay and soldier assertions. Startup loaded 4,983 assets/four maps and completed in 24.45 seconds on the final warmed run.
+- GridCredits.png, GridGameplay.png and GridOverview.png visually reviewed. Initial gameplay capture caught camera rotation blur; final capture waits for settling and is clear.
+- Local UnrealEditor-Cmd <project> -unattended -NullRHI -nosound -ExecCmds="Automation RunTests Crosshair" -TestExit="Automation Test Queue Empty" -abslog=<project>/Saved/Logs/GridAutomation.log: nine of nine tests succeeded, exit 0.
+- Import/tuning/probe Python AST parsing succeeds. Git status/diff reviewed; task-file git diff --check passes. Pre-existing FileOpenOrder log and preceding startup changes preserved.
+
+### Notes / Follow-up
+- Preserve PIPO/source/CC BY 4.0/modification attribution when distributing the adapted map. No endorsement implied.
+- Runtime assets are self-contained; original GLB remains in Downloads for reimport. SHA-256 recorded in source manifest.
+- Source is an in-progress inspired environment; existing blocky architecture/detail and some degenerate tangent warnings are retained. No claim of an exact original commercial-game recreation.
+- Triangle collision is static, including source glass/props; no new breakable-window metadata, bot combat or navigation feature was requested.
+- First uncooked derived-data generation can be lengthy; local caches and normal cooking handle build data. Scale-aware distance fields trade indirect-lighting precision for sensible asset cost without changing visible geometry/collision.
+- Packaged cook/runtime, physical controller and other GPU performance not verified.
+
+### Response Summary
+Added Grid as a playable built-in map with supplied 2K textures, collision, spawn and startup integration. Credited PIPO under CC BY 4.0 in the Maps screen and project documentation with original source/license links. Both build targets, nine automation tests and rendered Grid/frontend regression pass.
+---

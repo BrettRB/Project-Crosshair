@@ -1,4 +1,5 @@
 #include "CrosshairLethalTest.h"
+#include "../CrosshairStartup.h"
 #include "../CrosshairThrowable.h"
 #include "../CrosshairCharacter.h"
 #include "../CrosshairGame.h"
@@ -44,6 +45,7 @@ void UCrosshairLethalTest::Next(int32 Value) { Step=Value; StepStarted=FPlatform
 void UCrosshairLethalTest::Tick(float Delta)
 {
     auto* World=GetWorld(); if (!World || !World->IsGameWorld() || bFinished) return;
+    if (GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing()) { Started=StepStarted=FPlatformTime::Seconds(); return; }
     if (FPlatformTime::Seconds()-Started>180) { Check(false,TEXT("Timeout")); return; }
     const double Elapsed=FPlatformTime::Seconds()-StepStarted;
     auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();

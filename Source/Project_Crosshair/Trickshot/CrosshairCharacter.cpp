@@ -1,4 +1,5 @@
 #include "CrosshairCharacter.h"
+#include "CrosshairStartup.h"
 #include "CrosshairCombatAppearance.h"
 #include "CrosshairData.h"
 #include "CrosshairWeapon.h"
@@ -122,7 +123,7 @@ bool ACrosshairCharacter::IsReplayPlayback() const
 bool ACrosshairCharacter::CanAct() const
 {
 	const ACrosshairPlayerController* PC = Cast<ACrosshairPlayerController>(GetController());
-	return !IsReplayPlayback() && PC && !PC->bMenuOpen && !Attempt->bSucceeded;
+	return !GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing() && !IsReplayPlayback() && PC && !PC->bMenuOpen && !Attempt->bSucceeded;
 }
 void ACrosshairCharacter::SelectWeaponSlot(int32 Slot)
 { if (CanAct() && !Lethals->IsBusy()) { bAimHeld=false; if (Slot<0) Inventory->Cycle(); else Inventory->EquipSlot(Slot); } }

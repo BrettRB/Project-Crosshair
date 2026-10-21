@@ -1,4 +1,5 @@
 #include "CrosshairExpansionTest.h"
+#include "../CrosshairStartup.h"
 #include "../CrosshairCharacter.h"
 #include "../CrosshairData.h"
 #include "../CrosshairDummy.h"
@@ -51,6 +52,7 @@ void UCrosshairExpansionTest::Next(int32 NewStep) { Step=NewStep; StepStarted=FP
 void UCrosshairExpansionTest::Tick(float DeltaSeconds)
 {
     auto* World=GetWorld(); if (!World || !World->IsGameWorld() || bFinished) return;
+    if (GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing()) { Started=StepStarted=FPlatformTime::Seconds(); return; }
     const double Elapsed=FPlatformTime::Seconds()-StepStarted;
     if (FPlatformTime::Seconds()-Started>180) { Check(false,TEXT("Timeout")); return; }
     auto* PC=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
