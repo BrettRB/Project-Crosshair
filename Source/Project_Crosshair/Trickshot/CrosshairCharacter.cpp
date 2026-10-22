@@ -12,6 +12,7 @@
 #include "CrosshairMatch.h"
 #include "CrosshairSoldierAppearance.h"
 #include "CrosshairTrickshot.h"
+#include "CrosshairLocomotion.h"
 #include "AIController.h"
 #include "Animation/AnimInstance.h"
 #include "GameFramework/PlayerState.h"
@@ -78,7 +79,7 @@ void ACrosshairCharacter::BeginPlay()
 {
 	Super::BeginPlay();
  if (IsInMatch()) ConfigureMatchBody();
- else if (GetMesh()->GetSkeletalMeshAsset()) { GetMesh()->SetVisibility(true); GetMesh()->SetOwnerNoSee(true); if (BodyIdleAnimation) GetMesh()->PlayAnimation(BodyIdleAnimation,true); }
+ else if (GetMesh()->GetSkeletalMeshAsset()) { GetMesh()->SetVisibility(true); GetMesh()->SetOwnerNoSee(true); GetMesh()->SetAnimInstanceClass(UCrosshairLocomotionAnimInstance::StaticClass()); }
 	if (IdleAnimation)
 	{
 		auto* Arms = GetFirstPersonMesh();
@@ -137,9 +138,8 @@ void ACrosshairCharacter::ConfigureMatchBody()
 	MatchAppearance->InitializeAppearance(Body);
 	Body->SetVisibility(true);
 	Body->SetOwnerNoSee(true);
-	if (UClass* Locomotion = LoadClass<UAnimInstance>(nullptr, TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.ABP_Unarmed_C")))
-		Body->SetAnimInstanceClass(Locomotion);
-	else if (BodyIdleAnimation) Body->PlayAnimation(BodyIdleAnimation, true);
+	// Rifle locomotion driven by replicated movement: bots, LAN players and replays all step properly.
+	Body->SetAnimInstanceClass(UCrosshairLocomotionAnimInstance::StaticClass());
 	// Like practice targets: posed physics bodies take shots (head/body), the capsule only blocks movement.
 	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -235,6 +235,16 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	if (Health->bDead) return;
+	if (bMatchBodyConfigured)
+	{
+		// Your own soldier body and gear (helmet, pouches, pads) never block your first-person view.
+		// Live play hides them from the owner; a replay viewer is not the owner, so hide them there too.
+		const bool bOwnReplayView = IsReplayPlayback() && !UsesWorldPresentation();
+		GetMesh()->bCastHiddenShadow = true;
+		GetMesh()->SetHiddenInGame(bOwnReplayView);
+		for (UStaticMeshComponent* Part : MatchAppearance->Gear)
+			if (Part) { Part->SetOwnerNoSee(true); Part->bCastHiddenShadow = true; Part->SetHiddenInGame(bOwnReplayView); }
+	}
  if (bControllerSprint && (GetLastMovementInputVector().IsNearlyZero() || bIsCrouched)) { bControllerSprint=false; bSprintHeld=false; }
 	UCameraComponent* Camera = GetFirstPersonCameraComponent();
 	ACrosshairWeapon* Weapon = Inventory->GetCurrent();
@@ -251,6 +261,9 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 	}
 	else
 	{
+		// LAN: the host simulates this pawn too, so it needs the same sprint/aim intent to compute the same speed.
+		if (IsLocallyControlled() && !HasAuthority() && (bSprintHeld != bSentSprint || bAimHeld != bSentAim))
+		{ bSentSprint = bSprintHeld; bSentAim = bAimHeld; ServerSetMoveIntent(bSprintHeld, bAimHeld); }
 		const FCrosshairSettings& Settings = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
 		const float AimSeconds = Weapon && Weapon->Definition ? Weapon->Definition->AimSeconds : 0.2f;
 		const bool bWantsAim = bAimHeld && CanAct() && !Placement->bPlacing && !Lethals->IsBusy() && Weapon && !Weapon->bReloading && !Weapon->IsSwitching();
@@ -393,3 +406,8 @@ void ACrosshairCharacter::TargetHit(ACrosshairDummy* Target, bool bHeadshot, boo
 void ACrosshairCharacter::StopActions() { Lethals->Cancel(); Traversal->CancelMantle(); FireReleased(); bAimHeld = false; bSprintHeld = false; bControllerSprint=false; StopJumping(); }
 
 bool ACrosshairCharacter::CanJumpWhileFalling() const { return Traversal && Traversal->AllowsCoyoteJump(); }
+void ACrosshairCharacter::ServerSetMoveIntent_Implementation(bool bSprint, bool bAim)
+{
+	bSprintHeld = bSprint;
+	bAimHeld = bAim;
+}

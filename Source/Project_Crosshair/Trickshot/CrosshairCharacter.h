@@ -86,6 +86,8 @@ public:
 	FString TrickshotBanner;
 	float TrickshotUntil = 0;
 	void SetBotInput(bool bAim, bool bSprint) { bAimHeld = bAim; bSprintHeld = bSprint; }
+	/** LAN client -> host: sprint and aim change movement speed, so the host must simulate the same intent. */
+	UFUNCTION(Server, Reliable) void ServerSetMoveIntent(bool bSprint, bool bAim);
  void SelectWeaponSlot(int32 Slot);
  void ControllerSprintPressed();
 	void ApplyLookInput(FVector2D MouseDelta, FVector2D StickAxis, float DeltaSeconds);
@@ -128,6 +130,7 @@ private:
 	TArray<TPair<double, float>> YawHistory;
 	float LastYaw = 0;
 	bool bHasLastYaw = false;
+	bool bSentSprint = false, bSentAim = false;
 	float AimAlpha = 0;
 	int32 PresentedHit = 0;
 };

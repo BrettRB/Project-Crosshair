@@ -124,3 +124,11 @@ Engine-bundled additions: `NavigationSystem`, `OnlineSubsystem`, `OnlineSubsyste
 - New automation test `Crosshair.Match.KillLabels`. Screenshots `MenuHome.png`, `MenuMatchSetup.png`, `MatchReplay.png` inspected.
 
 Not verified: two separate PCs on a real LAN, Windows Firewall prompts, packaged/cooked builds, physical controller play, and match balance (bots and weapons are untuned; `Scripts/create_crosshair_assets.py` gives every weapon except the AR 100 body damage, so the SMG kills in one hit like the sniper; weapon tuning was not changed).
+
+## Soldier animation and LAN movement (2026-10-21)
+
+Every third-person soldier body (bots, other LAN players, practice/match replays) uses `UCrosshairLocomotionAnimInstance`, a C++ animation instance with no Animation Blueprint. It blends the Unreal mannequin rifle set: rifle idle, 8-direction walk and jog cycles chosen by speed and travel direction relative to facing, a shared step phase so feet stay planted while blending, a faster cycle at sprint speed, a fall loop while airborne, and upper-body aim pitch. It reads only replicated movement (velocity, falling, aim pitch), so remote LAN players and replays animate exactly like local bots. The rifle animation folder is added to `DirectoriesToAlwaysCook` so packaged builds include it.
+
+LAN movement: sprint and aim-down-sights change movement speed, and the host simulates every joined player, so the client now sends its sprint/aim intent to the host (`ServerSetMoveIntent`). The host moves joined players at the same speed they see locally instead of correcting them back to walk speed. Your own soldier body and its gear (helmet, pouches, pads) are hidden from your first-person view, live and in your replays, while other players still see them.
+
+Verified: `Crosshair.Animation.LocomotionWeights` automation test; match smoke asserts moving bots play walk/jog cycles; two-process LAN test: host simulated the joined player's sprint at 680 cm/s, and the client saw the host's soldier at 681 cm/s with a full walk/jog pose (stepping weight 1.00). Crouch, reload, firing and equip are not yet animated on third-person bodies.

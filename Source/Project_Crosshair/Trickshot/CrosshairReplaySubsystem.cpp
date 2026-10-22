@@ -295,7 +295,7 @@ void UCrosshairReplaySubsystem::Tick(float DeltaSeconds)
 		if (World->GetDemoNetDriver() && World->GetDemoNetDriver()->IsRecording())
 		{
 			Phase = ECrosshairReplayPhase::Recording;
-			Report(TEXT("Attempt ready"));
+			if (!bMatchSession) Report(TEXT("Attempt ready")); // practice prompt only; match recording is silent
 		}
 		else if (Now - PhaseStarted > 10)
 		{

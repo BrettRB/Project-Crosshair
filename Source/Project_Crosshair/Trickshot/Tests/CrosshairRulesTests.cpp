@@ -211,3 +211,28 @@ bool FCrosshairTrickshotLabelTest::RunTest(const FString& Parameters)
  return true;
 }
 #endif
+
+#if WITH_DEV_AUTOMATION_TESTS
+#include "../CrosshairLocomotion.h"
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairLocomotionWeightsTest, "Crosshair.Animation.LocomotionWeights", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairLocomotionWeightsTest::RunTest(const FString& Parameters)
+{
+ using namespace CrosshairLocomotion;
+ auto Sum=[](const FWeights& W){ float Total=W.Idle; for (int32 i=0;i<Directions;++i) Total+=W.Walk[i]+W.Jog[i]; return Total; };
+ const FWeights Still=Compute(0.f,0.f);
+ TestEqual(TEXT("Standing still is pure idle"),Still.Idle,1.f);
+ const FWeights SlowForward=Compute(WalkSpeed*.5f,0.f);
+ TestTrue(TEXT("Half walk speed blends idle and forward walk"),FMath::IsNearlyEqual(SlowForward.Idle,.5f) && FMath::IsNearlyEqual(SlowForward.Walk[0],.5f));
+ const FWeights RunRight=Compute(JogSpeed,90.f);
+ TestTrue(TEXT("Jog speed to the right is the right jog cycle"),FMath::IsNearlyEqual(RunRight.Jog[2],1.f) && RunRight.Idle<=0.f);
+ const FWeights Diagonal=Compute(JogSpeed,22.5f);
+ TestTrue(TEXT("Between forward and forward-right blends both evenly"),FMath::IsNearlyEqual(Diagonal.Jog[0],.5f) && FMath::IsNearlyEqual(Diagonal.Jog[1],.5f));
+ const FWeights Back=Compute(JogSpeed,-180.f);
+ TestTrue(TEXT("Moving backwards uses the backward cycle"),FMath::IsNearlyEqual(Back.Jog[4],1.f));
+ const FWeights BackLeft=Compute((WalkSpeed+JogSpeed)*.5f,-135.f);
+ TestTrue(TEXT("Backward-left between walk and jog"),FMath::IsNearlyEqual(BackLeft.Walk[5],.5f) && FMath::IsNearlyEqual(BackLeft.Jog[5],.5f));
+ for (const FWeights& W:{Still,SlowForward,RunRight,Diagonal,Back,BackLeft}) TestTrue(TEXT("Weights always sum to one"),FMath::IsNearlyEqual(Sum(W),1.f,1e-4f));
+ TestTrue(TEXT("Sprint speeds up the jog cycle (no foot sliding)"),PlayRate(680.f)>1.4f && PlayRate(JogSpeed)==1.f);
+ return true;
+}
+#endif

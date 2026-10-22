@@ -2788,3 +2788,83 @@ Read the credits, Nuketown and Grid docs and the input-mapping script to confirm
 ### Response Summary
 Added a README describing the class project, the game's features, and what it is based on, with credits, setup, controls and testing.
 ---
+
+---
+## Interaction 64
+
+Date/time: 2026-10-21 (evening, America/Chicago).
+
+### User Prompt
+I love the new UI and interfaces, however, now when trying to play the game, there is a model covering the top of the view and another on the bottom of the view that makes it impossible to see what is happening. Also, make the scope in and out animation just a tad bit faster for quick scopes
+
+### Interpretation
+Remove the models blocking the first-person view in matches, and make the sniper aim-down-sights (scope in/out) slightly faster.
+
+### Requirements / Acceptance Criteria
+- The player's own soldier body and attached gear never block the first-person view, live or in first-person match replays; other players still see them.
+- Sniper scope in/out is slightly faster.
+
+### Actions Taken
+Diagnosed the cause: match soldiers receive attached gear (helmet, pouches, knee pads) from the soldier appearance catalog; the body was hidden from its owner but the gear was not, so the player's own helmet and kit sat in front of the camera (and the whole body showed in first-person match replays). CrosshairCharacter now hides its own body and gear from the owner each frame (keeping shadows) and hides them for the followed player in replays. Sniper AimSeconds lowered from 0.25 s to 0.20 s (20% faster in and out): new Scripts/tune_sniper_scope_speed.py updates DA_Sniper; Scripts/create_crosshair_assets.py default updated for fresh setups.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp
+- Scripts/tune_sniper_scope_speed.py (new)
+- Scripts/create_crosshair_assets.py
+- docs/ai-interaction-log.md
+
+### Verification
+- Blocked: Unreal Editor was open, locking UnrealEditor-Project_Crosshair.dll (build failed with LNK1104) and DA_Sniper.uasset (save failed, asset unchanged). Build, asset update, match test and screenshot check pending until the editor is closed.
+
+### Notes / Follow-up
+- Close Unreal Editor so the build and asset update can run; then commit.
+
+### Response Summary
+Found and fixed the view-blocking gear; sped up the sniper scope to 0.20 s. Waiting for the editor to be closed to build, apply the asset change and test.
+---
+
+Completion of Interaction 64 (2026-10-21): with the editor closed, the build succeeded and Scripts/tune_sniper_scope_speed.py updated DA_Sniper AimSeconds 0.250 -> 0.200 (CROSSHAIR_SCOPE_SPEED_OK). Rendered match screenshots confirm the first-person view is no longer blocked by the player's own helmet and gear.
+
+---
+## Interaction 65
+
+Date/time: 2026-10-21 (evening, America/Chicago).
+
+### User Prompt
+Fix the visual issue I mention in the last chat. I close unreal so it should be good now. Also update the animations of the bots and the player's character. I want the player update for LAN games to ensure that other players that join the match will move correctly and not just slide around the map.
+
+### Interpretation
+Finish the blocked-view fix and faster scope from Interaction 64; give bots and player characters proper third-person locomotion; make joined LAN players move and animate correctly instead of sliding.
+
+### Requirements / Acceptance Criteria
+- First-person view unobstructed; sniper scope faster (0.20 s).
+- Bots and player bodies step through walk/jog/idle/fall animation matched to their movement, including on other machines and in replays.
+- On LAN, joined players move at the right speed (no host corrections) and animate on everyone's screen.
+
+### Actions Taken
+Built and applied the Interaction 64 changes. Added UCrosshairLocomotionAnimInstance (C++ anim instance with a custom proxy): rifle idle, 8-direction walk/jog blending by speed and direction with a shared step phase, sprint play-rate, fall loop and upper-body aim pitch, driven only by replicated movement. Replaced the unarmed blend (bots) and looping idle (practice bodies) with it. Added a reliable server RPC so LAN clients send sprint/aim intent to the host. Silenced the practice "Attempt ready" prompt during match recording. Added rifle animations to DirectoriesToAlwaysCook for packaging. Extended tests (locomotion weights automation test, moving-bot stepping check, two-process LAN movement/animation checks) and docs.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairLocomotion.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h/.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairReplaySubsystem.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.h/.cpp, CrosshairRulesTests.cpp
+- Content/Crosshair/Weapons/DA_Sniper.uasset (AimSeconds 0.20 via script)
+- Scripts/tune_sniper_scope_speed.py (new), Scripts/create_crosshair_assets.py
+- Config/DefaultGame.ini (cook the mannequin rifle animations)
+- docs/offline-match-and-lan.md, docs/ai-interaction-log.md
+
+### Verification
+- Build.bat Project_CrosshairEditor and Project_Crosshair Win64 Development: succeeded.
+- Automation RunTests Crosshair: 12 of 12 succeeded (new Crosshair.Animation.LocomotionWeights).
+- Rendered -CrosshairMatchSmoke: CROSSHAIR_MATCH_OK; "Moving bots play walk/jog locomotion instead of sliding" passed; MatchFFA/MatchCombat/MatchTDM screenshots show a clear view and running rifle-carrying bots.
+- Two-process LAN: host saw the joined player's sprint at 680 cm/s; client saw the host at 681 cm/s with stepping weight 1.00; CROSSHAIR_LAN_HOST_OK and CROSSHAIR_LAN_CLIENT_OK.
+- Regression smokes: core, frontend, lethal, expansion and match all OK.
+
+### Notes / Follow-up
+- Third-person bodies do not yet animate crouch, firing, reload or weapon equip; LAN client firing still needs server RPCs.
+- The first-person arm mask shows a cut sleeve edge at the lower left in some poses (pre-existing first-person arm setup).
+
+### Response Summary
+View fixed and scope sped up; bots and player bodies now walk/jog/fall with aim pitch from replicated movement; LAN players send sprint/aim to the host and animate correctly on other screens. All builds and tests pass.
+---

@@ -132,7 +132,7 @@ mesh = load("/Game/Weapons/Rifle/Meshes/SKM_Rifle")
 fire_sound = load("/Game/Weapons/GrenadeLauncher/Audio/FirstPersonTemplateWeaponFire02")
 weapons = []
 for name, automatic, magazine, interval, reload_time, ads, spread, recoil in [
-        ("Sniper", False, 5, .85, 2.0, .25, 1.2, 1.5),
+        ("Sniper", False, 5, .85, 2.0, .20, 1.2, 1.5),
         ("AR", True, 30, .10, 1.8, .20, 1.5, .45),
         ("SMG", True, 30, .075, 1.6, .16, 2.0, .35)]:
     definition, new = data(ROOT + "/Weapons/DA_" + name, ue.CrosshairWeaponDefinition)

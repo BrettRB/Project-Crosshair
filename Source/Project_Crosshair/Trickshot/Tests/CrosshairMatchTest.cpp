@@ -10,6 +10,7 @@
 #include "../CrosshairStartup.h"
 #include "../CrosshairWeapon.h"
 #include "../CrosshairThrowable.h"
+#include "../CrosshairLocomotion.h"
 #include "AIController.h"
 #include "Camera/CameraComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -118,7 +119,14 @@ void UCrosshairMatchTest::TickLan()
  const double Elapsed=FPlatformTime::Seconds()-StepStarted;
  const APlayerController* PC=World->GetFirstPlayerController();
  const ACrosshairMatchState* Match=ACrosshairMatchState::Get(World);
- if (FPlatformTime::Seconds()-Started>240) { Check(false,TEXT("LAN test timeout")); return; }
+ if (FPlatformTime::Seconds()-Started>300) { Check(false,TEXT("LAN test timeout")); return; }
+ // Both sides run forward sprinting so each can check how the other player moves.
+ auto RunForward=[&]()
+ {
+  auto* Mine=PC ? Cast<ACrosshairCharacter>(PC->GetPawn()) : nullptr;
+  if (Mine && !Mine->Health->bDead) { Mine->SetBotInput(false,true); Mine->AddMovementInput(Mine->GetActorForwardVector()); }
+  return Mine;
+ };
  if (Flag(TEXT("CrosshairLanHost")))
  {
   if (Step==0) { if (PC && PC->GetPawn() && Elapsed>1) { Check(Session->HostLanMatch(),TEXT("Host starts a LAN session")); Next(1); } return; }
@@ -130,7 +138,13 @@ void UCrosshairMatchTest::TickLan()
    if (Humans<2) return;
    Check(Session->HasLanSession(),TEXT("Host sees a second human player join over LAN")); Next(3); return;
   }
-  if (Elapsed<8) return; // keep hosting while the client finishes loading and spawning
+  // The joined player's pawn as simulated on the host: sprint intent must arrive, or the host corrects them to walk speed.
+  const ACrosshairCharacter* Mine=RunForward();
+  for (TActorIterator<ACrosshairCharacter> It(World);It;++It)
+   if (*It!=Mine && !It->IsBot()) RemoteSpeedMax=FMath::Max(RemoteSpeedMax,float(It->GetVelocity().Size2D()));
+  if (Elapsed<20) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO host saw the joined player's top speed %.0f cm/s"),RemoteSpeedMax);
+  if (!Check(RemoteSpeedMax>=560.f,TEXT("Joined player's sprint is simulated at sprint speed on the host (no walk-speed correction)"))) return;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_HOST_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
  }
  switch (Step)
@@ -145,8 +159,26 @@ void UCrosshairMatchTest::TickLan()
  case 2:
   if (World->GetNetMode()!=NM_Client || !Match || !PC || !PC->GetPawn() || Elapsed<3) return;
   if (!Check(Match->PlayerArray.Num()>=2,TEXT("Client receives the host's replicated match and spawns"))) return;
+  Next(3); return;
+ case 3:
+ {
+  // The host's soldier as seen on this client: it should move and step through walk/jog cycles, not slide.
+  const ACrosshairCharacter* Mine=RunForward();
+  for (TActorIterator<ACrosshairCharacter> It(World);It;++It)
+  {
+   if (*It==Mine || It->IsBot()) continue;
+   const float Speed=It->GetVelocity().Size2D();
+   HostSpeedMax=FMath::Max(HostSpeedMax,Speed);
+   if (const auto* Anim=Cast<UCrosshairLocomotionAnimInstance>(It->GetMesh()->GetAnimInstance()); Anim && Speed>200.f)
+    HostSteppingMax=FMath::Max(HostSteppingMax,Anim->GetMovingWeight());
+  }
+  if (Elapsed<10) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO client saw the host's top speed %.0f cm/s, stepping weight %.2f"),HostSpeedMax,HostSteppingMax);
+  if (!Check(HostSpeedMax>300.f,TEXT("Client sees the host player moving"))) return;
+  if (!Check(HostSteppingMax>.8f,TEXT("The host's soldier plays walk/jog locomotion on the client instead of sliding"))) return;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_OK mode=%s map=%s players=%d"),Match->IsTeamMode() ? TEXT("TDM") : TEXT("FFA"),*Match->MapName,Match->PlayerArray.Num());
   bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
+ }
  default: return;
  }
 }
@@ -280,6 +312,8 @@ void UCrosshairMatchTest::Tick(float Delta)
  {
   for (const FCrosshairKillEntry& Entry:Match->KillFeed) bSawBotKillsBot|=Entry.Killer.Contains(TEXT("(bot)")) && Entry.Victim.Contains(TEXT("(bot)"));
   if (Pawn && Pawn->Health->LastAttacker.IsValid() && Pawn->Health->LastAttacker->IsA<ACrosshairBotController>()) bSawBotHitsPlayer=true;
+  for (TActorIterator<ACrosshairCharacter> It(World);It;++It)
+   if (const auto* Anim=Cast<UCrosshairLocomotionAnimInstance>(It->GetMesh()->GetAnimInstance()); Anim && It->IsBot() && It->GetVelocity().Size2D()>250.f && Anim->GetMovingWeight()>.8f) bSawBotStepping=true;
  }
  switch (Step)
  {
@@ -376,11 +410,12 @@ void UCrosshairMatchTest::Tick(float Delta)
    if (const auto* State=It->GetPlayerState<ACrosshairMatchPlayerState>()) BotKills+=State->Kills;
    if (const FVector* Start=SpawnedAt.Find(*It); Start && It->GetPawn() && FVector::Dist2D(*Start,It->GetPawn()->GetActorLocation())>400) ++Moved;
   }
-  if ((Shots==0 || Moved<3 || !NavReady() || !bSawBotKillsBot || !bSawBotHitsPlayer) && Elapsed<120) return;
+  if ((Shots==0 || Moved<3 || !NavReady() || !bSawBotKillsBot || !bSawBotHitsPlayer || !bSawBotStepping) && Elapsed<120) return;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO bots shots=%d moved=%d bot-kills=%d after %.0fs"),Shots,Moved,BotKills,Elapsed);
   if (!Check(Shots>0 && Moved>=3,TEXT("Bots roam the map and engage visible enemies"))) return;
   if (!Check(bSawBotKillsBot,TEXT("Bots shoot and kill each other"))) return;
   if (!Check(bSawBotHitsPlayer,TEXT("Bots shoot the player"))) return;
+  if (!Check(bSawBotStepping,TEXT("Moving bots play walk/jog locomotion instead of sliding"))) return;
   if (!ValidateSpawns(TEXT("Nuketown"))) return;
   Capture(TEXT("MatchCombat.png")); Next(7); return;
  }

@@ -33,6 +33,8 @@ private:
  int32 ReplaysBefore=0;
  double WorldMark=0;
  bool bCapturedHome=false;
+ float RemoteSpeedMax=0,HostSpeedMax=0,HostSteppingMax=0;
+ bool bSawBotStepping=false;
  // Difficulty duel (Easy vs Veteran) on Grid's open snow plane.
  TWeakObjectPtr<class ACrosshairBotController> DuelShooter;
  TWeakObjectPtr<class ACrosshairCharacter> DuelTarget;
