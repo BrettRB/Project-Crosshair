@@ -23,7 +23,8 @@ public class Project_Crosshair : ModuleRules
 			"Slate",
 			"NavigationSystem",
 			"OnlineSubsystem",
-			"OnlineSubsystemUtils"
+			"OnlineSubsystemUtils",
+			"AnimationCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "NetworkReplayStreaming", "LocalFileNetworkReplayStreaming", "AssetRegistry", "RenderCore" });

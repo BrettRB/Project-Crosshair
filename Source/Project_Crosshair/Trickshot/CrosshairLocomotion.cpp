@@ -4,6 +4,7 @@
 #include "Animation/AnimationPoseData.h"
 #include "AnimationRuntime.h"
 #include "BonePose.h"
+#include "TwoBoneIK.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -18,10 +19,12 @@ UCrosshairLocomotionAnimInstance::UCrosshairLocomotionAnimInstance() {}
 void UCrosshairLocomotionAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
  Super::NativeUpdateAnimation(DeltaSeconds);
- if (!Idle)
+ if (!Idle || bLoadedUnarmed!=bUnarmed)
  {
+  // Initialization can update once before the owner sets bUnarmed, so reload when it changes.
+  bLoadedUnarmed=bUnarmed;
   // Mannequin rifle set (template content); cooked via DirectoriesToAlwaysCook.
-  Idle=LoadRifle(TEXT("MF_Rifle_Idle_ADS.MF_Rifle_Idle_ADS"));
+  Idle=bUnarmed ? LoadObject<UAnimSequence>(nullptr,TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle")) : LoadRifle(TEXT("MF_Rifle_Idle_ADS.MF_Rifle_Idle_ADS"));
   Fall=LoadRifle(TEXT("Jump/MM_Rifle_Jump_Fall_Loop.MM_Rifle_Jump_Fall_Loop"));
   Walk.Reset(); Jog.Reset();
   for (const TCHAR* Suffix:Suffixes)
@@ -115,5 +118,82 @@ bool FCrosshairLocomotionProxy::Evaluate(FPoseContext& Output)
    Local.SetRotation((ParentRotation.Inverse()*Tilt*ParentRotation*Local.GetRotation()).GetNormalized());
   }
  }
+ CrosshairLocomotion::ApplyPhysique(Output.Pose);
  return true;
+}
+
+void UCrosshairViewmodelAnimInstance::Play(UAnimSequence* InSequence,bool bInLoop)
+{
+ if (InSequence==Sequence && bInLoop==bLoop) return;
+ Sequence=InSequence; bLoop=bInLoop; Time=0;
+}
+void UCrosshairViewmodelAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
+{
+ Super::NativeUpdateAnimation(DeltaSeconds);
+ if (!Sequence) return;
+ const double Length=FMath::Max(.01,double(Sequence->GetPlayLength()));
+ Time=bLoop ? FMath::Fmod(Time+DeltaSeconds,Length) : FMath::Min(Time+DeltaSeconds,Length);
+}
+void FCrosshairViewmodelProxy::PreUpdate(UAnimInstance* InAnimInstance,float DeltaSeconds)
+{
+ Super::PreUpdate(InAnimInstance,DeltaSeconds);
+ const auto* Instance=CastChecked<UCrosshairViewmodelAnimInstance>(InAnimInstance);
+ Sequence=Instance->Sequence; Time=Instance->Time;
+ bLeftHandIK=Instance->bLeftHandIK; Target=Instance->LeftHandTarget; Hint=Instance->LeftElbowHint;
+}
+bool FCrosshairViewmodelProxy::Evaluate(FPoseContext& Output)
+{
+ if (Sequence)
+ {
+  FAnimationPoseData Data(Output);
+  Sequence->GetAnimationPose(Data,FAnimExtractContext(Time,false,{},true));
+ }
+ else Output.ResetToRefPose();
+ CrosshairLocomotion::ApplyPhysique(Output.Pose);
+ if (!bLeftHandIK) return true;
+ const FBoneContainer& Bones=Output.Pose.GetBoneContainer();
+ auto Index=[&](const TCHAR* Name){ const int32 Mesh=Bones.GetPoseBoneIndexForBoneName(Name); return Mesh==INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(Mesh)); };
+ const FCompactPoseBoneIndex Upper=Index(TEXT("upperarm_l")),Lower=Index(TEXT("lowerarm_l")),Hand=Index(TEXT("hand_l"));
+ if (!Upper.IsValid() || !Lower.IsValid() || !Hand.IsValid()) return true;
+ FCSPose<FCompactPose> Component; Component.InitPose(Output.Pose);
+ FTransform Root=Component.GetComponentSpaceTransform(Upper),Joint=Component.GetComponentSpaceTransform(Lower),End=Component.GetComponentSpaceTransform(Hand);
+ const FQuat HandRotation=End.GetRotation();
+ AnimationCore::SolveTwoBoneIK(Root,Joint,End,Hint,Target,false,1.0,1.0);
+ End.SetRotation(HandRotation);
+ Component.SetComponentSpaceTransform(Upper,Root);
+ Component.SetComponentSpaceTransform(Lower,Joint);
+ Component.SetComponentSpaceTransform(Hand,End);
+ FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(Component),Output.Pose);
+ return true;
+}
+
+void CrosshairLocomotion::ApplyPhysique(FCompactPose& Pose)
+{
+ const FBoneContainer& Bones=Pose.GetBoneContainer();
+ FCSPose<FCompactPose> Component; Component.InitPose(Pose);
+ bool bChanged=false;
+ for (const FBulk& Bulk:Physique())
+ {
+  const int32 MeshIndex=Bones.GetPoseBoneIndexForBoneName(Bulk.Bone);
+  if (MeshIndex==INDEX_NONE) continue;
+  const FCompactPoseBoneIndex Bone=Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(MeshIndex));
+  if (!Bone.IsValid()) continue;
+  const FTransform Before=Component.GetComponentSpaceTransform(Bone);
+  struct FChild { FCompactPoseBoneIndex Index; FTransform Space; bool bTwist; };
+  TArray<FChild,TInlineAllocator<8>> Children;
+  for (FCompactPoseBoneIndex Child(0);Child<Pose.GetNumBones();++Child)
+   if (Pose.GetParentBoneIndex(Child)==Bone)
+    Children.Add({Child,Component.GetComponentSpaceTransform(Child),Bones.GetReferenceSkeleton().GetBoneName(Bones.MakeMeshPoseIndex(Child).GetInt()).ToString().Contains(TEXT("twist"))});
+  FTransform After=Before; After.SetScale3D(Before.GetScale3D()*Bulk.Scale);
+  Component.SetComponentSpaceTransform(Bone,After);
+  for (FChild& Child:Children)
+  {
+   // Joints move with the wider/longer bone; twist bones also take its thickness so skin bulks evenly.
+   Child.Space.SetLocation(After.TransformPosition(Before.InverseTransformPosition(Child.Space.GetLocation())));
+   if (Child.bTwist) Child.Space.SetScale3D(Child.Space.GetScale3D()*FVector(1,Bulk.Scale.Y,Bulk.Scale.Z));
+   Component.SetComponentSpaceTransform(Child.Index,Child.Space);
+  }
+  bChanged=true;
+ }
+ if (bChanged) FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(Component),Pose);
 }

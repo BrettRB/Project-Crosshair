@@ -60,6 +60,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly) TObjectPtr<USkeletalMesh> Mesh;
 	/** Optional rigid model, in camera axes (X forward, Z up), with the grip at the origin. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Appearance") TObjectPtr<UStaticMesh> PresentationMesh;
+	/** Left-hand grip on the presentation model (model space). Zero places it under the middle of the forward half. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Appearance") FVector LeftHandGrip = FVector::ZeroVector;
 	/** Disable when an authored model includes its own sights, scope and stock. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Appearance") bool bUsePrototypeGeometry = true;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Appearance") TArray<FCrosshairWeaponSkin> Skins;

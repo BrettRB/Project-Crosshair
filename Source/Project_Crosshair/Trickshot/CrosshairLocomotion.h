@@ -37,6 +37,22 @@ namespace CrosshairLocomotion
  }
  /** Cycle play rate: faster than jog speed speeds the jog cycle up (sprint) instead of sliding. */
  inline float PlayRate(float Speed) { return Speed>JogSpeed ? FMath::Min(Speed/JogSpeed,1.7f) : 1.f; }
+ /** Soldier physique: thickness multipliers (bone-local Y/Z; X runs along the bone). Clavicles lengthen for broader shoulders. */
+ struct FBulk { const TCHAR* Bone; FVector Scale; };
+ inline const TArray<FBulk>& Physique()
+ {
+  static const TArray<FBulk> Bulk={
+   {TEXT("spine_02"),FVector(1,1.08,1.08)},{TEXT("spine_03"),FVector(1,1.14,1.14)},{TEXT("neck_01"),FVector(1,1.2,1.2)},
+   {TEXT("clavicle_l"),FVector(1.12,1.1,1.1)},{TEXT("clavicle_r"),FVector(1.12,1.1,1.1)},
+   {TEXT("upperarm_l"),FVector(1,1.24,1.24)},{TEXT("upperarm_r"),FVector(1,1.24,1.24)},
+   {TEXT("lowerarm_l"),FVector(1,1.15,1.15)},{TEXT("lowerarm_r"),FVector(1,1.15,1.15)},
+   {TEXT("thigh_l"),FVector(1,1.15,1.15)},{TEXT("thigh_r"),FVector(1,1.15,1.15)},
+   {TEXT("calf_l"),FVector(1,1.1,1.1)},{TEXT("calf_r"),FVector(1,1.1,1.1)}};
+  return Bulk;
+ }
+ /** Applies the physique in component space: each bulked bone thickens (its twist bones follow) while
+  *  the next joint (hand, head, foot, next limb segment) keeps its own size and moves with the wider frame. */
+ PROJECT_CROSSHAIR_API void ApplyPhysique(FCompactPose& Pose);
 }
 
 USTRUCT()
@@ -51,6 +67,42 @@ private:
  struct FSample { const UAnimSequence* Sequence=nullptr; double Time=0; float Weight=0; };
  TArray<FSample,TInlineAllocator<8>> Samples;
  float AimPitch=0;
+};
+
+USTRUCT()
+struct FCrosshairViewmodelProxy : public FAnimInstanceProxy
+{
+ GENERATED_BODY()
+ FCrosshairViewmodelProxy() {}
+ FCrosshairViewmodelProxy(UAnimInstance* Instance) : FAnimInstanceProxy(Instance) {}
+ virtual void PreUpdate(UAnimInstance* InAnimInstance,float DeltaSeconds) override;
+ virtual bool Evaluate(FPoseContext& Output) override;
+private:
+ const UAnimSequence* Sequence=nullptr;
+ double Time=0;
+ bool bLeftHandIK=false;
+ FVector Target=FVector::ZeroVector,Hint=FVector::ZeroVector;
+};
+
+/**
+ * First-person arms: plays the viewmodel idle/reload, applies the soldier physique, and puts the
+ * left hand on the weapon's fore-end with two-bone IK (off during reloads, switches and throws).
+ */
+UCLASS(Transient)
+class PROJECT_CROSSHAIR_API UCrosshairViewmodelAnimInstance : public UAnimInstance
+{
+ GENERATED_BODY()
+public:
+ void Play(UAnimSequence* InSequence,bool bInLoop);
+ virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+ virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override { return new FCrosshairViewmodelProxy(this); }
+ virtual void DestroyAnimInstanceProxy(FAnimInstanceProxy* InProxy) override { delete InProxy; }
+ UPROPERTY() TObjectPtr<UAnimSequence> Sequence;
+ bool bLoop=true;
+ double Time=0;
+ /** Component-space left-hand goal and elbow pole, set by the character each frame. */
+ bool bLeftHandIK=false;
+ FVector LeftHandTarget=FVector::ZeroVector,LeftElbowHint=FVector::ZeroVector;
 };
 
 /**
@@ -72,6 +124,9 @@ public:
  UPROPERTY(Transient,BlueprintReadOnly) float Direction=0;
  UPROPERTY(Transient,BlueprintReadOnly) float AimPitch=0;
  UPROPERTY(Transient,BlueprintReadOnly) float FallAlpha=0;
+ /** Practice targets carry no weapon: use the unarmed idle instead of the rifle stance. */
+ UPROPERTY(Transient,BlueprintReadWrite) bool bUnarmed=false;
+ bool bLoadedUnarmed=false;
  /** Fraction of the pose coming from walk/jog cycles (0 = standing idle). */
  float GetMovingWeight() const { return 1.f-Weights.Idle; }
  CrosshairLocomotion::FWeights Weights;

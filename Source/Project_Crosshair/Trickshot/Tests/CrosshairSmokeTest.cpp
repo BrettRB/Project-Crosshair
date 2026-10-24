@@ -39,7 +39,7 @@ bool UCrosshairSmokeTest::ShouldCreateSubsystem(UObject* Outer) const
 #if UE_BUILD_SHIPPING
 	return false;
 #else
-	return !FParse::Param(FCommandLine::Get(), TEXT("CrosshairFrontendSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLethalSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairExpansionSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMatchSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMatchLayoutProbe")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLanHost")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLanClient")) && (FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmokeSaved")));
+	return !FParse::Param(FCommandLine::Get(), TEXT("CrosshairFrontendSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLethalSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairExpansionSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMatchSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMatchLayoutProbe")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLanHost")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairSoldierProbe")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairGraphicsCheck")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLanClient")) && (FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmokeSaved")));
 #endif
 }
 void UCrosshairSmokeTest::Initialize(FSubsystemCollectionBase& Collection)

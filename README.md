@@ -28,6 +28,7 @@ This project was made for an **AI-Assisted Software Engineering** course. It was
 - Main menu and pause menu designed for mouse, keyboard and controller, with custom weapon classes and weapon camos (including Red Tiger and Arctic).
 - Controller support with adjustable sensitivity, dead zone, inversion and a direction calibration.
 - Import your own maps as OBJ files or `map.json` packages.
+- Realistic lighting (sun, sky, volumetric clouds and fog, film-style grade) applied automatically to every map, including imported ones, plus muscular soldiers with fitted helmets, armor and camouflage.
 - A startup step that preloads maps, weapons and shaders before play.
 
 ## What it is based on
@@ -100,5 +101,6 @@ Gameplay smoke tests run the game with flags such as `-game -CrosshairSmoke` (co
 - [Lethal throwables](docs/lethal-throwables.md)
 - [Classes, maps and imports](docs/home-classes-and-map-import.md)
 - [Weapon appearance](docs/weapon-appearance.md) and [soldier appearances](docs/soldier-appearances.md)
+- [Realistic graphics](docs/graphics.md)
 - [Startup preparation](docs/startup-preparation.md)
 - [AI interaction log](docs/ai-interaction-log.md)

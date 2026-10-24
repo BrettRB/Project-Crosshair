@@ -85,7 +85,8 @@ void UCrosshairExpansionTest::Tick(float DeltaSeconds)
         Mesh->SetCollisionProfileName(TEXT("BlockAll")); Mesh->RegisterComponent();
         Actor->SetActorLocation(Position); Actor->SetActorScale3D(Half/50); return Actor;
     };
-    auto Aim=[&]() { PC->SetControlRotation((Target->Model->GetBoneLocation(TEXT("head"))-Pawn->GetFirstPersonCameraComponent()->GetComponentLocation()).Rotation()); };
+    // Aim at the middle of the head, not the head bone pivot at the skull base (that joint borders the neck).
+    auto Aim=[&]() { PC->SetControlRotation((Target->Model->GetBoneLocation(TEXT("head"))+Target->Model->GetUpVector()*8.f-Pawn->GetFirstPersonCameraComponent()->GetComponentLocation()).Rotation()); };
     switch (Step)
     {
     case 0:

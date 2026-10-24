@@ -86,6 +86,7 @@ public:
 	FString TrickshotBanner;
 	float TrickshotUntil = 0;
 	void SetBotInput(bool bAim, bool bSprint) { bAimHeld = bAim; bSprintHeld = bSprint; }
+	bool IsAimHeld() const { return bAimHeld; }
 	/** LAN client -> host: sprint and aim change movement speed, so the host must simulate the same intent. */
 	UFUNCTION(Server, Reliable) void ServerSetMoveIntent(bool bSprint, bool bAim);
  void SelectWeaponSlot(int32 Slot);

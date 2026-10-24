@@ -11,7 +11,22 @@
 #include "../CrosshairWeapon.h"
 #include "../CrosshairThrowable.h"
 #include "../CrosshairLocomotion.h"
+#include "../CrosshairPractice.h"
 #include "AIController.h"
+#include "../CrosshairEnvironment.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
+#include "Components/SkyLightComponent.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/ExponentialHeightFog.h"
+#include "Engine/PostProcessVolume.h"
+#include "Engine/SkyLight.h"
+#include "Components/VolumetricCloudComponent.h"
+#include "Engine/SkeletalMesh.h"
+#if WITH_EDITORONLY_DATA
+#include "Rendering/SkeletalMeshModel.h"
+#include "Rendering/SkeletalMeshLODModel.h"
+#endif
 #include "Camera/CameraComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/GameInstance.h"
@@ -37,7 +52,7 @@ bool UCrosshairMatchTest::ShouldCreateSubsystem(UObject* Outer) const
 #if UE_BUILD_SHIPPING
  return false;
 #else
- return Flag(TEXT("CrosshairSmoke")) && (Flag(TEXT("CrosshairMatchSmoke")) || Flag(TEXT("CrosshairMatchLayoutProbe")) || Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient")));
+ return Flag(TEXT("CrosshairSmoke")) && (Flag(TEXT("CrosshairMatchSmoke")) || Flag(TEXT("CrosshairMatchLayoutProbe")) || Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient")) || Flag(TEXT("CrosshairSoldierProbe")) || Flag(TEXT("CrosshairGraphicsCheck")));
 #endif
 }
 void UCrosshairMatchTest::Initialize(FSubsystemCollectionBase& Collection)
@@ -112,6 +127,134 @@ void UCrosshairMatchTest::TickProbe()
 }
 
 // Two-process same-network test: one instance runs -CrosshairLanHost, a second -CrosshairLanClient.
+// Read-only body measurement for fitting soldier gear (-CrosshairSmoke -CrosshairSoldierProbe).
+// Logs, per body region, mesh-space surface extents by height using each vertex's dominant bone.
+void UCrosshairMatchTest::ProbeSoldier()
+{
+#if WITH_EDITORONLY_DATA
+ const USkeletalMesh* Body=LoadObject<USkeletalMesh>(nullptr,TEXT("/Game/Crosshair/Soldiers/SKM_PracticeSoldier.SKM_PracticeSoldier"));
+ const FSkeletalMeshModel* Model=Body ? Body->GetImportedModel() : nullptr;
+ if (!Check(Model && Model->LODModels.Num()>0,TEXT("Soldier body mesh model available"))) return;
+ const FReferenceSkeleton& Ref=Body->GetRefSkeleton();
+ TArray<FTransform> Global; Global.SetNum(Ref.GetNum());
+ for (int32 i=0;i<Ref.GetNum();++i) { const int32 Parent=Ref.GetParentIndex(i); Global[i]=Parent==INDEX_NONE ? Ref.GetRefBonePose()[i] : Ref.GetRefBonePose()[i]*Global[Parent]; }
+ for (const TCHAR* Name:{TEXT("pelvis"),TEXT("spine_01"),TEXT("spine_02"),TEXT("spine_03"),TEXT("neck_01"),TEXT("head"),TEXT("clavicle_l"),TEXT("upperarm_l"),TEXT("lowerarm_l"),TEXT("hand_l"),TEXT("thigh_l"),TEXT("calf_l"),TEXT("foot_l")})
+ {
+  const int32 Index=Ref.FindBoneIndex(Name);
+  if (Index!=INDEX_NONE) UE_LOG(LogTemp,Display,TEXT("SOLDIER_BONE %s pos=%s xaxis=%s"),Name,*Global[Index].GetLocation().ToCompactString(),*Global[Index].GetUnitAxis(EAxis::X).ToCompactString());
+ }
+ struct FRegion { const TCHAR* Name; TArray<FName> Bones; TMap<int32,FBox> Slices; FBox All=FBox(ForceInit); };
+ TArray<FRegion> Regions={
+  {TEXT("torso"),{TEXT("spine_02"),TEXT("spine_03"),TEXT("spine_04"),TEXT("spine_05")}},
+  {TEXT("belly"),{TEXT("pelvis"),TEXT("spine_01")}},
+  {TEXT("head"),{TEXT("head")}},
+  {TEXT("neck"),{TEXT("neck_01"),TEXT("neck_02")}},
+  {TEXT("thigh_l"),{TEXT("thigh_l")}},
+  {TEXT("calf_l"),{TEXT("calf_l")}},
+  {TEXT("upperarm_l"),{TEXT("upperarm_l")}}};
+ const FSkeletalMeshLODModel& Lod=Model->LODModels[0];
+ for (const FSkelMeshSection& Section:Lod.Sections)
+  for (const FSoftSkinVertex& Vertex:Section.SoftVertices)
+  {
+   int32 Best=0; for (int32 k=1;k<MAX_TOTAL_INFLUENCES;++k) if (Vertex.InfluenceWeights[k]>Vertex.InfluenceWeights[Best]) Best=k;
+   const int32 BoneIndex=Section.BoneMap.IsValidIndex(Vertex.InfluenceBones[Best]) ? Section.BoneMap[Vertex.InfluenceBones[Best]] : INDEX_NONE;
+   if (BoneIndex==INDEX_NONE) continue;
+   const FName Bone=Ref.GetBoneName(BoneIndex);
+   const FVector P=FVector(Vertex.Position);
+   for (FRegion& Region:Regions) if (Region.Bones.Contains(Bone)) { Region.All+=P; Region.Slices.FindOrAdd(FMath::FloorToInt(P.Z/4.f))+=P; }
+  }
+ for (FRegion& Region:Regions)
+ {
+  UE_LOG(LogTemp,Display,TEXT("SOLDIER_REGION %s all min=%s max=%s"),Region.Name,*Region.All.Min.ToCompactString(),*Region.All.Max.ToCompactString());
+  Region.Slices.KeySort([](int32 A,int32 B){ return A<B; });
+  for (const TPair<int32,FBox>& Slice:Region.Slices)
+   UE_LOG(LogTemp,Display,TEXT("SOLDIER_SLICE %s z=%d x=[%.1f,%.1f] y=[%.1f,%.1f]"),Region.Name,Slice.Key*4,Slice.Value.Min.X,Slice.Value.Max.X,Slice.Value.Min.Y,Slice.Value.Max.Y);
+ }
+ UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_SOLDIER_PROBE_OK"));
+#endif
+ bDone=true; FPlatformMisc::RequestExitWithStatus(false,0);
+}
+// Graphics check (-CrosshairSmoke -CrosshairGraphicsCheck): the shared lighting rig is applied on
+// every built-in map and on a freshly imported user map, with a screenshot of each.
+void UCrosshairMatchTest::TickGraphics()
+{
+ UWorld* World=GetWorld();
+ auto* Library=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>();
+ const double Elapsed=FPlatformTime::Seconds()-StepStarted;
+ const FString MapName=World->GetMapName();
+ APlayerController* PC=World->GetFirstPlayerController();
+ if (FPlatformTime::Seconds()-Started>600) { Check(false,TEXT("Graphics check timeout")); return; }
+ auto Capture=[&](const TCHAR* Name){ FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots")/Name,false,false); };
+ auto CheckRig=[&](const TCHAR* Map)->bool
+ {
+  const auto* Environment=World->GetSubsystem<UCrosshairEnvironmentSubsystem>();
+  int32 Suns=0,Skies=0,Fogs=0,Clouds=0,Grades=0;
+  for (TActorIterator<ADirectionalLight> It(World);It;++It) if (const auto* Light=Cast<UDirectionalLightComponent>(It->GetLightComponent()); Light && Light->IsUsedAsAtmosphereSunLight()) ++Suns;
+  for (TActorIterator<ASkyLight> It(World);It;++It) if (It->GetLightComponent() && It->GetLightComponent()->bRealTimeCapture) ++Skies;
+  for (TActorIterator<AExponentialHeightFog> It(World);It;++It) if (It->GetComponent() && It->GetComponent()->bEnableVolumetricFog) ++Fogs;
+  for (TActorIterator<AVolumetricCloud> It(World);It;++It) ++Clouds;
+  for (TActorIterator<APostProcessVolume> It(World);It;++It) if (It->ActorHasTag(UCrosshairEnvironmentSubsystem::EnvironmentTag) && It->bUnbound) ++Grades;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO %s suns=%d realtimeSky=%d volumetricFog=%d clouds=%d grade=%d"),Map,Suns,Skies,Fogs,Clouds,Grades);
+  return Check(Environment && Environment->IsApplied() && Suns==1 && Skies>=1 && Fogs>=1 && Clouds>=1 && Grades==1,
+   *FString::Printf(TEXT("%s gets the shared realistic lighting rig"),Map));
+ };
+ auto ProbeArms=[&](const TCHAR* Map)
+ {
+  auto* Hero=PC ? Cast<ACrosshairCharacter>(PC->GetPawn()) : nullptr;
+  if (!Hero) return;
+  USkeletalMeshComponent* Arms=Hero->GetFirstPersonMesh();
+  const FTransform Eye=Hero->GetFirstPersonCameraComponent()->GetComponentTransform();
+  auto Local=[&](const FVector& W){ return Eye.InverseTransformPosition(W).ToString(); };
+  const auto* View=Cast<UCrosshairViewmodelAnimInstance>(Arms->GetAnimInstance());
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ARMS %s ik=%d shoulder=%s elbow=%s hand=%s goal=%s"),Map,View ? View->bLeftHandIK : -1,
+   *Local(Arms->GetBoneLocation(TEXT("upperarm_l"))),*Local(Arms->GetBoneLocation(TEXT("lowerarm_l"))),*Local(Arms->GetBoneLocation(TEXT("hand_l"))),
+   View ? *Local(Arms->GetComponentTransform().TransformPosition(View->LeftHandTarget)) : TEXT("-"));
+  if (auto* Weapon=Hero->Inventory->GetPresentationWeapon())
+  {
+   const FBox Box=Weapon->PresentationMesh->Bounds.GetBox();
+   const FTransform M=Weapon->PresentationMesh->GetComponentTransform();
+   const FBox LocalBox=Weapon->PresentationMesh->GetStaticMesh() ? Weapon->PresentationMesh->GetStaticMesh()->GetBoundingBox() : FBox(ForceInit);
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ARMS weapon local=%s origin=%s +X=%s +Z=%s worldbox=%s..%s"),*LocalBox.ToString(),*Local(M.GetLocation()),
+    *Eye.InverseTransformVector(M.TransformVector(FVector::XAxisVector)).ToString(),*Eye.InverseTransformVector(M.TransformVector(FVector::ZAxisVector)).ToString(),*Local(Box.Min),*Local(Box.Max));
+  }
+ };
+ auto Look=[&](float Pitch){ if (PC) { FRotator View=PC->GetControlRotation(); View.Pitch=Pitch; PC->SetControlRotation(View); } };
+ const bool bReady=PC && PC->GetPawn();
+ switch (Step)
+ {
+ case 0:
+  if (!bReady || !MapName.Contains(TEXT("L_Practice")) || Elapsed<6) return;
+  if (!CheckRig(TEXT("Testing Map"))) return;
+  Look(-4); Capture(TEXT("GfxPractice.png")); Library->PlayMap(1); Next(1); return;
+ case 1:
+  if (!bReady || !MapName.Contains(TEXT("L_Nuketown")) || Elapsed<10) return;
+  if (!CheckRig(TEXT("Nuketown"))) return;
+  Look(-2); Capture(TEXT("GfxNuketown.png")); Next(2); return;
+ case 2:
+  if (Elapsed<2) return;
+  Library->PlayMap(2); Next(3); return;
+ case 3:
+  if (!bReady || !MapName.Contains(TEXT("L_Grid")) || Elapsed<10) return;
+  if (!CheckRig(TEXT("Grid"))) return;
+  Look(-2); ProbeArms(TEXT("Grid")); Capture(TEXT("GfxGrid.png")); Next(4); return;
+ case 4:
+ {
+  if (Elapsed<2) return;
+  FString Error;
+  if (!Check(Library->Import(FPaths::ProjectDir()/TEXT("ContentSource/UserMapsExample/map.json"),Error),*(TEXT("Example user map imports: ")+Error))) return;
+  if (!Check(Library->PlayMap(Library->MapCount()-1),TEXT("Imported map loads"))) return;
+  Next(5); return;
+ }
+ case 5:
+  if (!bReady || !MapName.Contains(TEXT("L_UserMap")) || Elapsed<8) return;
+  if (!CheckRig(TEXT("Imported user map"))) return;
+  Look(-6); Capture(TEXT("GfxImported.png")); Next(6); return;
+ case 6:
+  if (Elapsed<3) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
+ default: return;
+ }
+}
 void UCrosshairMatchTest::TickLan()
 {
  UWorld* World=GetWorld();
@@ -187,6 +330,7 @@ void UCrosshairMatchTest::Tick(float Delta)
  UWorld* World=GetWorld(); if (!World || !World->IsGameWorld() || bDone) return;
  if (GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing()) { Started=StepStarted=FPlatformTime::Seconds(); return; }
  if (FPlatformTime::Seconds()-Started>480) { Check(false,TEXT("Timeout")); return; }
+ if (Flag(TEXT("CrosshairSoldierProbe"))) { ProbeSoldier(); return; }
  if (Flag(TEXT("CrosshairMatchLayoutProbe"))) { TickProbe(); return; }
  if (Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient"))) { TickLan(); return; }
  // The rejected Testing-map match lasts a single frame; observe it before any visual-harness wait.
@@ -199,8 +343,9 @@ void UCrosshairMatchTest::Tick(float Delta)
    return;
   }
 #if WITH_EDITOR
- if (Flag(TEXT("CrosshairMatchVisual")) && GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return;
+ if ((Flag(TEXT("CrosshairMatchVisual")) || Flag(TEXT("CrosshairGraphicsCheck"))) && GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return;
 #endif
+ if (Flag(TEXT("CrosshairGraphicsCheck"))) { TickGraphics(); return; }
  const double Elapsed=FPlatformTime::Seconds()-StepStarted;
  auto Capture=[&](const TCHAR* Name){ if (Flag(TEXT("CrosshairMatchVisual"))) FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots")/Name,false,false); };
  auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
@@ -463,9 +608,9 @@ void UCrosshairMatchTest::Tick(float Delta)
    PC->SetControlRotation((Bot->GetMesh()->GetBoneLocation(TEXT("spine_03"))-Pawn->GetFirstPersonCameraComponent()->GetComponentLocation()).Rotation());
    if (Elapsed>20)
    {
-    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO sniper wait: world=%.2f weapon=%s switching=%d aim=%.2f canact=%d menu=%d paused=%d lethalbusy=%d reloading=%d"),
+    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO sniper wait: world=%.2f weapon=%s switching=%d aim=%.2f canact=%d menu=%d paused=%d lethalbusy=%d reloading=%d aimheld=%d placing=%d"),
      World->GetTimeSeconds()-WorldMark,Weapon && Weapon->Definition ? *Weapon->Definition->DisplayName.ToString() : TEXT("-"),Weapon ? int32(Weapon->IsSwitching()) : -1,Pawn->GetAimAlpha(),
-     Pawn->CanAct(),PC->bMenuOpen,World->IsPaused(),Pawn->Lethals->IsBusy(),Weapon ? int32(Weapon->bReloading) : -1);
+     Pawn->CanAct(),PC->bMenuOpen,World->IsPaused(),Pawn->Lethals->IsBusy(),Weapon ? int32(Weapon->bReloading) : -1,Pawn->IsAimHeld(),Pawn->Placement->bPlacing);
     Check(false,TEXT("Sniper ready to fire"));
    }
    return;

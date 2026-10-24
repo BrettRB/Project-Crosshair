@@ -25,6 +25,8 @@ private:
  void Probe(const TCHAR* Map,FVector2D Center,float HalfSize,float Cell);
  void TickProbe();
  void TickLan();
+ void TickGraphics();
+ void ProbeSoldier();
  int32 Step=0;
  double Started=0,StepStarted=0;
  bool bDone=false,bSawInvalid=false;

@@ -20,6 +20,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Animation/AnimSequence.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -89,7 +90,9 @@ void ACrosshairCharacter::BeginPlay()
 		Arms->HideBoneByName(TEXT("neck_01"), PBO_None);
 		Arms->HideBoneByName(TEXT("thigh_l"), PBO_None);
 		Arms->HideBoneByName(TEXT("thigh_r"), PBO_None);
-		Arms->PlayAnimation(IdleAnimation, true);
+		Arms->SetAnimInstanceClass(UCrosshairViewmodelAnimInstance::StaticClass());
+		if (auto* View = Cast<UCrosshairViewmodelAnimInstance>(Arms->GetAnimInstance())) View->Play(IdleAnimation, true);
+		else Arms->PlayAnimation(IdleAnimation, true);
 		Arms->TickAnimation(0.f, false);
 		Arms->RefreshBoneTransforms();
 		// The rifle and mannequin use the same mesh basis. The socket's rotation
@@ -312,7 +315,28 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		if (Weapon->bReloading != bArmsReloading)
 		{
 			bArmsReloading = Weapon->bReloading;
-			GetFirstPersonMesh()->PlayAnimation(bArmsReloading ? ReloadAnimation : IdleAnimation, !bArmsReloading);
+			if (auto* View = Cast<UCrosshairViewmodelAnimInstance>(GetFirstPersonMesh()->GetAnimInstance())) View->Play(bArmsReloading ? ReloadAnimation : IdleAnimation, !bArmsReloading);
+			else GetFirstPersonMesh()->PlayAnimation(bArmsReloading ? ReloadAnimation : IdleAnimation, !bArmsReloading);
+		}
+		// Left hand on the fore-end (viewmodel IK); free during reloads, switches and lethal throws.
+		if (auto* View = Cast<UCrosshairViewmodelAnimInstance>(GetFirstPersonMesh()->GetAnimInstance()))
+		{
+			const UStaticMesh* Model = Weapon->Definition ? Weapon->Definition->PresentationMesh.Get() : nullptr;
+			View->bLeftHandIK = Model && !Weapon->bReloading && !Weapon->IsSwitching() && !Lethals->IsHolding() && GetFirstPersonMesh()->IsVisible();
+			if (View->bLeftHandIK)
+			{
+				FVector Grip = Weapon->Definition->LeftHandGrip;
+				if (Grip.IsNearlyZero())
+				{
+					// Default: palm under the fore-end, a third of the way up the barrel (model X forward, grip at origin).
+					const FBox Bounds = Model->GetBoundingBox();
+					Grip = FVector(Bounds.Max.X * .3f, 0.f, Bounds.Min.Z - 1.5f);
+				}
+				const FTransform& Arms = GetFirstPersonMesh()->GetComponentTransform();
+				const FVector Goal = Weapon->PresentationMesh->GetComponentTransform().TransformPosition(Grip);
+				View->LeftHandTarget = Arms.InverseTransformPosition(Goal);
+				View->LeftElbowHint = Arms.InverseTransformPosition(Goal - Camera->GetUpVector() * 25.f - Camera->GetRightVector() * 25.f - Camera->GetForwardVector() * 15.f);
+			}
 		}
 	}
 }

@@ -11,7 +11,7 @@ Six project-owned designs replace the bare mannequin presentation for placed and
 | Night Operations | Dark camouflage, helmet, goggles, headset and full carrier |
 | Olive Recon | Olive camouflage, boonie hat, lighter carrier and field pack |
 
-All designs include utility pouches and knee armor. Fabric shading, matte armor and dark face coverings replace the metallic mannequin look. The body is a project-owned copy of the existing mannequin rig, with original curved headgear and modeled tactical equipment attached to its animated bones. This is an improvement using the existing proportions and animations, not a newly sculpted or scanned human body. Equipment is cosmetic: it adds no armor bonus, bullet collision or navigation obstacle. Existing posed head/torso/limb physics bodies and damage rules remain authoritative.
+All designs include a battle belt with pouches and knee armor. Uniforms, fabrics and armor use procedural camouflage with fold/weave normals and matte-to-semi-matte roughness. The body is a project-owned copy of the existing mannequin rig, bulked into a soldier physique at runtime (broader chest and shoulders, thicker arms and legs). Helmets, carriers, straps and pouches are modeled to measured cross-sections of that bulked body so they sit on it rather than float or clip; see [Realistic graphics](graphics.md). It is not a newly sculpted or scanned human body. Equipment is cosmetic: it adds no armor bonus, bullet collision or navigation obstacle. Existing posed head/torso/limb physics bodies and damage rules remain authoritative.
 
 ## Assignment and replay
 
@@ -27,7 +27,7 @@ This prepares the same skins for the bot FFA mode. Combat AI and FFA match launc
 
 ## Source and authoring
 
-Scripts/create_soldier_appearances.py generates only /Game/Crosshair/Soldiers, ContentSource/Character/Soldiers OBJ sources and BP_Target's appearance catalog configuration through Unreal Editor APIs. It duplicates the template mesh without editing template skeletons/physics assets. Existing material graphs are preserved on rerun; gear meshes and catalog definitions are regenerated, so preserve artist edits elsewhere before rerunning. OBJ sources explicitly compensate for Unreal's Y-axis conversion.
+Scripts/create_soldier_appearances.py generates only /Game/Crosshair/Soldiers, ContentSource/Character/Soldiers OBJ sources and BP_Target's appearance catalog configuration through Unreal Editor APIs. It duplicates the template mesh without editing template skeletons/physics assets. The _Real materials, gear meshes and catalog definitions are all regenerated on rerun (superseded older materials and gear are deleted), so preserve artist edits elsewhere before rerunning. OBJ sources explicitly compensate for Unreal's Y-axis conversion.
 
 Run locally with UnrealEditor-Cmd <project> -run=pythonscript -script=<absolute path to generator> -unattended -NullRHI -nosound. No downloaded character assets, paid APIs or external services are used.
 

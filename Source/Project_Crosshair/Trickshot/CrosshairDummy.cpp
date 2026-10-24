@@ -1,6 +1,7 @@
 #include "CrosshairDummy.h"
 #include "CrosshairSoldierAppearance.h"
 #include "CrosshairData.h"
+#include "CrosshairLocomotion.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -60,7 +61,10 @@ void ACrosshairDummy::BeginPlay()
 	Body->SetVisibility(false); Head->SetVisibility(false);
 	Collision->SetCollisionResponseToChannel(ECC_Visibility,ECR_Ignore);
 	SoldierAppearance->InitializeAppearance(Model);
-	if (TargetIdle) Model->PlayAnimation(TargetIdle,true);
+	// Same soldier physique as bots and players, in an unarmed idle (targets carry no weapon).
+	Model->SetAnimInstanceClass(UCrosshairLocomotionAnimInstance::StaticClass());
+	if (auto* Soldier=Cast<UCrosshairLocomotionAnimInstance>(Model->GetAnimInstance())) Soldier->bUnarmed=true;
+	else if (TargetIdle) Model->PlayAnimation(TargetIdle,true);
 	Model->TickAnimation(0,false); Model->RefreshBoneTransforms();
     Model->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	if (TargetMaterial) { Body->SetMaterial(0, TargetMaterial); Head->SetMaterial(0, TargetMaterial); }
