@@ -200,6 +200,7 @@ void UCrosshairMatchTest::TickGraphics()
   for (TActorIterator<AVolumetricCloud> It(World);It;++It) ++Clouds;
   for (TActorIterator<APostProcessVolume> It(World);It;++It) if (It->ActorHasTag(UCrosshairEnvironmentSubsystem::EnvironmentTag) && It->bUnbound) ++Grades;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO %s suns=%d realtimeSky=%d volumetricFog=%d clouds=%d grade=%d"),Map,Suns,Skies,Fogs,Clouds,Grades);
+  if (Environment) UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO %s sky=%s"),Map,Environment->Profile.Name);
   return Check(Environment && Environment->IsApplied() && Suns==1 && Skies>=1 && Fogs>=1 && Clouds>=1 && Grades==1,
    *FString::Printf(TEXT("%s gets the shared realistic lighting rig"),Map));
  };
@@ -230,7 +231,31 @@ void UCrosshairMatchTest::TickGraphics()
  case 0:
   if (!bReady || !MapName.Contains(TEXT("L_Practice")) || Elapsed<6) return;
   if (!CheckRig(TEXT("Testing Map"))) return;
-  Look(-4); Capture(TEXT("GfxPractice.png")); Library->PlayMap(1); Next(1); return;
+  Look(-4); Capture(TEXT("GfxPractice.png")); Next(40); return;
+ case 40:
+ {
+  if (Elapsed<1.5) return;
+  // Front close-up of three soldiers (different designs) to check that chest plates sit below the chin.
+  auto* Hero=PC ? Cast<ACrosshairCharacter>(PC->GetPawn()) : nullptr;
+  if (!Hero) return;
+  // Stand 2.2 m in front of the nearest practice soldier, facing it (targets face the player).
+  ACrosshairDummy* Soldier=nullptr; float Best=FLT_MAX;
+  for (TActorIterator<ACrosshairDummy> It(World);It;++It) if (const float D=FVector::Dist(It->GetActorLocation(),Hero->GetActorLocation()); D<Best) { Best=D; Soldier=*It; }
+  if (!Check(Soldier!=nullptr,TEXT("A practice soldier exists for the front close-up"))) return;
+  const FVector Front=Soldier->GetActorForwardVector().GetSafeNormal2D();
+  Hero->GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+  Hero->SetActorLocation(Soldier->GetActorLocation()+Front*220.f+FVector(0,0,-20),false,nullptr,ETeleportType::TeleportPhysics);
+  PC->SetControlRotation((Soldier->GetActorLocation()+FVector(0,0,40)-Hero->GetFirstPersonCameraComponent()->GetComponentLocation()).Rotation());
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO front close-up of %s"),*Soldier->GetName());
+  Next(41); return;
+ }
+ case 41:
+  if (Elapsed<2.5) return;
+  Capture(TEXT("GfxSoldierFront.png")); Next(42); return;
+ case 42:
+  if (Elapsed<1) return;
+  if (auto* Hero=PC ? Cast<ACrosshairCharacter>(PC->GetPawn()) : nullptr) Hero->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+  Library->PlayMap(1); Next(1); return;
  case 1:
   if (!bReady || !MapName.Contains(TEXT("L_Nuketown")) || Elapsed<10) return;
   if (!CheckRig(TEXT("Nuketown"))) return;
@@ -258,6 +283,22 @@ void UCrosshairMatchTest::TickGraphics()
    const bool bListed=Menu->GetVisibleMenuRows().Contains(Menu->GetGraphicsRow()+1);
    Menu->ToggleMenu();
    if (!Check(bListed,TEXT("Graphics tab lists the ray tracing toggle"))) return;
+   // LAN setup tab: type a username with the keyboard, and bot rows hide when bots are off.
+   if (!Menu->bMenuOpen) Menu->ToggleMenu();
+   Menu->SetMenuTab(9);
+   const int32 L=Menu->GetLanRow();
+   S.PlayerName=TEXT("Ab"); S.Lan.Match.bBots=true;
+   const bool bBotRows=Menu->GetVisibleMenuRows().Contains(L+5);
+   Menu->ActivateMenuRow(L);
+   auto Press=[&](FKey K){ Menu->InputKey(FInputKeyEventArgs::CreateSimulated(K,IE_Pressed,1.f)); };
+   Press(EKeys::BackSpace); Press(EKeys::C); Press(EKeys::Seven); Press(EKeys::Enter);
+   const bool bTyped=S.PlayerName==TEXT("Ac7") && !Menu->bEditingName;
+   Menu->AdjustMenuRow(L+3,1);
+   const bool bHidden=!S.Lan.Match.bBots && !Menu->GetVisibleMenuRows().Contains(L+5);
+   Menu->AdjustMenuRow(L+3,1);
+   Menu->ToggleMenu();
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO LAN setup name=%s botrows=%d hidden=%d"),*S.PlayerName,int32(bBotRows),int32(bHidden));
+   if (!Check(bBotRows && bTyped && bHidden,TEXT("LAN setup tab types a username and hides bot rows when bots are off"))) return;
    if (!Check(S.GraphicsPreset==2 && Scalability::GetQualityLevels().ShadowQuality==2,TEXT("Graphics menu row changes the preset"))) return;
   }
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO ray tracing supported=%d"),int32(CrosshairGraphics::IsRayTracingSupported()));
@@ -297,7 +338,7 @@ void UCrosshairMatchTest::TickGraphics()
   // The station brings its own vacuum lighting: the shared Earth-sky rig must stay out.
   const auto* Environment=World->GetSubsystem<UCrosshairEnvironmentSubsystem>();
   int32 Suns=0,Spawns=0,Skies=0;
-  for (TActorIterator<ADirectionalLight> It(World);It;++It) ++Suns;
+  for (TActorIterator<ADirectionalLight> It(World);It;++It) if (It->GetLightComponent() && It->GetLightComponent()->CastShadows) ++Suns;   // the shadowless planet-shine fill is not a sun
   for (TActorIterator<ACrosshairSpawnPoint> It(World);It;++It) ++Spawns;
   for (TActorIterator<ASkyAtmosphere> It(World);It;++It) ++Skies;
   if (const APawn* Body=PC->GetPawn()) { FHitResult Floor; FCollisionQueryParams Ignore; Ignore.AddIgnoredActor(Body); const bool bFloor=World->LineTraceSingleByChannel(Floor,Body->GetActorLocation(),Body->GetActorLocation()-FVector(0,0,500),ECC_Visibility,Ignore); UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO Space Station pawn=%s velocity=%s floor=%d %s"),*Body->GetActorLocation().ToString(),*Body->GetVelocity().ToString(),int32(bFloor),bFloor && Floor.GetActor() ? *Floor.GetActor()->GetName() : TEXT("-")); }
@@ -349,19 +390,46 @@ void UCrosshairMatchTest::TickLan()
  auto RunForward=[&]()
  {
   auto* Mine=PC ? Cast<ACrosshairCharacter>(PC->GetPawn()) : nullptr;
-  if (Mine && !Mine->Health->bDead) { Mine->SetBotInput(false,true); Mine->AddMovementInput(Mine->GetActorForwardVector()); }
+  // Run along the open street of Nuketown / Space Station so cover never stalls the run.
+  if (Mine && !Mine->Health->bDead)
+  {
+   // Latched goal: run to one end of the street, then the other, so the soldier never stalls or dithers.
+   const FVector Ends[2]={FVector(-600,-300,0),FVector(-600,2900,0)};
+   if (RunGoal.IsZero() || FVector::Dist2D(Mine->GetActorLocation(),RunGoal)<300.f)
+    RunGoal=FVector::Dist2D(Mine->GetActorLocation(),Ends[0])>FVector::Dist2D(Mine->GetActorLocation(),Ends[1]) ? Ends[0] : Ends[1];
+   Mine->SetBotInput(false,true);
+   Mine->AddMovementInput((RunGoal-Mine->GetActorLocation()).GetSafeNormal2D());
+  }
   return Mine;
  };
  if (Flag(TEXT("CrosshairLanHost")))
  {
-  if (Step==0) { if (PC && PC->GetPawn() && Elapsed>1) { Check(Session->HostLanMatch(),TEXT("Host starts a LAN session")); Next(1); } return; }
+  if (Step==0)
+  {
+   if (!PC || !PC->GetPawn() || Elapsed<=1) return;
+   // Host setup as a player would choose it on the LAN tab: username, Space Station, no bots, four players.
+   FCrosshairSettings& S=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+   S.PlayerName=TEXT("HostAce"); S.Lan.Match.Mode=ECrosshairMatchMode::FreeForAll; S.Lan.Match.Map=ECrosshairMatchMap::SpaceStation; S.Lan.Match.bBots=false; S.Lan.MaxPlayers=4;
+   Check(Session->HostLanMatch(),TEXT("Host starts a LAN session")); Next(1); return;
+  }
   if (!Match || World->GetNetMode()!=NM_ListenServer) return;
   int32 Humans=0; for (APlayerState* Player:Match->PlayerArray) Humans+=Player && !Player->IsABot() && !Player->IsOnlyASpectator() ? 1 : 0;
   if (Step==1) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_HOST_READY")); Next(2); }
   if (Step==2)
   {
    if (Humans<2) return;
-   Check(Session->HasLanSession(),TEXT("Host sees a second human player join over LAN")); Next(3); return;
+   if (!Check(Session->HasLanSession(),TEXT("Host sees a second human player join over LAN"))) return;
+   const auto* Mode=World->GetAuthGameMode<ACrosshairMatchGameMode>();
+   int32 Bots=0; for (APlayerState* Player:Match->PlayerArray) Bots+=Player && Player->IsABot() ? 1 : 0;
+   if (!Check(Mode && Mode->IsLanMatch() && Mode->GetMaxHumans()==4 && !Mode->GetOptions().bBots && Bots==0 && World->GetMapName().Contains(TEXT("L_SpaceStation")),TEXT("LAN setup applies: Space Station, bots off, four players"))) return;
+   Next(30); return;
+  }
+  if (Step==30)
+  {
+   // Each machine sends its own username; wait for the client's to arrive.
+   TSet<FString> Names; for (APlayerState* Player:Match->PlayerArray) if (Player) Names.Add(Player->GetPlayerName());
+   if (!(Names.Contains(TEXT("HostAce")) && Names.Contains(TEXT("ClientBee")))) { if (Elapsed>10) Check(false,TEXT("Usernames reach the host")); return; }
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Usernames reach the host: HostAce and ClientBee")); Next(3); return;
   }
   // The joined player's pawn as simulated on the host: sprint intent must arrive, or the host corrects them to walk speed.
   const ACrosshairCharacter* Mine=RunForward();
@@ -374,16 +442,20 @@ void UCrosshairMatchTest::TickLan()
  }
  switch (Step)
  {
- case 0: if (PC && PC->GetPawn() && Elapsed>3) { Session->FindLanMatches(); Next(1); } return;
+ case 0: if (PC && PC->GetPawn() && Elapsed>3) { GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().PlayerName=TEXT("ClientBee"); Session->FindLanMatches(); Next(1); } return;
  case 1:
   if (Session->bSearching) return;
   if (Session->LanResults.IsEmpty()) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_SEARCH %s"),*Session->LanStatus); Next(0); return; }
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_FOUND %s"),*Session->LanResults[0]);
+  if (!Check(Session->LanResults[0].Contains(TEXT("HostAce")) && Session->LanResults[0].Contains(TEXT("Space Station")) && Session->LanResults[0].Contains(TEXT("no bots")) && Session->LanResults[0].Contains(TEXT("/4)")),TEXT("LAN listing shows the host name, map, bots setting and player limit"))) return;
   if (!Check(Session->JoinLanMatch(0),TEXT("Client joins the first LAN match found"))) return;
   Next(2); return;
  case 2:
   if (World->GetNetMode()!=NM_Client || !Match || !PC || !PC->GetPawn() || Elapsed<3) return;
   if (!Check(Match->PlayerArray.Num()>=2,TEXT("Client receives the host's replicated match and spawns"))) return;
+  { TSet<FString> Names; for (APlayerState* Player:Match->PlayerArray) if (Player) Names.Add(Player->GetPlayerName());
+    if (!(Names.Contains(TEXT("HostAce")) && Names.Contains(TEXT("ClientBee")))) { if (Elapsed>15) Check(false,TEXT("Client sees both usernames")); return; } }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Client sees both usernames on %s"),*Match->MapName);
   Next(3); return;
  case 3:
  {
@@ -398,6 +470,7 @@ void UCrosshairMatchTest::TickLan()
     HostSteppingMax=FMath::Max(HostSteppingMax,Anim->GetMovingWeight());
   }
   if (Elapsed<10) return;
+  for (TActorIterator<ACrosshairCharacter> It(World);It;++It) UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO soldier %s at %s"),*GetNameSafe(It->GetPlayerState()),*It->GetActorLocation().ToString());
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO client saw the host's top speed %.0f cm/s, stepping weight %.2f"),HostSpeedMax,HostSteppingMax);
   if (!Check(HostSpeedMax>300.f,TEXT("Client sees the host player moving"))) return;
   if (!Check(HostSteppingMax>.8f,TEXT("The host's soldier plays walk/jog locomotion on the client instead of sliding"))) return;

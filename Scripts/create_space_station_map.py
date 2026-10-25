@@ -37,15 +37,15 @@ NOISE = ('struct N{float h(float3 p){return frac(sin(dot(p,float3(127.1,311.7,74
          'float2 plane(float3 P,float3 Nn){float3 a=abs(Nn);return a.z>max(a.x,a.y)?P.xy:(a.x>a.y?P.yz:P.xz);}'
          'float seam(float2 uv,float s,float w){float2 f=frac(uv/s);float d=min(min(f.x,1-f.x),min(f.y,1-f.y))*s;return 1-smoothstep(0,w,d);}}; N g;')
 HULL = NOISE + ('float2 uv=g.plane(P,Nn);float2 cell=floor(uv/160);float tint=.9+.1*g.h(float3(cell,3));'
-                'float3 c=float3(.52,.54,.56)*tint;c=lerp(c,float3(.12,.13,.14),g.seam(uv,160,2.2));'
-                'c=lerp(c,float3(.55,.2,.06),step(.93,g.h(float3(cell,9)))*.6);return c*(.94+.06*g.fbm(P*.02));')
+                'float3 c=float3(.6,.63,.67)*tint;c=lerp(c,float3(.12,.13,.14),g.seam(uv,160,2.2));'
+                'c=lerp(c,float3(.62,.24,.06),step(.93,g.h(float3(cell,9)))*.7);c=lerp(c,float3(.08,.26,.6),step(.94,g.h(float3(cell,17)))*.7);return c*(.94+.06*g.fbm(P*.02));')
 DECK = NOISE + ('float2 uv=g.plane(P,Nn);float plate=g.seam(uv,200,2.5);float grip=g.n(P*.35)*.08;'
-                'float3 c=float3(.11,.115,.12)*(.92+grip+.08*g.h(float3(floor(uv/200),1)));return lerp(c,float3(.03,.032,.035),plate);')
+                'float3 c=float3(.19,.2,.22)*(.92+grip+.08*g.h(float3(floor(uv/200),1)));return lerp(c,float3(.06,.065,.07),plate);')
 DECK_GLOW = NOISE + ('float2 uv=g.plane(P,Nn);float2 f=frac(uv/800);float d=min(min(f.x,1-f.x),min(f.y,1-f.y))*800;'
                      'return float3(.15,.65,1.0)*(1-smoothstep(1.5,4,d))*step(.6,abs(Nn.z))*4;')
 SOLAR = NOISE + ('float2 uv=g.plane(P,Nn);float grid=g.seam(uv,45,1.2);float3 c=float3(.015,.03,.075)*(.85+.3*g.n(P*.05));'
                  'return lerp(c,float3(.35,.37,.4),grid);')
-METAL = NOISE + 'return float3(.07,.075,.08)*(.85+.15*g.fbm(float3(P.x*.4,P.y*.4,P.z*.02)));'
+METAL = NOISE + 'return float3(.14,.15,.16)*(.85+.15*g.fbm(float3(P.x*.4,P.y*.4,P.z*.02)));'
 ROCK = NOISE + 'float a=g.fbm(P*.0025);float b=g.fbm(P*.02+4);return lerp(float3(.07,.065,.06),float3(.16,.15,.14),a)*(.8+.4*b);'
 # Sky: stars, a faint galactic band, the sun disc and a planet, all drawn analytically per pixel so the
 # planet limb is perfectly round. S is the direction to the sun (the light below: pitch -32, yaw -58);
@@ -117,9 +117,9 @@ def make_material(name, color_code, roughness, metallic, emissive_code=None, unl
 
 
 hull = make_material('M_Station_Hull', HULL, .42, .25)
-deck = make_material('M_Station_Deck', DECK, .5, .85, DECK_GLOW)
+deck = make_material('M_Station_Deck', DECK, .5, .5, DECK_GLOW)
 solar = make_material('M_Station_Solar', SOLAR, .18, .6)
-metal = make_material('M_Station_Gunmetal', METAL, .34, 1.0)
+metal = make_material('M_Station_Gunmetal', METAL, .45, .6)   # lower metallic: black space reflections made it read as dark
 rock = make_material('M_Station_Asteroid', ROCK, .92, 0.0)
 stars = make_material('M_Station_Starfield', SKY, 1, 0, unlit=True, two_sided=True, inputs=('P', 'C'))
 if a.does_asset_exist(FOLDER + '/M_Station_Planet'):
@@ -206,6 +206,17 @@ for light in sun.get_components_by_class(ue.DirectionalLightComponent):
     ue.log('CROSSHAIR_SPACE_SUN forward=%s' % str(light.get_forward_vector()))
 sun.tags = list(sun.tags) + [ue.Name('CrosshairCustomLighting')]
 
+
+# Planet-shine: a soft, shadowless blue fill from the planet's direction so shaded walls stay readable.
+fill = actors.spawn_actor_from_class(ue.DirectionalLight, CENTER + ue.Vector(0, 0, 3000), ue.Rotator(roll=0, pitch=-14, yaw=160))
+fill.set_actor_label('Space Planet Shine')
+for light in fill.get_components_by_class(ue.DirectionalLightComponent):
+    light.set_world_rotation(ue.Rotator(roll=0, pitch=-14, yaw=160), False, False)
+    light.set_intensity(1.6)
+    light.set_light_color(ue.LinearColor(.55, .7, 1.0, 1))
+    light.set_cast_shadows(False)
+    light.set_editor_property('atmosphere_sun_light', False)
+
 SPHERE = ue.load_asset('/Engine/BasicShapes/Sphere')
 # Sky sphere mesh, sized from its own bounds.
 SMOOTH = ue.load_asset('/Engine/EngineMeshes/Sphere') or SPHERE
@@ -247,14 +258,14 @@ for k in range(10):
         prop(CUBE, metal, base + offset * .5 + ue.Vector(0, 0, 2100), ue.Vector(19, .3, .3), ue.Rotator(roll=0, pitch=0, yaw=yaw), 'Station Truss')
     prop(SPHERE, beacon, base + ue.Vector(0, 0, 2450), ue.Vector(.9, .9, .9), label='Station Beacon', shadows=False)
 
-# Exposure is held to the sunlit range (EV100 0.3-2) so shaded views do not lift the vacuum sky to grey.
+# Exposure is held to the sunlit range (EV100 -0.5 to 2) so shaded views do not lift the vacuum sky to grey.
 # Grade: deep blacks, bright highlights and some bloom on the beacons and deck guide lights.
 grade = actors.spawn_actor_from_class(ue.PostProcessVolume, CENTER)
 grade.set_actor_label('Space Station Grade')
 grade.set_editor_property('unbound', True)
 s = grade.settings
 for key, value in [('auto_exposure_method', ue.AutoExposureMethod.AEM_HISTOGRAM), ('auto_exposure_bias', 0.0),
-                   ('auto_exposure_min_brightness', .3), ('auto_exposure_max_brightness', 2.0),
+                   ('auto_exposure_min_brightness', -.5), ('auto_exposure_max_brightness', 2.0),
                    ('bloom_intensity', .65), ('ambient_occlusion_intensity', .7), ('color_contrast', ue.Vector4(1.1, 1.1, 1.1, 1)),
                    ('color_saturation', ue.Vector4(.95, .97, 1.0, 1)), ('white_temp', 6800.0), ('vignette_intensity', .35),
                    ('film_grain_intensity', .05), ('scene_fringe_intensity', .15), ('motion_blur_amount', .2)]:

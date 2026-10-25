@@ -18,8 +18,8 @@ It is listed fourth under Maps (after Testing Map, Nuketown and Grid), and it is
 
    | Nuketown surface | Station material |
    | --- | --- |
-   | Grass, sand, stone paths, curbs, concrete tiles | `M_Station_Deck`: metal deck plates with seams and cyan guide lights every 8 m |
-   | Siding, plaster, brick, wood, interior walls and floors | `M_Station_Hull`: white hull panels with seams, tonal variation and orange service panels |
+   | Grass, sand, stone paths, curbs, concrete tiles | `M_Station_Deck`: light grey deck plates with seams and cyan guide lights every 8 m |
+   | Siding, plaster, brick, wood, interior walls and floors | `M_Station_Hull`: white hull panels with seams, tonal variation, and orange and blue service panels |
    | Roofs | `M_Station_Solar`: solar-cell panels |
    | Fences, gutters, poles, pipes, beams and metal fittings | `M_Station_Gunmetal` |
    | Cliff rocks around the edge | `M_Station_Asteroid`: the station sits on an asteroid |
@@ -29,8 +29,9 @@ It is listed fourth under Maps (after Testing Map, Nuketown and Grid), and it is
    - The sun is a hard white light with no atmosphere tint, and is tagged `CrosshairCustomLighting` so the shared Earth-sky rig leaves the map alone.
    - `M_Station_Starfield` is an 8 km unlit sky sphere. Its shader draws, per pixel, the stars, a faint galactic band, the sun disc and a planet with oceans, continents, ice caps, clouds and a blue atmosphere halo. The planet is ray-traced analytically, so its limb stays perfectly round at any size, and it is lit from the real sun direction, so it shows a terminator. It sits opposite the sun, so it appears mostly lit.
    - The sky light captures only the distant sky sphere, at a higher intensity so shaded walls stay readable, and the station's point and rect lights turn cool white.
+   - A soft, shadowless blue "planet-shine" directional light from the planet's direction fills shaded sides. Deck and gunmetal are only partly metallic, because fully metallic surfaces reflect black space and read as dark.
 5. It adds ten masts with twin solar wings and red beacons around the perimeter, outside the fences.
-6. It adds the station's own post-process grade: histogram exposure held to EV100 0.3–2 so the vacuum sky stays black, bloom for beacons and guide lights, deep contrast, and light vignette and grain.
+6. It adds the station's own post-process grade: histogram exposure held to EV100 -0.5–2 so shaded views can brighten while the vacuum sky stays black, bloom for beacons and guide lights, deep contrast, and light vignette and grain.
 
 Run it locally with the editor closed:
 

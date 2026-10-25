@@ -38,6 +38,18 @@ struct FCrosshairBotMatchOptions
  /** Players per team, including the local player; COD default 6v6. */
  UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 TeamSize=6;
  UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 TeamScoreLimit=75;
+ /** Fill the lobby with bots (always on offline; a LAN host can turn them off). */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bBots=true;
+};
+
+/** LAN host setup: the match rules plus who may join. */
+USTRUCT(BlueprintType)
+struct FCrosshairLanOptions
+{
+ GENERATED_BODY()
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FCrosshairBotMatchOptions Match;
+ /** Human players allowed, including the host. */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 MaxPlayers=8;
 };
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCrosshairBotDifficultyChanged,ECrosshairBotDifficulty,Difficulty);
 
@@ -53,6 +65,11 @@ public:
  static FString MapName(ECrosshairMatchMap Map);
  static FName MapPackage(ECrosshairMatchMap Map);
  static void Validate(FCrosshairBotMatchOptions& Options);
+ static void Validate(FCrosshairLanOptions& Options);
+ /** Username shown in matches: letters, digits, space, - _ . only, 16 characters, never empty. */
+ static FString CleanPlayerName(const FString& Name);
+ /** Callsigns a controller player can cycle through instead of typing. */
+ static const TArray<FString>& Callsigns();
  UFUNCTION(BlueprintCallable) void SetDifficulty(ECrosshairBotDifficulty Difficulty);
  UFUNCTION(BlueprintPure) FCrosshairBotTuning GetCurrentTuning() const;
  UPROPERTY(BlueprintAssignable) FCrosshairBotDifficultyChanged OnDifficultyChanged;

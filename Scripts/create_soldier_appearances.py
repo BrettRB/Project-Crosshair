@@ -125,7 +125,7 @@ hat=Model();soft_crown(hat,169.6,(10.3,12.1,11.6),(0,math.tau,6.5,1.4));hat=uplo
 
 # ---- Plate carriers (follow spine_03, so they thicken with the chest) ----
 def carrier(light=False):
- m=Model();seg=64;R=12;bottom=111.0;front_top=138.0 if light else 141.0;side_top=125.0;clear=1.0
+ m=Model();seg=64;R=12;bottom=107.0;front_top=132.0 if light else 134.0;side_top=120.0;clear=1.0
  def thickness(t):return 1.4+(.8 if light else 1.6)*min(1,max(0,(abs(math.sin(t))-.45)/.3))
  outer=[];inner=[]
  for k in range(R):
@@ -145,7 +145,7 @@ def carrier(light=False):
  for x in pouches:
   y=surface(118,1);m.box((x,y+2.6,118),(7.2,5.2,12),FABRIC,1.0);m.box((x,y+5.3,123),(6.6,.7,3.2),FABRIC,.3)
  if not light:
-  m.box((0,surface(133,1)+1.8,133.5),(13,3.4,7),FABRIC,.8)
+  m.box((0,surface(127,1)+1.8,127.5),(13,3.4,7),FABRIC,.8)
   m.box((7,surface(128,-1)-2.5,128),(7.5,5,15),FABRIC,.8)
  # Shoulder straps lie on the shoulders (body half-width 11.8 at z152), out from the neck and below the chin.
  for x in [-10.5,10.5]:
@@ -200,7 +200,7 @@ knee_l=upload('SM_KneeArmor_L',kneepad(1));knee_r=upload('SM_KneeArmor_R',kneepa
 
 # ---- Materials: noise camouflage, woven fabric, matte armor ----
 NOISE='struct N{float h(float3 p){return frac(sin(dot(p,float3(127.1,311.7,74.7)))*43758.5453);} float n(float3 p){float3 i=floor(p);float3 f=frac(p);f=f*f*(3-2*f);return lerp(lerp(lerp(h(i),h(i+float3(1,0,0)),f.x),lerp(h(i+float3(0,1,0)),h(i+float3(1,1,0)),f.x),f.y),lerp(lerp(h(i+float3(0,0,1)),h(i+float3(1,0,1)),f.x),lerp(h(i+float3(0,1,1)),h(i+float3(1,1,1)),f.x),f.y),f.z);} float fbm(float3 p){return n(p)*.55+n(p*2.03+7.1)*.3+n(p*4.11+3.3)*.15;}}; N g;'
-uniform_code=NOISE+'float a=g.fbm(P*.085);float b=g.fbm(P*.14+11.0);float3 cloth=lerp(A,B,smoothstep(.47,.53,a));cloth=lerp(cloth,C,smoothstep(.57,.61,b));cloth*=.93+.07*g.n(float3(UV*900,0));float boot=1-smoothstep(18,24,P.z);float hand=smoothstep(43,50,abs(P.x));float head=smoothstep(153,157,P.z);float eyes=step(163,P.z)*step(P.z,169)*step(6,P.y)*step(abs(P.x),8);float3 mask=lerp(C*.55,float3(.006,.009,.01),eyes);return lerp(lerp(cloth,float3(.014,.016,.013),max(boot,hand)),mask,head);'
+uniform_code=NOISE+'float a=g.fbm(P*.085);float b=g.fbm(P*.14+11.0);float3 cloth=lerp(A,B,smoothstep(.47,.53,a));cloth=lerp(cloth,C,smoothstep(.57,.61,b));cloth*=.93+.07*g.n(float3(UV*900,0));float boot=1-smoothstep(18,24,P.z);float hand=smoothstep(43,50,abs(P.x));float head=smoothstep(153,157,P.z);float face=smoothstep(5,8,P.y)*(1-smoothstep(5.5,7.5,abs(P.x)))*smoothstep(156,158.5,P.z)*(1-smoothstep(171,173,P.z));float eyes=step(164.5,P.z)*step(P.z,167.5)*step(abs(P.x),6.5)*.55;float3 skin=float3(.36,.25,.19);float3 mask=lerp(C*.55,lerp(skin,skin*.35,eyes),face);return lerp(lerp(cloth,float3(.014,.016,.013),max(boot,hand)),mask,head);'
 fabric_code=NOISE+'float a=g.fbm(P*.12);float b=g.fbm(P*.19+5.0);float3 c=lerp(A,B,smoothstep(.47,.53,a));c=lerp(c,C,smoothstep(.58,.62,b));return c*(.92+.08*g.n(float3(UV*1300,1)));'
 armor_code=NOISE+'float w=g.fbm(P*.35);return A*(.86+.14*w);'
 normal_code=NOISE+'float2 weave=float2(sin(UV.x*1800),sin(UV.y*1700))*.07;float2 fold=float2(g.n(P*.06)-.5,g.n(P*.06+9.0)-.5)*.5;return normalize(float3(weave+fold,1));'

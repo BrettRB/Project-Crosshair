@@ -161,6 +161,11 @@ public:
  virtual void RestartPlayerAtPlayerStart(AController* NewPlayer,AActor* StartSpot) override;
  virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
  virtual bool ShouldSpawnAtStartSpot(AController* Player) override { return false; }
+ /** LAN host: refuses joins once the setup's human player limit is reached. */
+ virtual void PreLogin(const FString& Options,const FString& Address,const FUniqueNetIdRepl& UniqueId,FString& ErrorMessage) override;
+ /** Hosted from the LAN setup (travel option CrosshairLan) rather than the offline match setup. */
+ bool IsLanMatch() const { return bLanMatch; }
+ int32 GetMaxHumans() const { return MaxHumans; }
  static bool IsMatchMap(const FString& MapName);
  bool CanDamage(AController* Attacker,AController* Victim) const;
  void NotifyKilled(AController* Killer,AController* Victim,bool bHeadshot,const FString& Weapon);
@@ -181,6 +186,8 @@ private:
  void Respawn(AController* Controller);
  void CollectSpawnPoints();
  FCrosshairBotMatchOptions MatchOptions;
+ bool bLanMatch=false;
+ int32 MaxHumans=1;
  UPROPERTY() TArray<TObjectPtr<ACrosshairSpawnPoint>> SpawnPoints;
  TSet<TWeakObjectPtr<AController>> HasSpawned;
  TMap<TWeakObjectPtr<const AController>,TWeakObjectPtr<ACrosshairSpawnPoint>> LastSpawn;

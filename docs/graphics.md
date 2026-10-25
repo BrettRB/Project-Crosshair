@@ -37,7 +37,7 @@ Hit detection uses the physics bodies on the posed bones, so hitboxes follow the
 - an ellipsoid ballistic helmet with a rim, rails and an NVG mount;
 - goggles strapped around the helmet, and headset cups at the ears;
 - a cap and boonie with brims;
-- plate and light carriers that wrap the torso and stop at the upper chest (front top z 141, or 138 for the light carrier, below the collarbones and clear of the chin), with webbing, mag pouches, admin and back pouches, and shoulder straps laid on the shoulders rather than beside the neck;
+- plate and light carriers that wrap the torso and stop at the lower chest (front top z 134, or 132 for the light carrier, well below the collarbones and chin), with webbing, mag pouches, admin and back pouches, and shoulder straps laid on the shoulders rather than beside the neck;
 - a field pack;
 - a battle belt with angled pouches;
 - curved knee armor on each calf.
@@ -51,6 +51,25 @@ The materials are the `M_Uniform_*_Real`, `M_Fabric_*_Real` and `M_Armor_*_Real`
 ## First-person arms
 
 `UCrosshairViewmodelAnimInstance` plays the arms' idle and reload, applies the physique, and places the left hand under the weapon's fore-end with two-bone IK. The IK is off during reloads, weapon switches, lethal throws and full scope. The grip comes from `UCrosshairWeaponDefinition::LeftHandGrip`, set in the weapon's model space. When it is zero, a default is used: under the fore-end, a third of the way up the model.
+
+## Map skies
+
+The lighting rig gives each built-in map its own sky (`UCrosshairEnvironmentSubsystem::SkyProfileFor`). Each map keeps its sun's compass direction, so shadows fall where the level expects; the profile sets the sun's height and colour, the atmosphere's blue and haze, the fog tint and the cloud weather:
+
+| Map | Sky | Sun | Atmosphere and clouds |
+| --- | --- | --- | --- |
+| Testing Map | Clear midday | 55° high, 5800 K | Clean blue, light cumulus |
+| Nuketown | Desert late afternoon | 20° high, warm 4700 K | Dusty Mie haze, warm fog, a few high clouds |
+| Grid | Cool morning, broken cloud | 30° high, 6400 K | Deeper blue, cool fog, more cloud cover |
+| Imported maps | Clear day | Map's own direction, 5900 K | Engine-default atmosphere and clouds |
+
+Clouds come from a dynamic instance of the engine's volumetric cloud material: `Cloud_GlobalCoverage`, `Cloud_GlobalDensity` and `Cloud_AlbedoColor`, plus the cloud layer's altitude and thickness. A map that brings its own cloud material, or is tagged `CrosshairCustomLighting`, is left alone. Space Station uses its own vacuum sky; see [Space Station](space-station.md).
+
+The graphics check logs each map's profile (`sky=...`) and captures it.
+
+## Soldier faces
+
+The face area of the uniform shader is now visible skin, framed by the head covering, with a darker band at the eyes. Before, it was a uniformly dark balaclava, which read as armor over the face. The plate and light carriers stop at the lower chest: front top z 134 (light carrier 132), sides 120, bottom 107. The graphics check now captures a front close-up of a practice soldier (`GfxSoldierFront.png`).
 
 ## Graphics settings and ray tracing
 

@@ -13,6 +13,8 @@
 namespace
 {
  const FName CrosshairModeKey(TEXT("CROSSHAIR_MODE"));
+ const FName CrosshairHostKey(TEXT("CROSSHAIR_HOST"));
+ const FName CrosshairBotsKey(TEXT("CROSSHAIR_BOTS"));
  IOnlineSessionPtr Sessions(const UObject* Context) { return Online::GetSessionInterface(Context ? Context->GetWorld() : nullptr); }
 }
 
@@ -23,8 +25,9 @@ void UCrosshairMatchSession::Deinitialize()
 }
 FString UCrosshairMatchSession::TravelOptions(const FCrosshairBotMatchOptions& Options,bool bListen)
 {
+ // A LAN host flags the match so the game mode uses the LAN setup (bots, max players) instead of the offline one.
  return FString::Printf(TEXT("game=/Script/Project_Crosshair.CrosshairMatchGameMode?CrosshairMode=%s%s"),
-  Options.Mode==ECrosshairMatchMode::TeamDeathmatch ? TEXT("TDM") : TEXT("FFA"),bListen ? TEXT("?listen") : TEXT(""));
+  Options.Mode==ECrosshairMatchMode::TeamDeathmatch ? TEXT("TDM") : TEXT("FFA"),bListen ? TEXT("?listen?CrosshairLan") : TEXT(""));
 }
 bool UCrosshairMatchSession::CanTravel(FString& Reason) const
 {
@@ -38,8 +41,9 @@ bool UCrosshairMatchSession::TravelToMatch(bool bListen)
  FString Reason;
  if (!CanTravel(Reason)) { LanStatus=Reason; return false; }
  auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
- auto& Options=Replay->GetSettings().BotMatch;
- UCrosshairBotMatch::Validate(Options);
+ auto& Settings=Replay->GetSettings();
+ UCrosshairBotMatch::Validate(Settings.BotMatch); UCrosshairBotMatch::Validate(Settings.Lan);
+ const FCrosshairBotMatchOptions& Options=bListen ? Settings.Lan.Match : Settings.BotMatch;
  auto* Library=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>();
  Library->bHomeVisited=true; Library->ActiveMapId.Reset();
  return Replay->ChangePracticeMap(UCrosshairBotMatch::MapPackage(Options.Map),TravelOptions(Options,bListen));
@@ -57,11 +61,15 @@ bool UCrosshairMatchSession::HostLanMatch()
  const IOnlineSessionPtr Interface=Sessions(this);
  if (!Interface.IsValid()) { LanStatus=TEXT("LAN unavailable: online subsystem not loaded."); return false; }
  if (Interface->GetNamedSession(NAME_GameSession)) Interface->DestroySession(NAME_GameSession);
- const auto& Options=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().BotMatch;
+ auto& Saved=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+ UCrosshairBotMatch::Validate(Saved.Lan);
+ const auto& Options=Saved.Lan.Match;
  FOnlineSessionSettings Settings;
  Settings.bIsLANMatch=true; Settings.bShouldAdvertise=true; Settings.bAllowJoinInProgress=true;
  Settings.bUsesPresence=false; Settings.bUseLobbiesIfAvailable=false;
- Settings.NumPublicConnections=Options.Mode==ECrosshairMatchMode::TeamDeathmatch ? Options.TeamSize*2 : Options.BotCount+1;
+ Settings.NumPublicConnections=Saved.Lan.MaxPlayers;   // human players, including the host
+ Settings.Set(CrosshairHostKey,UCrosshairBotMatch::CleanPlayerName(Saved.PlayerName),EOnlineDataAdvertisementType::ViaOnlineService);
+ Settings.Set(CrosshairBotsKey,FString(Options.bBots ? TEXT("bots on") : TEXT("no bots")),EOnlineDataAdvertisementType::ViaOnlineService);
  Settings.Set(SETTING_MAPNAME,UCrosshairBotMatch::MapName(Options.Map),EOnlineDataAdvertisementType::ViaOnlineService);
  Settings.Set(CrosshairModeKey,UCrosshairBotMatch::ModeName(Options.Mode),EOnlineDataAdvertisementType::ViaOnlineService);
  ClearHandles();
@@ -100,10 +108,12 @@ void UCrosshairMatchSession::OnFindComplete(bool bSuccess)
  for (const FOnlineSessionSearchResult& Result:Search->SearchResults)
  {
   if (LanResults.Num()>=MaxLanResults) break;
-  FString Map,Mode;
+  FString Map,Mode,Host,Bots;
   Result.Session.SessionSettings.Get(SETTING_MAPNAME,Map); Result.Session.SessionSettings.Get(CrosshairModeKey,Mode);
+  if (!Result.Session.SessionSettings.Get(CrosshairHostKey,Host)) Host=Result.Session.OwningUserName;
+  Result.Session.SessionSettings.Get(CrosshairBotsKey,Bots);
   const int32 Max=Result.Session.SessionSettings.NumPublicConnections;
-  LanResults.Add(FString::Printf(TEXT("%s - %s on %s (%d/%d)"),*Result.Session.OwningUserName,*Mode,*Map,Max-Result.Session.NumOpenPublicConnections,Max));
+  LanResults.Add(FString::Printf(TEXT("%s - %s on %s%s (%d/%d)"),*Host,*Mode,*Map,Bots.IsEmpty() ? TEXT("") : *(TEXT(", ")+Bots),Max-Result.Session.NumOpenPublicConnections,Max));
  }
  LanStatus=LanResults.IsEmpty() ? TEXT("No LAN matches found on this network.") : FString::Printf(TEXT("Found %d LAN match(es)."),LanResults.Num());
 }

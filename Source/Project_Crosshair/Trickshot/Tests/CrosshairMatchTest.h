@@ -36,6 +36,7 @@ private:
  double WorldMark=0;
  bool bCapturedHome=false;
  float RemoteSpeedMax=0,HostSpeedMax=0,HostSteppingMax=0;
+ FVector RunGoal=FVector::ZeroVector;
  bool bSawBotStepping=false;
  // Difficulty duel (Easy vs Veteran) on Grid's open snow plane.
  TWeakObjectPtr<class ACrosshairBotController> DuelShooter;

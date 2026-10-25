@@ -1,6 +1,8 @@
 #include "CrosshairBotMatch.h"
 #include "CrosshairReplaySubsystem.h"
 #include "Engine/GameInstance.h"
+#include "CrosshairMatch.h"
+#include "Engine/World.h"
 FCrosshairBotTuning UCrosshairBotMatch::TuningFor(ECrosshairBotDifficulty Difficulty)
 {
  FCrosshairBotTuning T;
@@ -38,4 +40,28 @@ void UCrosshairBotMatch::SetDifficulty(ECrosshairBotDifficulty Difficulty)
  if (Previous!=O.Difficulty) OnDifficultyChanged.Broadcast(O.Difficulty);
 }
 FCrosshairBotTuning UCrosshairBotMatch::GetCurrentTuning() const
-{ return TuningFor(GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().BotMatch.Difficulty); }
+{
+ // Read live from the saved setup the running match uses, so pause-menu changes apply mid-match.
+ const FCrosshairSettings& Settings=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+ const UWorld* World=GetGameInstance()->GetWorld();
+ const auto* Mode=World ? World->GetAuthGameMode<ACrosshairMatchGameMode>() : nullptr;
+ return TuningFor(Mode && Mode->IsLanMatch() ? Settings.Lan.Match.Difficulty : Settings.BotMatch.Difficulty);
+}
+void UCrosshairBotMatch::Validate(FCrosshairLanOptions& Options)
+{
+ Validate(Options.Match);
+ Options.MaxPlayers=FMath::Clamp(Options.MaxPlayers,2,12);
+}
+FString UCrosshairBotMatch::CleanPlayerName(const FString& Name)
+{
+ FString Clean;
+ for (const TCHAR C:Name) if (FChar::IsAlnum(C) || C==TCHAR(' ') || C==TCHAR('-') || C==TCHAR('_') || C==TCHAR('.')) Clean.AppendChar(C);
+ Clean.TrimStartAndEndInline();
+ Clean=Clean.Left(16).TrimEnd();
+ return Clean.IsEmpty() ? FString(TEXT("Player")) : Clean;
+}
+const TArray<FString>& UCrosshairBotMatch::Callsigns()
+{
+ static const TArray<FString> Names={TEXT("Player"),TEXT("Maverick"),TEXT("Nova"),TEXT("Specter"),TEXT("Blaze"),TEXT("Atlas"),TEXT("Onyx"),TEXT("Jinx"),TEXT("Kestrel"),TEXT("Havoc"),TEXT("Quickscope"),TEXT("Trickshot")};
+ return Names;
+}

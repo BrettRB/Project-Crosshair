@@ -135,6 +135,9 @@ struct FCrosshairSettings
  UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bSandboxTargets=false;
  UPROPERTY() int32 ControlPresetVersion=0;
  UPROPERTY(EditAnywhere,BlueprintReadWrite) FCrosshairBotMatchOptions BotMatch;
+ /** Username for matches (offline and LAN) and the LAN host setup. */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FString PlayerName;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FCrosshairLanOptions Lan;
  /** Graphics (CrosshairGraphics): applied only once the player has chosen, so a fresh install keeps engine defaults. */
  UPROPERTY() bool bGraphicsConfigured=false;
  UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 GraphicsPreset=3;

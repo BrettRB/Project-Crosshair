@@ -33,6 +33,8 @@ void UCrosshairReplaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	if (!Save) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::CreateSaveGameObject(UCrosshairSaveGame::StaticClass()));
  auto& Settings=Save->Settings;
  UCrosshairBotMatch::Validate(Settings.BotMatch);
+ UCrosshairBotMatch::Validate(Settings.Lan);
+ if (Settings.PlayerName.IsEmpty()) Settings.PlayerName=UCrosshairBotMatch::CleanPlayerName(FPlatformProcess::UserName());
  if (Settings.ControlPresetVersion<1)
  {
   if (FMath::IsNearlyEqual(Settings.StickYawSpeed,360.f)) Settings.StickYawSpeed=720;

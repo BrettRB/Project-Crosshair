@@ -52,6 +52,13 @@ public:
  /** Graphics rows from GetGraphicsRow(): preset, ray tracing, resolution scale, detect for this PC. */
  int32 GetGraphicsRow() const { return GetBotMatchRow()+MatchRowCount; }
  static constexpr int32 GraphicsRowCount = 4;
+ /** LAN setup rows from GetLanRow(): username, mode, map, bots, bot difficulty, bot count or team size, score, time, max players. */
+ int32 GetLanRow() const { return GetGraphicsRow()+GraphicsRowCount; }
+ static constexpr int32 LanRowCount = 9;
+ /** Typing a username on the LAN tab (Enter starts and finishes). */
+ bool bEditingName=false;
+ /** Each player sends the username saved on their own machine; the server applies it. */
+ UFUNCTION(Server,Reliable) void ServerSetPlayerName(const FString& Name);
  bool IsInMatch() const;
  bool bScoreboardHeld=false;
  void ShowHome();
@@ -80,6 +87,8 @@ private:
 	FVector2D HeldStick = FVector2D::ZeroVector;
 	void AdjustSelection(int32 Direction);
 	void AdjustGraphics(int32 Offset,int32 Direction);
+	void AdjustLan(int32 Offset,int32 Direction);
+	void EditNameKey(const FKey& Key);
 	void ActivateSelection();
 	int32 MapChoice = 0;
 };

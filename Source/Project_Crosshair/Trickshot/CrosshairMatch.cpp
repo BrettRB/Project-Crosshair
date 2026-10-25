@@ -131,7 +131,11 @@ void ACrosshairMatchGameMode::InitGame(const FString& MapName,const FString& Opt
 {
  Super::InitGame(MapName,Options,ErrorMessage);
  bInvalidMap=!IsMatchMap(MapName);
- MatchOptions=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().BotMatch;
+ const FCrosshairSettings& Settings=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+ bLanMatch=UGameplayStatics::HasOption(Options,TEXT("CrosshairLan"));
+ MatchOptions=bLanMatch ? Settings.Lan.Match : Settings.BotMatch;
+ MaxHumans=bLanMatch ? FMath::Clamp(Settings.Lan.MaxPlayers,2,12) : 1;
+ if (!bLanMatch) MatchOptions.bBots=true;   // offline matches are always against bots
  const FString Mode=UGameplayStatics::ParseOption(Options,TEXT("CrosshairMode"));
  if (Mode==TEXT("TDM")) MatchOptions.Mode=ECrosshairMatchMode::TeamDeathmatch;
  else if (Mode==TEXT("FFA")) MatchOptions.Mode=ECrosshairMatchMode::FreeForAll;
@@ -168,7 +172,8 @@ void ACrosshairMatchGameMode::StartPlay()
  if (UNavigationSystemV1* Navigation=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()))
   for (TActorIterator<ANavMeshBoundsVolume> It(GetWorld());It;++It) Navigation->AddDirtyArea(It->GetComponentsBoundingBox(true),ENavigationDirtyFlag::All);
  if (State) State->MatchEndsAt=State->GetServerWorldTimeSeconds()+MatchOptions.TimeLimitMinutes*60.f;
- if (MatchOptions.Mode==ECrosshairMatchMode::TeamDeathmatch)
+ if (!MatchOptions.bBots) {}   // LAN host turned bots off: humans only
+ else if (MatchOptions.Mode==ECrosshairMatchMode::TeamDeathmatch)
  {
   int32 Humans[3]={0,0,0};
   for (auto It=GetWorld()->GetPlayerControllerIterator();It;++It) if (It->IsValid()) ++Humans[FMath::Min<uint8>(TeamOf(It->Get()),2)];
@@ -214,8 +219,10 @@ FString ACrosshairMatchGameMode::InitNewPlayer(APlayerController* NewPlayerContr
 {
  AssignTeam(NewPlayerController);
  const FString Error=Super::InitNewPlayer(NewPlayerController,UniqueId,Options,Portal);
- // Offline, the Null subsystem name is a machine ID; LAN keeps it so players stay distinguishable.
- if (GetNetMode()==NM_Standalone && NewPlayerController->PlayerState) NewPlayerController->PlayerState->SetPlayerName(TEXT("Player"));
+ // The Null subsystem name is a machine ID. Offline, use the saved username at once; LAN players send
+ // theirs on arrival (ACrosshairPlayerController::ServerSetPlayerName), each machine its own.
+ if (GetNetMode()==NM_Standalone && NewPlayerController->PlayerState)
+  NewPlayerController->PlayerState->SetPlayerName(UCrosshairBotMatch::CleanPlayerName(GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().PlayerName));
  return Error;
 }
 void ACrosshairMatchGameMode::RestartPlayerAtPlayerStart(AController* NewPlayer,AActor* StartSpot)
@@ -354,4 +361,10 @@ void ACrosshairMatchGameMode::EndMatch(const FString& Result)
  FTimerHandle Handle;
  GetWorldTimerManager().SetTimer(Handle,FTimerDelegate::CreateWeakLambda(this,[this]()
  { GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->LeaveMatch(); }),ResultsSeconds,false);
+}
+void ACrosshairMatchGameMode::PreLogin(const FString& Options,const FString& Address,const FUniqueNetIdRepl& UniqueId,FString& ErrorMessage)
+{
+ Super::PreLogin(Options,Address,UniqueId,ErrorMessage);
+ if (ErrorMessage.IsEmpty() && bLanMatch && GetNumPlayers()>=MaxHumans)
+  ErrorMessage=FString::Printf(TEXT("This LAN match is full (%d players)."),MaxHumans);
 }

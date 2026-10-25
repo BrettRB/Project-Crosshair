@@ -132,3 +132,36 @@ Every third-person soldier body (bots, other LAN players, practice/match replays
 LAN movement: sprint and aim-down-sights change movement speed, and the host simulates every joined player, so the client now sends its sprint/aim intent to the host (`ServerSetMoveIntent`). The host moves joined players at the same speed they see locally instead of correcting them back to walk speed. Your own soldier body and its gear (helmet, pouches, pads) are hidden from your first-person view, live and in your replays, while other players still see them.
 
 Verified: `Crosshair.Animation.LocomotionWeights` automation test; match smoke asserts moving bots play walk/jog cycles; two-process LAN test: host simulated the joined player's sprint at 680 cm/s, and the client saw the host's soldier at 681 cm/s with a full walk/jog pose (stepping weight 1.00). Crouch, reload, firing and equip are not yet animated on third-person bodies.
+
+## LAN match setup (added 2026-10-25)
+
+Escape / Start > **LAN** now opens a setup screen before Host / Find. Your choices are saved, and the offline match settings are separate.
+
+| Row | What it does |
+| --- | --- |
+| Username | Your name in matches, offline and LAN. Press Enter / A to type it: letters, numbers, space and `- _ .`, up to 16 characters. Backspace deletes, and Enter or Escape saves. Left / Right cycles callsigns, which suits controller players. The first default is your Windows user name. |
+| LAN mode | Free-for-all or Team Deathmatch. |
+| LAN map | Nuketown, Grid or Space Station. |
+| Bots | On fills the lobby with bots. Off makes it humans from your network only. |
+| Bot difficulty | Easy / Regular / Hardened / Veteran. Shown only when bots are on. |
+| Bot count / Team size | FFA: the number of bots. TDM: players per team, with bots filling empty slots. Shown only when bots are on. |
+| Score limit, Time limit | As for offline matches. |
+| Max players | Humans allowed, including the host (2–12). |
+| Host LAN match / Find LAN matches | As before. |
+
+How it works:
+
+- **Hosting:** the host travels with a `?CrosshairLan` option, so `ACrosshairMatchGameMode` uses the LAN setup: mode, map, bots on/off, bot difficulty, counts, limits and max players. Without that option it uses the offline setup.
+- **Player limit:** `PreLogin` refuses joins once the human limit is reached, with the message "This LAN match is full".
+- **Listing:** the session advertises the host's username and the bots setting. Find shows, for example, "HostAce - Free-for-all on Space Station, no bots (1/4)".
+- **Usernames:** every player's controller sends its own saved username to the server on arrival (`ServerSetPlayerName`), and the server cleans and applies it, so the scoreboard and kill feed show real names. Before this, LAN names were machine IDs from the Null subsystem.
+- **Live difficulty:** bot difficulty is read live from the setup the running match uses, so changing it from the pause menu still applies mid-match.
+
+Verified locally:
+
+- **Two processes:** the host chose username HostAce, Free-for-all on Space Station, bots off and 4 players; the client was ClientBee.
+  - The client's search listed "HostAce - Free-for-all on Space Station, no bots (1/4)".
+  - The host ran Space Station with no bots and a 4-player limit.
+  - Both machines saw both usernames.
+  - The movement and animation checks passed.
+- **Menu check** (in the graphics check): typing on the Username row with simulated keys produced the expected name, and the bot rows hid when Bots was turned off.
