@@ -1,4 +1,5 @@
 #include "CrosshairReplaySubsystem.h"
+#include "CrosshairGraphics.h"
 #include "CrosshairStartup.h"
 #include "CrosshairCharacter.h"
 #include "CrosshairPractice.h"
@@ -42,6 +43,8 @@ void UCrosshairReplaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
  { FCrosshairClass C; C.Name=FString::Printf(TEXT("Custom %d"),i+1); C.Primary=i%3; C.Secondary=(i+1)%3; C.Lethal=Settings.LethalType; Settings.Classes.Add(C); }
  Settings.ActiveClass=FMath::Clamp(Settings.ActiveClass,0,Settings.Classes.Num()-1);
  for (auto& C:Settings.Classes) { C.Primary=FMath::Clamp(C.Primary,0,2); C.Secondary=FMath::Clamp(C.Secondary,0,2); if (C.Secondary==C.Primary) C.Secondary=(C.Primary+1)%3; }
+ Settings.GraphicsPreset=FMath::Clamp(Settings.GraphicsPreset,0,CrosshairGraphics::PresetCount-1); Settings.ResolutionScale=FMath::Clamp(Settings.ResolutionScale,50,100);
+ CrosshairGraphics::Apply(Settings);
 
 }
 void UCrosshairReplaySubsystem::Deinitialize()

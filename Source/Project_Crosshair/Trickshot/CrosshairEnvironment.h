@@ -23,8 +23,11 @@ public:
  static const FName EnvironmentTag;
  static const FName OptOutTag;
  bool IsApplied() const { return bApplied; }
+ /** Scales the grade to a graphics preset (0..3): Lumen quality, hit-lit reflections only with ray tracing, clouds off on battery saver. */
+ void ApplyQuality(int32 Preset,bool bRayTracing);
  UPROPERTY(Transient) TObjectPtr<ADirectionalLight> Sun;
  UPROPERTY(Transient) TObjectPtr<APostProcessVolume> Grade;
+ UPROPERTY(Transient) TObjectPtr<AActor> Clouds;
 private:
  bool bApplied=false;
 };

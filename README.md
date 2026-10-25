@@ -16,7 +16,7 @@ This project was made for an **AI-Assisted Software Engineering** course. It was
 - Every successful hit is recorded and can be watched back in the **Replays** menu.
 
 ### Offline matches against bots
-- **Free-for-all** and **Team Deathmatch** on Nuketown and Grid (the testing map stays practice-only), with Call of Duty default settings: 8-player FFA to 30 kills, 6v6 TDM to 75, 10 minutes.
+- **Free-for-all** and **Team Deathmatch** on Nuketown, Grid and the new Space Station (the testing map stays practice-only), with Call of Duty default settings: 8-player FFA to 30 kills, 6v6 TDM to 75, 10 minutes.
 - Bots with four difficulty presets (Easy, Regular, Hardened, Veteran) that change reaction time, aim error, turn speed and movement. Bots need line of sight, shoot each other and you, and roam the map on navigation meshes.
 - COD-style spawns (teams start on opposite sides; respawns avoid enemy sight lines), regenerating health, kill feed, scoreboard and end-of-match results.
 - **Every kill you make is saved to Replays**, labelled with how it happened (for example "Mid-air 360 No-scope Headshot - Bolt-Action Sniper, 42 m"), and real trickshots flash a TRICKSHOT banner.
@@ -29,13 +29,15 @@ This project was made for an **AI-Assisted Software Engineering** course. It was
 - Controller support with adjustable sensitivity, dead zone, inversion and a direction calibration.
 - Import your own maps as OBJ files or `map.json` packages.
 - Realistic lighting (sun, sky, volumetric clouds and fog, film-style grade) applied automatically to every map, including imported ones, plus muscular soldiers with fitted helmets, armor and camouflage.
+- A Graphics menu with presets for laptops from integrated graphics up to gaming laptops and desktops, resolution scale, auto-detect and a ray tracing on/off switch.
+- **Space Station**: a copy of Nuketown re-themed as an orbital station with a starfield, a planet in the sky, metal decks, white hull panels and solar arrays.
 - A startup step that preloads maps, weapons and shaders before play.
 
 ## What it is based on
 
 - **Unreal Engine 5.8** and its **First Person C++ template**, including the Unreal mannequin and animations. The trickshot gameplay, matches, bots, menus and replays are custom C++ in `Source/Project_Crosshair/Trickshot`.
 - **Call of Duty: Black Ops trickshotting** as the inspiration for movement, weapons, maps and match rules. Crosshair is a student fan project and is not affiliated with or endorsed by Activision or Treyarch; no assets were taken from Call of Duty games.
-- **Nuketown**: environment by Alexey Shishnin ([ArtStation listing](https://www.artstation.com/marketplace/p/l0MN8/nuketown-from-black-ops-unreal-engine-5-remake)), which credits ValenQpr's CS:GO remake. See [Nuketown integration](docs/nuketown-import.md).
+- **Nuketown**: environment by Alexey Shishnin ([ArtStation listing](https://www.artstation.com/marketplace/p/l0MN8/nuketown-from-black-ops-unreal-engine-5-remake)), which credits ValenQpr's CS:GO remake. See [Nuketown integration](docs/nuketown-import.md). Space Station is a re-themed copy of that environment; see [Space Station](docs/space-station.md).
 - **Grid**: "Call of Duty Black Ops 1 Grid Inspired Map" by [PIPO (pipo_)](https://sketchfab.com/pipo_) on [Sketchfab](https://sketchfab.com/3d-models/call-of-duty-black-ops-1-grid-inspired-map-68c0b8b9ffe34a468876044b4c1da00a), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) and adapted for this project. See [Grid integration](docs/grid-map.md).
 - Weapon models, camos, soldier uniforms and gear were made for this project with the scripts in `Scripts/`. Full credits: [third-party credits](docs/third-party-credits.md).
 
@@ -88,7 +90,7 @@ Gameplay smoke tests run the game with flags such as `-game -CrosshairSmoke` (co
 | --- | --- |
 | `Source/Project_Crosshair/Trickshot` | Gameplay C++: character, weapons, lethals, targets, traversal, menus/HUD, replays, matches, bots, LAN sessions |
 | `Source/Project_Crosshair/Trickshot/Tests` | Automation and smoke tests |
-| `Content/Crosshair` | Maps (practice, Nuketown, Grid), player, weapons, soldiers |
+| `Content/Crosshair` | Maps (practice, Nuketown, Grid, Space Station), player, weapons, soldiers |
 | `Scripts` | Unreal Python scripts that create assets, import maps and place spawns |
 | `docs` | Design notes, integration records and the AI interaction log |
 
@@ -101,6 +103,7 @@ Gameplay smoke tests run the game with flags such as `-game -CrosshairSmoke` (co
 - [Lethal throwables](docs/lethal-throwables.md)
 - [Classes, maps and imports](docs/home-classes-and-map-import.md)
 - [Weapon appearance](docs/weapon-appearance.md) and [soldier appearances](docs/soldier-appearances.md)
-- [Realistic graphics](docs/graphics.md)
+- [Realistic graphics](docs/graphics.md) (including graphics settings and ray tracing)
+- [Space Station map](docs/space-station.md)
 - [Startup preparation](docs/startup-preparation.md)
 - [AI interaction log](docs/ai-interaction-log.md)

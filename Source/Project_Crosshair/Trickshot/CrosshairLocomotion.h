@@ -43,8 +43,8 @@ namespace CrosshairLocomotion
  {
   static const TArray<FBulk> Bulk={
    {TEXT("spine_02"),FVector(1,1.08,1.08)},{TEXT("spine_03"),FVector(1,1.14,1.14)},{TEXT("neck_01"),FVector(1,1.2,1.2)},
-   {TEXT("clavicle_l"),FVector(1.12,1.1,1.1)},{TEXT("clavicle_r"),FVector(1.12,1.1,1.1)},
-   {TEXT("upperarm_l"),FVector(1,1.24,1.24)},{TEXT("upperarm_r"),FVector(1,1.24,1.24)},
+   {TEXT("clavicle_l"),FVector(1.1,1.04,1.04)},{TEXT("clavicle_r"),FVector(1.1,1.04,1.04)},
+   {TEXT("upperarm_l"),FVector(1,1.18,1.18)},{TEXT("upperarm_r"),FVector(1,1.18,1.18)},
    {TEXT("lowerarm_l"),FVector(1,1.15,1.15)},{TEXT("lowerarm_r"),FVector(1,1.15,1.15)},
    {TEXT("thigh_l"),FVector(1,1.15,1.15)},{TEXT("thigh_r"),FVector(1,1.15,1.15)},
    {TEXT("calf_l"),FVector(1,1.1,1.1)},{TEXT("calf_r"),FVector(1,1.1,1.1)}};

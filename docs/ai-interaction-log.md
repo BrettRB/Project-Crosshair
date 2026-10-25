@@ -2947,3 +2947,97 @@ Do a realism pass on lighting, soldier bodies, gear fit and materials. It must a
 ### Response Summary
 Every map, including imported ones, now automatically gets realistic lighting. Soldiers are bulked, wear regenerated, fitted gear and new camo materials, and the first-person arms share the physique with a left-hand grip. All builds and tests pass. The match smoke has one intermittent wait that passed on rerun. Committed on master; the user pushes.
 ---
+
+---
+## Interaction 67
+
+Date/time: 2026-10-24 to 2026-10-25 (evening, America/Chicago).
+
+### User Prompt
+Keep updating the graphics, also add a menu in the pause screen to change graphical settings for different levels of laptop gaming power. Also, the body armor for the models sits to high now and covers the face of the characters. Make sure the raytracing is working and can be turned on and off in settings. Create a space station themed map that will be similar to nuketown. Do this by making a copy of nuketown and then changing it to be more space themed.
+
+### Interpretation
+Continue the graphics pass with four parts:
+1. A pause-menu graphics menu with presets sized for laptop power.
+2. A working, toggleable ray tracing setting.
+3. Lower the body armor so it no longer covers faces.
+4. A space-station map made by copying Nuketown and re-theming the copy.
+
+### Requirements / Acceptance Criteria
+- **Graphics menu:** reachable from the pause screen, with presets from integrated graphics up to gaming laptops and desktops. Changes apply immediately and persist.
+- **Ray tracing:** really switches on and off at runtime, is verified, and reports when the GPU does not support it.
+- **Armor:** carriers and straps no longer cover the face or neck.
+- **Space Station:** a Nuketown copy, with Nuketown itself untouched. It has a space theme, the same layout and spawns, is playable in practice and matches, and is listed in the menus.
+- Existing tests and gameplay keep working.
+
+### Actions Taken
+- **Armor:**
+  - Lowered the carrier tops: front 149→141, light carrier 145→138, sides 131→125.
+  - Moved the admin pouch below the new top and lowered the pack.
+  - Moved the shoulder straps out onto the shoulders (x ±10.5, peak z 152.6) instead of beside the neck.
+  - Eased the clavicle and upper-arm bulk (upper arms 1.24→1.18).
+  - Regenerated the gear.
+- **Graphics settings:** added `CrosshairGraphics`.
+  - Four presets mapped to engine scalability 0–3 with default resolution scale and ray tracing: Battery saver (integrated graphics) 67% RT off, Balanced laptop 80% RT off, Gaming laptop 100% RT on, High-end laptop/desktop 100% RT on.
+  - A ray-tracing toggle that sets `r.RayTracing.Enable` and `r.Lumen.HardwareRayTracing` at runtime (UE 5.8 `r.RayTracing.EnableOnDemand`). It is guarded by `IsRayTracingAllowed()`.
+  - A 50–100% resolution scale.
+  - Benchmark detection, with integrated GPUs capped at Balanced.
+  - Settings are saved in FCrosshairSettings and applied at startup only after the player has chosen.
+  - The pause-menu "Display" tab became "Graphics", holding the four rows plus field of view, with help text.
+  - The lighting rig scales Lumen quality per preset, uses hit-lit reflections only with ray tracing, hides clouds on Battery saver, and lightens ambient occlusion there.
+- **Space Station:**
+  - Surveyed Nuketown with a new read-only probe script.
+  - Added `Scripts/create_space_station_map.py`. It duplicates L_Nuketown to L_SpaceStation and removes foliage, atmosphere and fog.
+  - It remaps materials by family to new world-aligned procedural station materials: deck with guide lights, white hull, solar roofs, gunmetal, and asteroid rock.
+  - It sets a vacuum sun tagged CrosshairCustomLighting.
+  - The sky-sphere shader draws stars, the galactic band, the sun disc and an analytically ray-traced lit planet with an atmosphere halo.
+  - It adds cool station lights, ten solar-array masts with beacons, and a station grade.
+  - Registered the map as built-in map 4 and as a match map: the ECrosshairMatchMap enum, match gate, labels, menu cycling and the cook list.
+- **Fixes found while testing:**
+  - The "fern" key also matched "inferno" and deleted 112 doors and props; it is now "_fern".
+  - The sky sphere's collision caught the spawn, so props now use the NoCollision profile.
+  - Re-duplicating over a just-deleted map failed; garbage collection plus a save-as fallback fixed it.
+  - The sun component rotation is now set in world space.
+  - The planet first showed faceted geometry, then a crescent; it is now drawn in the sky shader, placed opposite the sun.
+  - The exposure clamp was tuned.
+- **Tests:**
+  - The graphics check now verifies each preset's engine quality and resolution, the menu row, ray tracing off and on (screenshots), and Space Station: its own lighting, 21 spawns, spawning on the deck, plus a street view and a rooftop planet view.
+  - The frontend and rules tests were updated for four built-in maps and the third match map.
+- **Docs:** updated graphics.md, the new space-station.md, the README, offline-match-and-lan.md and gameplay-controls.md.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairGraphics.h/.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairEnvironment.h/.cpp, CrosshairReplaySubsystem.cpp, CrosshairData.h
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h/.cpp (Graphics tab, rows, adjust/activate, help; Space Station names)
+- Source/Project_Crosshair/Trickshot/CrosshairLocomotion.h (physique)
+- Source/Project_Crosshair/Trickshot/CrosshairMapLibrary.h/.cpp, CrosshairBotMatch.h/.cpp, CrosshairMatch.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.cpp, CrosshairFrontendTest.cpp, CrosshairRulesTests.cpp
+- Source/Project_Crosshair/Project_Crosshair.Build.cs (RHI module)
+- Config/DefaultGame.ini (cook L_SpaceStation)
+- Scripts/create_soldier_appearances.py, Scripts/create_space_station_map.py (new), Scripts/probe_space_station_source.py (new)
+- Content/Crosshair/Maps/L_SpaceStation.umap and Content/Crosshair/Maps/SpaceStationMaterials/* (new, generated)
+- Content/Crosshair/Soldiers gear meshes (regenerated), ContentSource/Character/Soldiers/*.obj
+- docs/graphics.md, docs/space-station.md (new), README.md, docs/offline-match-and-lan.md, docs/gameplay-controls.md, docs/ai-interaction-log.md
+
+### Verification
+- Build.bat Project_CrosshairEditor and Project_Crosshair Win64 Development: succeeded.
+- Automation RunTests Crosshair: 12 of 12 succeeded (Match.Rules now includes Space Station).
+- Rendered -CrosshairGraphicsCheck: CROSSHAIR_GRAPHICS_OK.
+  - Presets gave shadows/GI 0/1/2/3 at 67/80/100/100% resolution; the menu row changed the preset.
+  - Ray tracing is supported on this Radeon 780M; it turned off and back on (IsRayTracingActive).
+  - Space Station: suns=1, atmospheres=0, spawns=21, shared rig off, player on the deck at Z 160.
+  - Screenshots inspected: lit planet over the asteroid deck, starfield, beacons, solar arrays.
+- create_space_station_map.py: CROSSHAIR_SPACE_STATION_OK removed=560 restyled=4787 spawns=21; L_Nuketown unchanged in git.
+- create_soldier_appearances.py: CROSSHAIR_SOLDIER_ASSETS_OK. The rendered frontend visual (CROSSHAIR_FRONTEND_OK) shows carriers at the upper chest, the neck and face covering visible, and straps on the shoulders.
+- Smokes: core, frontend, expansion and match OK. Lethal first failed on its replay-row layout assertion (the graphics rows now sit before replays); after updating the test, CROSSHAIR_LETHAL_OK.
+- Two-process LAN: CROSSHAIR_LAN_HOST_OK and CROSSHAIR_LAN_CLIENT_OK.
+
+
+### Notes / Follow-up
+- The GPU here (Radeon 780M, DXR 1.1) supports ray tracing, but it is costly; "Detect" picks Balanced (RT off) on integrated graphics.
+- Space Station keeps Nuketown's vehicles, mannequins and some props (vehicles now read as white station rovers). Shaded areas are dark by design; low gravity and station sounds were not added.
+- Rerunning create_space_station_map.py regenerates the map from Nuketown, so make lasting edits in the script.
+
+### Response Summary
+Lowered the armor off the faces; added a pause-menu Graphics tab with four laptop presets, resolution scale, auto-detect and a working runtime ray tracing toggle; built Space Station from a Nuketown copy with station materials, a starfield and a shader-drawn planet, playable in practice and matches. All builds and tests pass. Committed on master; the user pushes.
+---

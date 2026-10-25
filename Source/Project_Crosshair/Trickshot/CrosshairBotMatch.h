@@ -9,7 +9,7 @@ UENUM(BlueprintType)
 enum class ECrosshairMatchMode : uint8 { FreeForAll, TeamDeathmatch };
 /** Matches run only on the COD maps; the Testing map and local imports are practice-only. */
 UENUM(BlueprintType)
-enum class ECrosshairMatchMap : uint8 { Nuketown, Grid };
+enum class ECrosshairMatchMap : uint8 { Nuketown, Grid, SpaceStation };
 
 /** Shared tuning for future AI controllers. No difficulty grants wall vision. */
 USTRUCT(BlueprintType)

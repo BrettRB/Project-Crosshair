@@ -270,7 +270,7 @@ void UCrosshairFrontendTest::Tick(float Delta)
   CollectGarbage(RF_NoFlags);
   Startup->BeginPreparation();
   if (!Check(Startup->IsReady() && Startup->GetPreparationCount()==1 && Startup->HasCachedAsset(TEXT("/Game/Crosshair/Maps/M_ImportedMap.M_ImportedMap")),TEXT("Startup cache survives garbage collection and round-trip map travel without restarting"))) return;
-  if (!Check(UCrosshairMapLibrary::BuiltinMapCount==3 && Library->MapName(2)==TEXT("Grid"),TEXT("Testing Map, Nuketown and Grid are built-in; imports begin at index three"))) return;
+  if (!Check(UCrosshairMapLibrary::BuiltinMapCount==4 && Library->MapName(2)==TEXT("Grid") && Library->MapName(3)==TEXT("Space Station"),TEXT("Testing Map, Nuketown, Grid and Space Station are built-in; imports begin at index four"))) return;
   {
    auto* Selector=NewObject<UCrosshairSoldierSelection>(World);int32 Last=INDEX_NONE;
    for(int32 Cycle=0;Cycle<4;++Cycle){TSet<int32> Seen;for(int32 i=0;i<6;++i){const int32 Design=Selector->Draw(6);if(!Check(Design!=Last,TEXT("Shuffled soldier deck avoids adjacent repeats"))) return;Seen.Add(Design);Last=Design;}if(!Check(Seen.Num()==6,TEXT("Every shuffled cycle includes six soldier designs"))) return;}

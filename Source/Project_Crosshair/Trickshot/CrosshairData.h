@@ -135,6 +135,11 @@ struct FCrosshairSettings
  UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bSandboxTargets=false;
  UPROPERTY() int32 ControlPresetVersion=0;
  UPROPERTY(EditAnywhere,BlueprintReadWrite) FCrosshairBotMatchOptions BotMatch;
+ /** Graphics (CrosshairGraphics): applied only once the player has chosen, so a fresh install keeps engine defaults. */
+ UPROPERTY() bool bGraphicsConfigured=false;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 GraphicsPreset=3;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 ResolutionScale=100;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bRayTracing=true;
 };
 
 USTRUCT(BlueprintType)

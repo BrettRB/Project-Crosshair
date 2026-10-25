@@ -49,6 +49,9 @@ public:
  int32 GetBotMatchRow() const { return GetImportRow()+1; }
  /** Match rows from GetBotMatchRow(): difficulty, players, score, time, mode, map, start, host, find, then joinable LAN results. */
  static constexpr int32 MatchRowCount = 13;
+ /** Graphics rows from GetGraphicsRow(): preset, ray tracing, resolution scale, detect for this PC. */
+ int32 GetGraphicsRow() const { return GetBotMatchRow()+MatchRowCount; }
+ static constexpr int32 GraphicsRowCount = 4;
  bool IsInMatch() const;
  bool bScoreboardHeld=false;
  void ShowHome();
@@ -76,6 +79,7 @@ private:
 	FVector2D PendingMouse = FVector2D::ZeroVector;
 	FVector2D HeldStick = FVector2D::ZeroVector;
 	void AdjustSelection(int32 Direction);
+	void AdjustGraphics(int32 Offset,int32 Direction);
 	void ActivateSelection();
 	int32 MapChoice = 0;
 };

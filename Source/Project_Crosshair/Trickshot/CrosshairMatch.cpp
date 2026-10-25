@@ -126,7 +126,7 @@ ACrosshairMatchGameMode::ACrosshairMatchGameMode()
  if (PracticePawn.Class) DefaultPawnClass=PracticePawn.Class;
 }
 bool ACrosshairMatchGameMode::IsMatchMap(const FString& MapName)
-{ return MapName.Contains(TEXT("L_Nuketown")) || MapName.Contains(TEXT("L_Grid")); }
+{ return MapName.Contains(TEXT("L_Nuketown")) || MapName.Contains(TEXT("L_Grid")) || MapName.Contains(TEXT("L_SpaceStation")); }
 void ACrosshairMatchGameMode::InitGame(const FString& MapName,const FString& Options,FString& ErrorMessage)
 {
  Super::InitGame(MapName,Options,ErrorMessage);
@@ -143,7 +143,7 @@ void ACrosshairMatchGameMode::InitGameState()
  auto* State=GetGameState<ACrosshairMatchState>(); if (!State) return;
  State->Mode=MatchOptions.Mode;
  State->ScoreLimit=MatchOptions.Mode==ECrosshairMatchMode::TeamDeathmatch ? MatchOptions.TeamScoreLimit : MatchOptions.ScoreLimit;
- State->MapName=GetWorld()->GetMapName().Contains(TEXT("L_Grid")) ? TEXT("Grid") : TEXT("Nuketown");
+ State->MapName=GetWorld()->GetMapName().Contains(TEXT("L_Grid")) ? TEXT("Grid") : GetWorld()->GetMapName().Contains(TEXT("L_SpaceStation")) ? TEXT("Space Station") : TEXT("Nuketown");
 }
 void ACrosshairMatchGameMode::CollectSpawnPoints()
 {
@@ -157,8 +157,8 @@ void ACrosshairMatchGameMode::StartPlay()
  CollectSpawnPoints();
  if (bInvalidMap || SpawnPoints.IsEmpty())
  {
-  UE_LOG(LogTemp,Error,TEXT("Crosshair match unavailable on %s: matches require Nuketown or Grid with match spawn points."),*GetWorld()->GetMapName());
-  if (State) { State->bMatchOver=true; State->Result=TEXT("Matches are only available on Nuketown and Grid."); }
+  UE_LOG(LogTemp,Error,TEXT("Crosshair match unavailable on %s: matches require Nuketown, Grid or Space Station with match spawn points."),*GetWorld()->GetMapName());
+  if (State) { State->bMatchOver=true; State->Result=TEXT("Matches are only available on Nuketown, Grid and Space Station."); }
   GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this,[this](){ GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->LeaveMatch(); }));
   return;
  }

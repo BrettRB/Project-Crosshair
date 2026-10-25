@@ -1,6 +1,6 @@
 # Offline matches (FFA / TDM) and LAN foundation
 
-Added 2026-10-21. Offline Free-for-all and Team Deathmatch against bots on the COD maps (Nuketown and Grid), plus the first stage of same-network (LAN) multiplayer.
+Added 2026-10-21. Offline Free-for-all and Team Deathmatch against bots on the COD maps (Nuketown and Grid; Space Station, a Nuketown copy, was added 2026-10-24), plus the first stage of same-network (LAN) multiplayer.
 
 ## Menus (2026-10-21 redesign)
 
@@ -15,14 +15,14 @@ Main menu > **Offline match vs bots**, or Escape / Start > **Offline Match** tab
 | Row | Values | Default (COD) |
 | --- | --- | --- |
 | Mode | Free-for-all / Team Deathmatch | Free-for-all |
-| Match map | Nuketown / Grid | Nuketown |
+| Match map | Nuketown / Grid / Space Station | Nuketown |
 | Bot difficulty | Easy / Regular / Hardened / Veteran | Regular |
 | Bot count (FFA) / Team size (TDM) | 1-11 bots / 1v1-6v6 | 7 bots (8 players) / 6v6 |
 | Score limit | FFA kills 5-100 / TDM team kills 10-200 | 30 / 75 |
 | Time limit | 1-30 minutes | 10 |
 | Start offline match | travels to the selected map | |
 
-Matches are only available on Nuketown and Grid. The Testing map and imported local maps stay practice-only: the match mode refuses any other map, spawns no bots and returns to practice.
+Matches are only available on Nuketown, Grid and Space Station (which reuses Nuketown's 21 spawns). The Testing map and imported local maps stay practice-only: the match mode refuses any other map, spawns no bots and returns to practice.
 
 During a match:
 

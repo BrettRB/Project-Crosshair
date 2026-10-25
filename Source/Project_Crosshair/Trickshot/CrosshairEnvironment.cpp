@@ -12,6 +12,10 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerStart.h"
 #include "Materials/MaterialInterface.h"
+#include "CrosshairData.h"
+#include "CrosshairGraphics.h"
+#include "CrosshairReplaySubsystem.h"
+#include "Engine/GameInstance.h"
 
 const FName UCrosshairEnvironmentSubsystem::EnvironmentTag(TEXT("CrosshairEnvironment"));
 const FName UCrosshairEnvironmentSubsystem::OptOutTag(TEXT("CrosshairCustomLighting"));
@@ -85,7 +89,8 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
   }
 
  // Volumetric clouds lit by the sun, casting soft cloud shadows.
- if (AVolumetricCloud* Clouds=FindOrSpawn<AVolumetricCloud>(World,FVector::ZeroVector))
+ Clouds=FindOrSpawn<AVolumetricCloud>(World,FVector::ZeroVector);
+ if (Clouds)
   if (UVolumetricCloudComponent* Cloud=Clouds->FindComponentByClass<UVolumetricCloudComponent>())
    if (!Cloud->GetMaterial())
     if (UMaterialInterface* Material=LoadObject<UMaterialInterface>(nullptr,TEXT("/Engine/EngineSky/VolumetricClouds/m_SimpleVolumetricCloud_Inst.m_SimpleVolumetricCloud_Inst")))
@@ -106,10 +111,6 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
   S.bOverride_BloomIntensity=true; S.BloomIntensity=.3f;
   S.bOverride_AmbientOcclusionIntensity=true; S.AmbientOcclusionIntensity=.6f;
   S.bOverride_AmbientOcclusionRadius=true; S.AmbientOcclusionRadius=140.f;
-  S.bOverride_LumenSceneLightingQuality=true; S.LumenSceneLightingQuality=1.5f;
-  S.bOverride_LumenFinalGatherQuality=true; S.LumenFinalGatherQuality=2.f;
-  S.bOverride_LumenReflectionQuality=true; S.LumenReflectionQuality=1.5f;
-  S.bOverride_LumenRayLightingMode=true; S.LumenRayLightingMode=ELumenRayLightingModeOverride::HitLightingForReflections;
   S.bOverride_ColorSaturation=true; S.ColorSaturation=FVector4(.92f,.92f,.94f,1.f);
   S.bOverride_ColorContrast=true; S.ColorContrast=FVector4(1.06f,1.06f,1.06f,1.f);
   S.bOverride_WhiteTemp=true; S.WhiteTemp=6300.f;
@@ -119,5 +120,23 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
   S.bOverride_MotionBlurAmount=true; S.MotionBlurAmount=.2f;           // readable trickshot spins
  }
  bApplied=true;
+ // Until the player picks a graphics preset, keep the full-quality look.
+ const FCrosshairSettings& Settings=World.GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+ ApplyQuality(Settings.bGraphicsConfigured ? Settings.GraphicsPreset : 3,Settings.bGraphicsConfigured ? CrosshairGraphics::IsRayTracingActive() : true);
  UE_LOG(LogTemp,Display,TEXT("Crosshair environment applied to %s"),*World.GetMapName());
+}
+
+void UCrosshairEnvironmentSubsystem::ApplyQuality(int32 Preset,bool bRayTracing)
+{
+ if (Clouds) Clouds->SetActorHiddenInGame(Preset<=0);   // volumetric clouds are the costliest sky feature on integrated GPUs
+ if (!Grade) return;
+ FPostProcessSettings& S=Grade->Settings;
+ const float Quality=Preset>=3 ? 1.5f : 1.f;
+ S.bOverride_LumenSceneLightingQuality=true; S.LumenSceneLightingQuality=Quality;
+ S.bOverride_LumenFinalGatherQuality=true; S.LumenFinalGatherQuality=Preset>=3 ? 2.f : 1.f;
+ S.bOverride_LumenReflectionQuality=true; S.LumenReflectionQuality=Quality;
+ // Hit-lit reflections need hardware ray tracing; otherwise use the default (surface cache) lighting.
+ S.bOverride_LumenRayLightingMode=bRayTracing && Preset>=2;
+ S.LumenRayLightingMode=ELumenRayLightingModeOverride::HitLightingForReflections;
+ S.bOverride_AmbientOcclusionIntensity=true; S.AmbientOcclusionIntensity=Preset<=0 ? .4f : .6f;
 }

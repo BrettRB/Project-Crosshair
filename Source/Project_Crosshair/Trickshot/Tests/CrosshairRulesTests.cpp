@@ -183,7 +183,7 @@ bool FCrosshairMatchRulesTest::RunTest(const FString& Parameters)
  FCrosshairBotMatchOptions Invalid; Invalid.Mode=ECrosshairMatchMode(9); Invalid.Map=ECrosshairMatchMap(9); Invalid.TeamSize=40; Invalid.TeamScoreLimit=1;
  UCrosshairBotMatch::Validate(Invalid);
  TestTrue(TEXT("Corrupt mode/map/team options are bounded"),Invalid.Mode==ECrosshairMatchMode::FreeForAll && Invalid.Map==ECrosshairMatchMap::Nuketown && Invalid.TeamSize==6 && Invalid.TeamScoreLimit==10);
- TestTrue(TEXT("Matches run only on Nuketown and Grid"),ACrosshairMatchGameMode::IsMatchMap(TEXT("L_Nuketown")) && ACrosshairMatchGameMode::IsMatchMap(TEXT("UEDPIE_0_L_Grid")) && !ACrosshairMatchGameMode::IsMatchMap(TEXT("L_Practice")) && !ACrosshairMatchGameMode::IsMatchMap(TEXT("L_UserMap")));
+ TestTrue(TEXT("Matches run only on Nuketown, Grid and Space Station"),ACrosshairMatchGameMode::IsMatchMap(TEXT("L_Nuketown")) && ACrosshairMatchGameMode::IsMatchMap(TEXT("L_SpaceStation")) && ACrosshairMatchGameMode::IsMatchMap(TEXT("UEDPIE_0_L_Grid")) && !ACrosshairMatchGameMode::IsMatchMap(TEXT("L_Practice")) && !ACrosshairMatchGameMode::IsMatchMap(TEXT("L_UserMap")));
  TestEqual(TEXT("Match maps travel to the COD map packages"),UCrosshairBotMatch::MapPackage(ECrosshairMatchMap::Grid),FName(TEXT("/Game/Crosshair/Maps/L_Grid")));
  return true;
 }

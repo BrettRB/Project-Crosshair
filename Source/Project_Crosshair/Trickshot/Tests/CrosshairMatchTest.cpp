@@ -14,6 +14,8 @@
 #include "../CrosshairPractice.h"
 #include "AIController.h"
 #include "../CrosshairEnvironment.h"
+#include "../CrosshairGraphics.h"
+#include "Scalability.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/SkyLightComponent.h"
@@ -21,6 +23,8 @@
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/PostProcessVolume.h"
 #include "Engine/SkyLight.h"
+#include "Components/SkyAtmosphereComponent.h"
+#include "Components/SkyAtmosphereComponent.h"
 #include "Components/VolumetricCloudComponent.h"
 #include "Engine/SkeletalMesh.h"
 #if WITH_EDITORONLY_DATA
@@ -28,6 +32,7 @@
 #include "Rendering/SkeletalMeshLODModel.h"
 #endif
 #include "Camera/CameraComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/StaticMesh.h"
@@ -231,12 +236,89 @@ void UCrosshairMatchTest::TickGraphics()
   if (!CheckRig(TEXT("Nuketown"))) return;
   Look(-2); Capture(TEXT("GfxNuketown.png")); Next(2); return;
  case 2:
+ {
+  if (Elapsed<2) return;
+  // Laptop presets drive engine scalability and resolution; the menu row cycles them.
+  auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+  FCrosshairSettings& S=Replay->GetSettings();
+  for (int32 Preset=0;Preset<CrosshairGraphics::PresetCount;++Preset)
+  {
+   CrosshairGraphics::SelectPreset(S,Preset); CrosshairGraphics::Apply(S);
+   const Scalability::FQualityLevels Levels=Scalability::GetQualityLevels();
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO preset=%s shadows=%d gi=%d resolution=%.0f rt=%d"),CrosshairGraphics::PresetName(Preset),Levels.ShadowQuality,Levels.GlobalIlluminationQuality,Levels.ResolutionQuality,int32(CrosshairGraphics::IsRayTracingActive()));
+   if (!Check(Levels.ShadowQuality==Preset && Levels.GlobalIlluminationQuality==Preset && FMath::IsNearlyEqual(Levels.ResolutionQuality,float(CrosshairGraphics::PresetResolution(Preset))),
+    *FString::Printf(TEXT("%s preset applies engine quality %d"),CrosshairGraphics::PresetName(Preset),Preset))) return;
+  }
+  if (auto* Menu=Cast<ACrosshairPlayerController>(PC))
+  {
+   CrosshairGraphics::SelectPreset(S,1);
+   if (!Menu->bMenuOpen) Menu->ToggleMenu();
+   Menu->SetMenuTab(2);
+   Menu->AdjustMenuRow(Menu->GetGraphicsRow(),1);
+   const bool bListed=Menu->GetVisibleMenuRows().Contains(Menu->GetGraphicsRow()+1);
+   Menu->ToggleMenu();
+   if (!Check(bListed,TEXT("Graphics tab lists the ray tracing toggle"))) return;
+   if (!Check(S.GraphicsPreset==2 && Scalability::GetQualityLevels().ShadowQuality==2,TEXT("Graphics menu row changes the preset"))) return;
+  }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO ray tracing supported=%d"),int32(CrosshairGraphics::IsRayTracingSupported()));
+  CrosshairGraphics::SelectPreset(S,3); S.bRayTracing=false; CrosshairGraphics::Apply(S);
+  Next(10); return;
+ }
+ case 10:
+ {
+  if (Elapsed<4) return;
+  if (!Check(!CrosshairGraphics::IsRayTracingActive(),TEXT("Ray tracing turns off"))) return;
+  Look(-2); Capture(TEXT("GfxNuketownRayTracingOff.png"));
+  FCrosshairSettings& S=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+  S.bRayTracing=true; CrosshairGraphics::Apply(S);
+  Next(11); return;
+ }
+ case 11:
+ {
+  if (Elapsed<4) return;
+  if (!Check(CrosshairGraphics::IsRayTracingActive()==CrosshairGraphics::IsRayTracingSupported(),TEXT("Ray tracing turns back on where the GPU supports it"))) return;
+  Capture(TEXT("GfxNuketownRayTracingOn.png"));
+  Next(12); return;
+ }
+ case 12:
   if (Elapsed<2) return;
   Library->PlayMap(2); Next(3); return;
  case 3:
   if (!bReady || !MapName.Contains(TEXT("L_Grid")) || Elapsed<10) return;
   if (!CheckRig(TEXT("Grid"))) return;
-  Look(-2); ProbeArms(TEXT("Grid")); Capture(TEXT("GfxGrid.png")); Next(4); return;
+  Look(-2); ProbeArms(TEXT("Grid")); Capture(TEXT("GfxGrid.png")); Next(20); return;
+ case 20:
+  if (Elapsed<2) return;
+  if (!Check(Library->MapName(3)==TEXT("Space Station") && Library->PlayMap(3),TEXT("Space Station loads from the map list"))) return;
+  Next(21); return;
+ case 21:
+ {
+  if (!bReady || !MapName.Contains(TEXT("L_SpaceStation")) || Elapsed<10) return;
+  // The station brings its own vacuum lighting: the shared Earth-sky rig must stay out.
+  const auto* Environment=World->GetSubsystem<UCrosshairEnvironmentSubsystem>();
+  int32 Suns=0,Spawns=0,Skies=0;
+  for (TActorIterator<ADirectionalLight> It(World);It;++It) ++Suns;
+  for (TActorIterator<ACrosshairSpawnPoint> It(World);It;++It) ++Spawns;
+  for (TActorIterator<ASkyAtmosphere> It(World);It;++It) ++Skies;
+  if (const APawn* Body=PC->GetPawn()) { FHitResult Floor; FCollisionQueryParams Ignore; Ignore.AddIgnoredActor(Body); const bool bFloor=World->LineTraceSingleByChannel(Floor,Body->GetActorLocation(),Body->GetActorLocation()-FVector(0,0,500),ECC_Visibility,Ignore); UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO Space Station pawn=%s velocity=%s floor=%d %s"),*Body->GetActorLocation().ToString(),*Body->GetVelocity().ToString(),int32(bFloor),bFloor && Floor.GetActor() ? *Floor.GetActor()->GetName() : TEXT("-")); }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO Space Station suns=%d atmospheres=%d spawns=%d rig=%d"),Suns,Skies,Spawns,int32(Environment && Environment->IsApplied()));
+  if (!Check(Environment && !Environment->IsApplied() && Suns==1 && Skies==0,TEXT("Space Station keeps its own vacuum lighting"))) return;
+  if (!Check(PC->GetPawn() && PC->GetPawn()->GetActorLocation().Z<5000.f,TEXT("Space Station spawns the player on the station deck, not on the sky"))) return;
+  if (!Check(Spawns==21 && ACrosshairMatchGameMode::IsMatchMap(MapName),TEXT("Space Station keeps Nuketown's 21 match spawns"))) return;
+  Look(-2); Capture(TEXT("GfxSpaceStation.png")); Next(22); return;
+ }
+ case 22:
+  if (Elapsed<2) return;
+  // Rise above the rooftops for a clear view of the sky.
+  if (auto* Body=PC ? Cast<ACharacter>(PC->GetPawn()) : nullptr) { Body->GetCharacterMovement()->SetMovementMode(MOVE_Flying); Body->SetActorLocation(Body->GetActorLocation()+FVector(0,0,1300)); }
+  if (PC) PC->SetControlRotation(FRotator(8,-20,0));   // toward the planet drawn in the sky
+  Next(23); return;
+ case 23:
+  if (Elapsed<2.5) return;
+  Capture(TEXT("GfxSpaceStationPlanet.png")); Next(24); return;
+ case 24:
+  if (Elapsed<2) return;
+  Next(4); return;
  case 4:
  {
   if (Elapsed<2) return;

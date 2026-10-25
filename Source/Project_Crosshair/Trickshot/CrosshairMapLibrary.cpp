@@ -68,7 +68,7 @@ void UCrosshairMapLibrary::Refresh()
  }
 }
 const FCrosshairLocalMap* UCrosshairMapLibrary::Find(const FString& Id) const { return Maps.FindByPredicate([&](const auto& Map){return Map.Id==Id;}); }
-FString UCrosshairMapLibrary::MapName(int32 Index) const { return Index==0 ? TEXT("Testing Map") : Index==1 ? TEXT("Nuketown") : Index==2 ? TEXT("Grid") : Maps.IsValidIndex(Index-BuiltinMapCount) ? Maps[Index-BuiltinMapCount].Name : TEXT("Unavailable"); }
+FString UCrosshairMapLibrary::MapName(int32 Index) const { return Index==0 ? TEXT("Testing Map") : Index==1 ? TEXT("Nuketown") : Index==2 ? TEXT("Grid") : Index==3 ? TEXT("Space Station") : Maps.IsValidIndex(Index-BuiltinMapCount) ? Maps[Index-BuiltinMapCount].Name : TEXT("Unavailable"); }
 bool UCrosshairMapLibrary::ParseObj(const FString& Text,float Scale,FCrosshairMapMesh& Out,FString& Error)
 {
  Out=FCrosshairMapMesh(); TArray<FVector> Positions; TArray<FVector2D> UVs; TArray<FString> Lines; Text.ParseIntoArrayLines(Lines);
@@ -146,7 +146,7 @@ bool UCrosshairMapLibrary::PlayMap(int32 Index)
  auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
  if (Replay->IsPlayback() || Replay->IsFinishing() || Index<0 || Index>=MapCount()) return false;
  const FString Previous=ActiveMapId; ActiveMapId=Index>=BuiltinMapCount ? Maps[Index-BuiltinMapCount].Id : FString(); bHomeVisited=true;
- if (!Replay->ChangePracticeMap(FName(Index==0 ? TEXT("/Game/Crosshair/Maps/L_Practice") : Index==1 ? TEXT("/Game/Crosshair/Maps/L_Nuketown") : Index==2 ? TEXT("/Game/Crosshair/Maps/L_Grid") : TEXT("/Game/Crosshair/Maps/L_UserMap")))) { ActiveMapId=Previous; return false; }
+ if (!Replay->ChangePracticeMap(FName(Index==0 ? TEXT("/Game/Crosshair/Maps/L_Practice") : Index==1 ? TEXT("/Game/Crosshair/Maps/L_Nuketown") : Index==2 ? TEXT("/Game/Crosshair/Maps/L_Grid") : Index==3 ? TEXT("/Game/Crosshair/Maps/L_SpaceStation") : TEXT("/Game/Crosshair/Maps/L_UserMap")))) { ActiveMapId=Previous; return false; }
  return true;
 }
 void UCrosshairMapLibrary::ShowImportDialog(ACrosshairPlayerController* Controller)

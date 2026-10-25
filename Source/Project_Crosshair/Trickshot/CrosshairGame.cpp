@@ -20,6 +20,8 @@
 #include "InputKeyEventArgs.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "CrosshairGraphics.h"
+#include "Scalability.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -96,6 +98,11 @@ FString ACrosshairPlayerController::GetRowHelp(int32 Row) const
   }
  const int32 B=GetBotMatchRow();
  const auto& O=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().BotMatch;
+ const int32 G=GetGraphicsRow();
+ if (Row==G) return CrosshairGraphics::PresetHelp(CrosshairGraphics::CurrentPreset(GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings()));
+ if (Row==G+1) return CrosshairGraphics::IsRayTracingSupported() ? TEXT("Hardware ray-traced lighting and reflections (Lumen). Costly on integrated graphics.") : TEXT("Needs a DirectX 12 GPU with ray tracing support.");
+ if (Row==G+2) return TEXT("Render below native resolution for more frames per second; 100% is sharpest.");
+ if (Row==G+3) return TEXT("Benchmark this PC and pick the preset that suits it.");
  const bool bTeams=O.Mode==ECrosshairMatchMode::TeamDeathmatch;
  if (Row==B)
  {
@@ -111,7 +118,7 @@ FString ACrosshairPlayerController::GetRowHelp(int32 Row) const
  if (Row==B+2) return bTeams ? TEXT("Team kills needed to win.") : TEXT("Kills needed to win.");
  if (Row==B+3) return TEXT("The highest score wins when time runs out.");
  if (Row==B+4) return TEXT("Free-for-all: everyone for themselves. Team Deathmatch: Alpha vs Bravo.");
- if (Row==B+5) return TEXT("Matches run on the COD maps only: Nuketown and Grid.");
+ if (Row==B+5) return TEXT("Matches run on the match maps only: Nuketown, Grid and Space Station.");
  if (Row==B+6) return TEXT("Load the map and start. Every kill you land is saved to Replays.");
  if (Row==B+7) return TEXT("Advertise a match to players on this network. Windows may ask for firewall access.");
  if (Row==B+8) return TEXT("Search this network for hosted matches.");
@@ -170,7 +177,7 @@ void ACrosshairPlayerController::ToggleMenu()
 	if (bMenuOpen)
 		if (auto* PracticePawn = Cast<ACrosshairCharacter>(GetPawn())) PracticePawn->GetCharacterMovement()->StopMovementImmediately();
 	if (bMenuOpen)
- { MapChoice=GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Nuketown")) ? 1 : GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Grid")) ? 2 : 0;
+ { MapChoice=GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_SpaceStation")) ? 3 : GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Nuketown")) ? 1 : GetWorld()->GetOutermost()->GetName().Contains(TEXT("L_Grid")) ? 2 : 0;
    const auto* Library=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>();
    for (int32 i=0;i<Library->Maps.Num();++i) if (Library->Maps[i].Id==Library->ActiveMapId) MapChoice=i+UCrosshairMapLibrary::BuiltinMapCount;
    EditingClass=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().ActiveClass;
@@ -263,7 +270,7 @@ int32 ACrosshairPlayerController::GetSkinCount() const
 	return Weapon && Weapon->Definition ? Weapon->Definition->Skins.Num() : 0;
 }
 int32 ACrosshairPlayerController::GetLethalRow() const { return FirstReplayRow + FMath::Max(0, GetSkinCount()-2); }
-int32 ACrosshairPlayerController::GetFirstReplayRow() const { return GetBotMatchRow()+MatchRowCount; }
+int32 ACrosshairPlayerController::GetFirstReplayRow() const { return GetGraphicsRow()+GraphicsRowCount; }
 TArray<FString> ACrosshairPlayerController::GetMenuRows() const
 {
 	if (bHomeScreen) return {TEXT("Trickshot practice"),TEXT("Weapon classes"),TEXT("Maps / Import"),TEXT("Settings"),TEXT("Offline match vs bots"),TEXT("Quit to Desktop"),TEXT("LAN match"),TEXT("Replays")};
@@ -326,9 +333,14 @@ TArray<FString> ACrosshairPlayerController::GetMenuRows() const
  Rows.Add(Session->HasLanSession() ? TEXT("Hosting LAN match") : TEXT("Host LAN match (same network)"));
  Rows.Add(Session->bSearching ? TEXT("Searching this network...") : TEXT("Find LAN matches"));
  for (int32 i=0;i<UCrosshairMatchSession::MaxLanResults;++i) Rows.Add(Session->LanResults.IsValidIndex(i) ? TEXT("Join: ")+Session->LanResults[i] : FString(TEXT("No LAN match")));
+ const int32 Preset=CrosshairGraphics::CurrentPreset(S);
+ Rows.Add(TEXT("Graphics quality: ")+FString(CrosshairGraphics::PresetName(Preset))+(S.bGraphicsConfigured ? TEXT("") : TEXT(" (default)")));
+ Rows.Add(!CrosshairGraphics::IsRayTracingSupported() ? FString(TEXT("Ray tracing: not supported on this GPU")) : FString::Printf(TEXT("Ray tracing: %s"),CrosshairGraphics::IsRayTracingActive() ? TEXT("On") : TEXT("Off")));
+ Rows.Add(FString::Printf(TEXT("Resolution scale: %d%%"),S.bGraphicsConfigured ? S.ResolutionScale : FMath::RoundToInt(Scalability::GetQualityLevels().ResolutionQuality)));
+ Rows.Add(TEXT("Detect best settings for this PC"));
  for (const auto& Entry : Replay->GetReplays())
  {
-  const FString MapLabel=Entry.Map.Contains(TEXT("L_Nuketown")) ? TEXT("Nuketown") : Entry.Map.Contains(TEXT("L_Grid")) ? TEXT("Grid") : Entry.Map.Contains(TEXT("L_UserMap")) ? TEXT("Imported map") : TEXT("Testing Map");
+  const FString MapLabel=Entry.Map.Contains(TEXT("L_SpaceStation")) ? TEXT("Space Station") : Entry.Map.Contains(TEXT("L_Nuketown")) ? TEXT("Nuketown") : Entry.Map.Contains(TEXT("L_Grid")) ? TEXT("Grid") : Entry.Map.Contains(TEXT("L_UserMap")) ? TEXT("Imported map") : TEXT("Testing Map");
   Rows.Add(FString::Printf(TEXT("%s  |  %s  |  %s"),Entry.Label.IsEmpty() ? TEXT("Practice hit") : *Entry.Label,*MapLabel,*Entry.RecordedAt));
  }
 	return Rows;
@@ -379,7 +391,7 @@ TArray<int32> ACrosshairPlayerController::GetVisibleMenuRows() const
  switch (MenuTab)
  {
 	case 1: return {1, 2, InvertHorizontalRow, InvertVerticalRow, CalibrationRow, 3, 4, 5, 6, GetSandboxRow()};
-	case 2: return {7};
+	case 2: { const int32 G=GetGraphicsRow(); return {G,G+1,G+2,G+3,7}; }
 	case 3: return {GetSandboxRow(),11,12};
  case 6: return {GetClassRow(),GetClassRow()+1,GetClassRow()+2,GetClassRow()+3,GetClassRow()+4};
  case 7: return {MapRow,GetImportRow(),GetHomeRow()};
@@ -421,6 +433,7 @@ void ACrosshairPlayerController::AdjustMenuRow(int32 Row, int32 Direction)
 void ACrosshairPlayerController::AdjustSelection(int32 Direction)
 {
  if (bHomeScreen) return;
+ if (MenuSelection>=GetGraphicsRow() && MenuSelection<GetGraphicsRow()+GraphicsRowCount) { AdjustGraphics(MenuSelection-GetGraphicsRow(),Direction); return; }
  auto* ClassReplay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>(); auto& Settings=ClassReplay->GetSettings();
  const int32 BotOffset=MenuSelection-GetBotMatchRow();
  if (BotOffset>=0 && BotOffset<MatchRowCount)
@@ -432,7 +445,7 @@ void ACrosshairPlayerController::AdjustSelection(int32 Direction)
   if (BotOffset==2) (bTeams ? O.TeamScoreLimit : O.ScoreLimit)+=Direction*5;
   if (BotOffset==3) O.TimeLimitMinutes+=Direction;
   if (BotOffset==4) O.Mode=bTeams ? ECrosshairMatchMode::FreeForAll : ECrosshairMatchMode::TeamDeathmatch;
-  if (BotOffset==5) O.Map=O.Map==ECrosshairMatchMap::Grid ? ECrosshairMatchMap::Nuketown : ECrosshairMatchMap::Grid;
+  if (BotOffset==5) O.Map=ECrosshairMatchMap((uint8(O.Map)+(Direction<0 ? 2 : 1))%3);
   UCrosshairBotMatch::Validate(O); ClassReplay->SaveSettings();
   return;
  }
@@ -488,6 +501,7 @@ void ACrosshairPlayerController::ActivateSelection()
 {
 	auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
 	const int32 Selected = MenuSelection;
+ if (!bHomeScreen && Selected>=GetGraphicsRow() && Selected<GetGraphicsRow()+GraphicsRowCount) { AdjustGraphics(Selected-GetGraphicsRow(),1); return; }
  if (bHomeScreen)
  {
   if (Selected==0) StartPlaying(); else if (Selected==1) SetMenuTab(6); else if (Selected==2) SetMenuTab(7); else if (Selected==3) SetMenuTab(1);
@@ -854,7 +868,7 @@ void ACrosshairHUD::DrawMenu(ACrosshairPlayerController* PC,ACrosshairMatchState
 	const FString SessionName=Match ? FString::Printf(TEXT("%s  /  %s"),Match->IsTeamMode() ? TEXT("TEAM DEATHMATCH") : TEXT("FREE-FOR-ALL"),*Match->MapName.ToUpper())
 		: Replay->IsPlayback() ? FString(TEXT("REPLAY")) : FString(TEXT("TRICKSHOT PRACTICE"));
 	Text(SessionName,Muted,50,60,.72f);
-	const TCHAR* Tabs[]={TEXT("Practice"),TEXT("Controls"),TEXT("Display"),TEXT("Targets"),TEXT("Replays"),TEXT("Camos"),TEXT("Classes"),TEXT("Maps"),TEXT("Offline Match"),TEXT("LAN")};
+	const TCHAR* Tabs[]={TEXT("Practice"),TEXT("Controls"),TEXT("Graphics"),TEXT("Targets"),TEXT("Replays"),TEXT("Camos"),TEXT("Classes"),TEXT("Maps"),TEXT("Offline Match"),TEXT("LAN")};
 	TextRight(PC->bHomeScreen ? FString(TEXT("MAIN MENU")) : FString(Tabs[PC->MenuTab]).ToUpper(),Ink,W-32,30,.95f);
 	TextRight(PC->bHomeScreen ? FString(TEXT("Choose how you want to play")) : PC->bFromHome ? FString(TEXT("Esc / B returns to the main menu")) : FString(TEXT("Esc / Start resumes")),Muted,W-32,58,.68f);
 	Rect(Line,0,92,W,1);
@@ -907,9 +921,9 @@ void ACrosshairHUD::DrawMenu(ACrosshairPlayerController* PC,ACrosshairMatchState
 		Text(Tabs[Tab],Sel ? Amber : Locked ? Dim : Ink,38,TY+10,.92f);
 		HitBox(FString::Printf(TEXT("Tab_%d"),Tab),20,TY,212,40);
 	}
-	const TCHAR* Descriptions[]={TEXT("Set up your next trickshot attempt."),TEXT("Tune your mouse and controller."),TEXT("Adjust your field of view."),TEXT("Manage your practice targets."),
+	const TCHAR* Descriptions[]={TEXT("Set up your next trickshot attempt."),TEXT("Tune your mouse and controller."),TEXT("Quality presets for your laptop or PC, ray tracing and field of view."),TEXT("Manage your practice targets."),
 		TEXT("Watch saved trickshots and match kills."),TEXT("Choose a finish for your weapon."),TEXT("Build and equip your weapon class."),TEXT("Play and import practice maps."),
-		TEXT("Free-for-all or Team Deathmatch against bots on Nuketown and Grid."),TEXT("Play with others on the same network.")};
+		TEXT("Free-for-all or Team Deathmatch against bots on Nuketown, Grid and Space Station."),TEXT("Play with others on the same network.")};
 	const float ContentX=260,ContentRight=W-32;
 	Text(FString(Tabs[PC->MenuTab]).ToUpper(),Ink,ContentX,104,1.4f);
 	Text(PC->IsTabLockedInMatch(PC->MenuTab) ? FString(TEXT("Unavailable during a match. Leave the match to use practice tools.")) : FString(Descriptions[PC->MenuTab]),Muted,ContentX,140,.78f);
@@ -1028,4 +1042,29 @@ void ACrosshairHUD::NotifyHitBoxClick(FName BoxName)
 	else if (Kind == TEXT("Row")) PC->ActivateMenuRow(Index);
 	else if (Kind == TEXT("Less")) PC->AdjustMenuRow(Index, -1);
 	else if (Kind == TEXT("More")) PC->AdjustMenuRow(Index, 1);
+}
+void ACrosshairPlayerController::AdjustGraphics(int32 Offset,int32 Direction)
+{
+ auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+ FCrosshairSettings& S=Replay->GetSettings();
+ auto* PracticePawn=Cast<ACrosshairCharacter>(GetPawn());
+ // The first change adopts the current engine level so nothing else jumps.
+ if (!S.bGraphicsConfigured) CrosshairGraphics::SelectPreset(S,CrosshairGraphics::CurrentPreset(S));
+ switch (Offset)
+ {
+ case 0: CrosshairGraphics::SelectPreset(S,(S.GraphicsPreset+Direction+CrosshairGraphics::PresetCount)%CrosshairGraphics::PresetCount); break;
+ case 1:
+  if (!CrosshairGraphics::IsRayTracingSupported()) { if (PracticePawn) PracticePawn->Notify(TEXT("This GPU or driver does not support hardware ray tracing.")); return; }
+  S.bRayTracing=!S.bRayTracing; break;
+ case 2: S.ResolutionScale=FMath::Clamp(S.ResolutionScale+Direction*5,50,100); break;
+ case 3:
+ {
+  const int32 Preset=CrosshairGraphics::Detect(S);
+  if (PracticePawn) PracticePawn->Notify(FString(TEXT("Detected: "))+CrosshairGraphics::PresetName(Preset));
+  break;
+ }
+ default: return;
+ }
+ CrosshairGraphics::Apply(S);
+ Replay->SaveSettings();
 }

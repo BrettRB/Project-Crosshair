@@ -125,7 +125,7 @@ hat=Model();soft_crown(hat,169.6,(10.3,12.1,11.6),(0,math.tau,6.5,1.4));hat=uplo
 
 # ---- Plate carriers (follow spine_03, so they thicken with the chest) ----
 def carrier(light=False):
- m=Model();seg=64;R=12;bottom=111.0;front_top=145.0 if light else 149.0;side_top=131.0;clear=1.0
+ m=Model();seg=64;R=12;bottom=111.0;front_top=138.0 if light else 141.0;side_top=125.0;clear=1.0
  def thickness(t):return 1.4+(.8 if light else 1.6)*min(1,max(0,(abs(math.sin(t))-.45)/.3))
  outer=[];inner=[]
  for k in range(R):
@@ -145,19 +145,19 @@ def carrier(light=False):
  for x in pouches:
   y=surface(118,1);m.box((x,y+2.6,118),(7.2,5.2,12),FABRIC,1.0);m.box((x,y+5.3,123),(6.6,.7,3.2),FABRIC,.3)
  if not light:
-  m.box((0,surface(140,1)+1.8,140.5),(13,3.4,7),FABRIC,.8)
+  m.box((0,surface(133,1)+1.8,133.5),(13,3.4,7),FABRIC,.8)
   m.box((7,surface(128,-1)-2.5,128),(7.5,5,15),FABRIC,.8)
- # Shoulder straps lie on top of the trapezius (shoulder surface ~z155 at x+-8.6), not arched above it.
- for x in [-8.6,8.6]:
-  path=[(x,surface(front_top-1,1)-.8,front_top-1),(x,5.6,153.6),(x*1.02,1.0,156.8),(x*1.02,-4.0,156.4),(x,-9.0,153.0),(x,surface(front_top-1,-1)+.8,front_top-1)]
+ # Shoulder straps lie on the shoulders (body half-width 11.8 at z152), out from the neck and below the chin.
+ for x in [-10.5,10.5]:
+  path=[(x,surface(front_top-1,1)-.8,front_top-1),(x,5.2,149.5),(x,1.0,152.6),(x,-4.0,152.4),(x,-8.6,149.2),(x,surface(front_top-1,-1)+.8,front_top-1)]
   for s,e in zip(path,path[1:]):m.tube(s,e,1.25,FABRIC,segments=14)
  return m
 vest=upload('SM_PlateCarrier',carrier());lightvest=upload('SM_LightCarrier',carrier(True))
 
-pack=Model();hw,back,frontY=slice_at(TORSO,131);pack_front=back-1.0-3.0-.6
-pack.box((0,pack_front-8.6,131),(28,17,40),FABRIC,3.2);pack.box((0,pack_front-17.8,124),(22,4.5,16),FABRIC,1.6)
-for x in [-15.2,15.2]:pack.box((x,pack_front-8,126),(3.6,10,18),FABRIC,1.2)
-for x in [-9,9]:pack.tube((x,pack_front-.5,149),(x,pack_front-.5,114),.9,DARK,segments=12)
+pack=Model();hw,back,frontY=slice_at(TORSO,127);pack_front=back-1.0-3.0-.6
+pack.box((0,pack_front-8.6,127),(28,17,38),FABRIC,3.2);pack.box((0,pack_front-17.8,120),(22,4.5,16),FABRIC,1.6)
+for x in [-15.2,15.2]:pack.box((x,pack_front-8,122),(3.6,10,18),FABRIC,1.2)
+for x in [-9,9]:pack.tube((x,pack_front-.5,145),(x,pack_front-.5,110),.9,DARK,segments=12)
 pack=upload('SM_FieldPack',pack)
 
 # ---- Battle belt with angled pouches (follows pelvis) ----

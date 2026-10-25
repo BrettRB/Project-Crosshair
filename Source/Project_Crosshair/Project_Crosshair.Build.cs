@@ -27,7 +27,7 @@ public class Project_Crosshair : ModuleRules
 			"AnimationCore"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "NetworkReplayStreaming", "LocalFileNetworkReplayStreaming", "AssetRegistry", "RenderCore" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "NetworkReplayStreaming", "LocalFileNetworkReplayStreaming", "AssetRegistry", "RenderCore", "RHI" });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"Project_Crosshair",
