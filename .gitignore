@@ -20,3 +20,5 @@ Saved/
 # OS files
 .DS_Store
 Thumbs.db
+# Packaged game output (Scripts/package_mac.sh)
+Packaged/

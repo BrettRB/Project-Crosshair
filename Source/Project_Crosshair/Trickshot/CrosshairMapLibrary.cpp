@@ -156,7 +156,7 @@ void UCrosshairMapLibrary::ShowImportDialog(ACrosshairPlayerController* Controll
  TSharedPtr<SEditableTextBox> Path; TSharedPtr<STextBlock> Result; TWeakObjectPtr<UCrosshairMapLibrary> WeakThis=this;
  Window->SetContent(SNew(SVerticalBox)
  +SVerticalBox::Slot().AutoHeight().Padding(20)[SNew(STextBlock).Text(FText::FromString(TEXT("Paste the full path to an OBJ or map.json. Coordinates: X forward, Z up.")))]
- +SVerticalBox::Slot().AutoHeight().Padding(20,5)[SAssignNew(Path,SEditableTextBox).HintText(FText::FromString(TEXT("C:/Maps/MyMap/map.json")))]
+ +SVerticalBox::Slot().AutoHeight().Padding(20,5)[SAssignNew(Path,SEditableTextBox).HintText(FText::FromString(PLATFORM_MAC ? TEXT("/Users/me/Maps/MyMap/map.json") : TEXT("C:/Maps/MyMap/map.json")))]
  +SVerticalBox::Slot().AutoHeight().Padding(20,10)[SAssignNew(Result,STextBlock).AutoWrapText(true)]
  +SVerticalBox::Slot().AutoHeight().Padding(20,10)[SNew(SButton).Text(FText::FromString(TEXT("Import"))).OnClicked_Lambda([WeakThis,Path,Result](){ FString Message; if (WeakThis.IsValid()) WeakThis->Import(Path->GetText().ToString(),Message); Result->SetText(FText::FromString(Message)); return FReply::Handled(); })]);
  FSlateApplication::Get().AddWindow(Window); FSlateApplication::Get().SetKeyboardFocus(Path);

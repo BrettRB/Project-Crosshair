@@ -1,5 +1,6 @@
-# Generates the Crosshair logo and the Windows app icon (no external tools or assets).
+# Generates the Crosshair logo and the Windows and Mac app icons (no external tools or assets).
 #   Build/Windows/Application.ico           - icon compiled into the packaged game exe (16-256 px)
+#   Build/Mac/Resources/Assets.xcassets    - AppIcon set compiled into the packaged Mac .app (16-1024 px)
 #   docs/branding/crosshair-icon-1024.png   - full-size icon
 #   docs/branding/crosshair-wordmark.png    - icon plus the CROSSHAIR name, for README/menus
 # Design: a dark rounded tile, an orange scope ring drawn as a 300-degree arc that ends in an arrowhead
@@ -104,6 +105,18 @@ $w.Flush(); [System.IO.File]::WriteAllBytes((Join-Path $icoDir 'Application.ico'
 
 [System.IO.File]::WriteAllBytes((Join-Path $branding 'crosshair-icon-1024.png'), (New-IconPng 1024))
 
+# Mac AppIcon asset catalog in the layout Xcode and UnrealBuildTool read (Build/Mac/Resources/Assets.xcassets).
+$catalog = Join-Path $Root 'Build\Mac\Resources\Assets.xcassets'; $appIcon = Join-Path $catalog 'AppIcon.appiconset'
+New-Item -ItemType Directory -Force $appIcon | Out-Null
+$entries = foreach ($p in 16, 32, 128, 256, 512) { foreach ($scale in 1, 2) {
+    $name = if ($scale -eq 1) { "icon_${p}x${p}.png" } else { "icon_${p}x${p}@2x.png" }
+    [System.IO.File]::WriteAllBytes((Join-Path $appIcon $name), (New-IconPng ($p * $scale)))
+    "    { `"filename`" : `"$name`", `"idiom`" : `"mac`", `"scale`" : `"${scale}x`", `"size`" : `"${p}x${p}`" }"
+} }
+$info = '"info" : { "author" : "xcode", "version" : 1 }'
+[System.IO.File]::WriteAllText((Join-Path $appIcon 'Contents.json'), "{`n  `"images`" : [`n" + ($entries -join ",`n") + "`n  ],`n  $info`n}`n")
+[System.IO.File]::WriteAllText((Join-Path $catalog 'Contents.json'), "{`n  $info`n}`n")
+
 # Wordmark: icon plus the name.
 $wm = New-Object System.Drawing.Bitmap(1600, 400, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
 $g = [System.Drawing.Graphics]::FromImage($wm); $g.Clear([System.Drawing.Color]::Transparent)
@@ -114,4 +127,4 @@ $g.DrawString('CROSSHAIR', $font, (New-Object System.Drawing.SolidBrush([System.
 $tag = New-Object System.Drawing.Font('Segoe UI', 44, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
 $g.DrawString('TRICKSHOT PRACTICE', $tag, (New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 255, 122, 26))), 422, 268)
 $g.Dispose(); $wm.Save((Join-Path $branding 'crosshair-wordmark.png'), [System.Drawing.Imaging.ImageFormat]::Png); $wm.Dispose()
-Write-Output ("CROSSHAIR_LOGO_OK icon_sizes=" + ($sizes -join ','))
+Write-Output ("CROSSHAIR_LOGO_OK icon_sizes=" + ($sizes -join ',') + " mac_icons=" + $entries.Count)
