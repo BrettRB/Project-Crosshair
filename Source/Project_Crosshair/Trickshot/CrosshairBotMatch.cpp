@@ -31,7 +31,11 @@ FString UCrosshairBotMatch::ScoreGoal(ECrosshairMatchMode Mode,int32 Limit)
 }
 int32& UCrosshairBotMatch::ScoreLimitFor(FCrosshairBotMatchOptions& O)
 { return O.Mode==ECrosshairMatchMode::KillConfirmed ? O.ConfirmScoreLimit : O.Mode==ECrosshairMatchMode::TeamDeathmatch ? O.TeamScoreLimit : O.ScoreLimit; }
-FString UCrosshairBotMatch::MapName(ECrosshairMatchMap Map) { return Map==ECrosshairMatchMap::Grid ? TEXT("Grid") : Map==ECrosshairMatchMap::SpaceStation ? TEXT("Space Station") : TEXT("Nuketown"); }
+FString UCrosshairBotMatch::MapName(ECrosshairMatchMap Map) { return Map==ECrosshairMatchMap::Random ? TEXT("Random") : Map==ECrosshairMatchMap::Grid ? TEXT("Grid") : Map==ECrosshairMatchMap::SpaceStation ? TEXT("Space Station") : TEXT("Nuketown"); }
+ECrosshairMatchMap UCrosshairBotMatch::NextMap(ECrosshairMatchMap Map,int32 Direction)
+{ return ECrosshairMatchMap((uint8(Map)+(Direction<0 ? 3 : 1))%4); }
+ECrosshairMatchMap UCrosshairBotMatch::ResolveMap(ECrosshairMatchMap Map,float Roll)
+{ return Map!=ECrosshairMatchMap::Random ? Map : ECrosshairMatchMap(FMath::Clamp(FMath::FloorToInt(Roll*3.f),0,2)); }
 FName UCrosshairBotMatch::MapPackage(ECrosshairMatchMap Map)
 { return Map==ECrosshairMatchMap::Grid ? FName(TEXT("/Game/Crosshair/Maps/L_Grid")) : Map==ECrosshairMatchMap::SpaceStation ? FName(TEXT("/Game/Crosshair/Maps/L_SpaceStation")) : FName(TEXT("/Game/Crosshair/Maps/L_Nuketown")); }
 void UCrosshairBotMatch::Validate(FCrosshairBotMatchOptions& O)
@@ -39,7 +43,7 @@ void UCrosshairBotMatch::Validate(FCrosshairBotMatchOptions& O)
  if (uint8(O.Difficulty)>uint8(ECrosshairBotDifficulty::Veteran)) O.Difficulty=ECrosshairBotDifficulty::Regular;
  O.BotCount=FMath::Clamp(O.BotCount,1,11); O.ScoreLimit=FMath::Clamp(O.ScoreLimit,5,100); O.TimeLimitMinutes=FMath::Clamp(O.TimeLimitMinutes,1,30);
  if (uint8(O.Mode)>uint8(ECrosshairMatchMode::KillConfirmed)) O.Mode=ECrosshairMatchMode::FreeForAll;
- if (uint8(O.Map)>uint8(ECrosshairMatchMap::SpaceStation)) O.Map=ECrosshairMatchMap::Nuketown;
+ if (uint8(O.Map)>uint8(ECrosshairMatchMap::Random)) O.Map=ECrosshairMatchMap::Nuketown;
  O.TeamSize=FMath::Clamp(O.TeamSize,1,6); O.TeamScoreLimit=FMath::Clamp(O.TeamScoreLimit,10,200); O.ConfirmScoreLimit=FMath::Clamp(O.ConfirmScoreLimit,10,200);
 }
 void UCrosshairBotMatch::SetDifficulty(ECrosshairBotDifficulty Difficulty)

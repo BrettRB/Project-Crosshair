@@ -8,9 +8,9 @@ enum class ECrosshairBotDifficulty : uint8 { Easy, Regular, Hardened, Veteran };
 /** Kill Confirmed is a team mode: kills drop dog tags, and a team scores only by collecting enemy tags. */
 UENUM(BlueprintType)
 enum class ECrosshairMatchMode : uint8 { FreeForAll, TeamDeathmatch, KillConfirmed };
-/** Matches run only on the COD maps; the Testing map and local imports are practice-only. */
+/** Matches run only on the COD maps; the Testing map and local imports are practice-only. Random picks one at match start. */
 UENUM(BlueprintType)
-enum class ECrosshairMatchMap : uint8 { Nuketown, Grid, SpaceStation };
+enum class ECrosshairMatchMap : uint8 { Nuketown, Grid, SpaceStation, Random };
 
 /** Shared tuning for future AI controllers. No difficulty grants wall vision. */
 USTRUCT(BlueprintType)
@@ -76,6 +76,11 @@ public:
  static FString ScoreGoal(ECrosshairMatchMode Mode,int32 Limit);
  static FString MapName(ECrosshairMatchMap Map);
  static FName MapPackage(ECrosshairMatchMap Map);
+ /** Menu order: Nuketown, Grid, Space Station, Random. */
+ static ECrosshairMatchMap NextMap(ECrosshairMatchMap Map,int32 Direction);
+ /** A playable map: Random becomes Nuketown, Grid or Space Station (Roll in [0,1) picks which). */
+ static ECrosshairMatchMap ResolveMap(ECrosshairMatchMap Map,float Roll);
+ static ECrosshairMatchMap ResolveMap(ECrosshairMatchMap Map) { return ResolveMap(Map,FMath::FRand()); }
  static void Validate(FCrosshairBotMatchOptions& Options);
  static void Validate(FCrosshairLanOptions& Options);
  /** Username shown in matches: letters, digits, space, - _ . only, 16 characters, never empty. */

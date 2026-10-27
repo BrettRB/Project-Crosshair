@@ -39,6 +39,9 @@ private:
  double LanFiredAt=0;
  int32 AmmoBefore=0;
  float PitchBefore=0;
+ bool bSawLookUpTarget=false;
+ FVector LookUpBotAt=FVector::ZeroVector;
+ TMap<TWeakObjectPtr<class ACrosshairCharacter>,FVector> ParkedBots;
  double WorldMark=0;
  bool bCapturedHome=false;
  float RemoteSpeedMax=0,HostSpeedMax=0,HostSteppingMax=0;

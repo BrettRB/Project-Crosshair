@@ -31,6 +31,8 @@ public:
  TArray<FString> LanResults;
  FString LanStatus;
  bool bSearching=false;
+ /** The map the last match travelled to (Random already resolved). */
+ ECrosshairMatchMap LastMatchMap=ECrosshairMatchMap::Nuketown;
  static constexpr int32 MaxLanResults=4;
 private:
  bool CanTravel(FString& Reason) const;
@@ -40,5 +42,7 @@ private:
  void OnJoinComplete(FName Session,EOnJoinSessionCompleteResult::Type Result);
  void ClearHandles();
  TSharedPtr<FOnlineSessionSearch> Search;
+ /** LAN host: the map rolled when the session was advertised. */
+ ECrosshairMatchMap HostedMap=ECrosshairMatchMap::Nuketown;
  FDelegateHandle CreateHandle,FindHandle,JoinHandle;
 };

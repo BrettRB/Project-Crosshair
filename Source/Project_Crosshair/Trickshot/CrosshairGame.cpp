@@ -135,7 +135,7 @@ FString ACrosshairPlayerController::GetRowHelp(int32 Row) const
  const int32 Lan=GetLanRow();
  if (Row==Lan) return bEditingName ? TEXT("Type your username (letters, numbers, space, - _ .). Backspace deletes; Enter saves.") : TEXT("Your name in matches. Enter to type it; Left / Right picks a callsign.");
  if (Row==Lan+1) return ModeHelp(GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().Lan.Match.Mode);
- if (Row==Lan+2) return TEXT("Nuketown, Grid or Space Station.");
+ if (Row==Lan+2) return TEXT("Nuketown, Grid or Space Station. Random picks one of them when you host.");
  if (Row==Lan+3) return TEXT("On: bots fill the lobby. Off: only players on your network.");
  if (Row==Lan+4) return TEXT("How well the bots react and aim.");
  if (Row==Lan+5) return TEXT("Free-for-all: bots added. Team modes: players per team; bots fill empty slots.");
@@ -157,7 +157,7 @@ FString ACrosshairPlayerController::GetRowHelp(int32 Row) const
  if (Row==B+2) return O.Mode==ECrosshairMatchMode::KillConfirmed ? TEXT("Confirmed tags needed to win.") : bTeams ? TEXT("Team kills needed to win.") : TEXT("Kills needed to win.");
  if (Row==B+3) return TEXT("The highest score wins when time runs out.");
  if (Row==B+4) return ModeHelp(O.Mode);
- if (Row==B+5) return TEXT("Matches run on the match maps only: Nuketown, Grid and Space Station.");
+ if (Row==B+5) return TEXT("Nuketown, Grid or Space Station. Random picks one of them each time a match starts.");
  if (Row==B+6) return TEXT("Load the map and start. Every kill you land is saved to Replays.");
  if (Row==B+7) return TEXT("Advertise a match to players on this network. Windows may ask for firewall access.");
  if (Row==B+8) return TEXT("Search this network for hosted matches.");
@@ -565,7 +565,7 @@ void ACrosshairPlayerController::AdjustSelection(int32 Direction)
   if (BotOffset==2) UCrosshairBotMatch::ScoreLimitFor(O)+=Direction*5;
   if (BotOffset==3) O.TimeLimitMinutes+=Direction;
   if (BotOffset==4) O.Mode=UCrosshairBotMatch::NextMode(O.Mode,Direction);
-  if (BotOffset==5) O.Map=ECrosshairMatchMap((uint8(O.Map)+(Direction<0 ? 2 : 1))%3);
+  if (BotOffset==5) O.Map=UCrosshairBotMatch::NextMap(O.Map,Direction);
   UCrosshairBotMatch::Validate(O); ClassReplay->SaveSettings();
   return;
  }
@@ -1348,7 +1348,7 @@ void ACrosshairPlayerController::AdjustLan(int32 Offset,int32 Direction)
   break;
  }
  case 1: M.Mode=UCrosshairBotMatch::NextMode(M.Mode,Direction); break;
- case 2: M.Map=ECrosshairMatchMap((uint8(M.Map)+(Direction<0 ? 2 : 1))%3); break;
+ case 2: M.Map=UCrosshairBotMatch::NextMap(M.Map,Direction); break;
  case 3: M.bBots=!M.bBots; break;
  case 4: M.Difficulty=ECrosshairBotDifficulty((int32(M.Difficulty)+Direction+4)%4); break;
  case 5: (bTeams ? M.TeamSize : M.BotCount)+=Direction; break;

@@ -3377,3 +3377,87 @@ Make joined LAN players able to fight: their firing (and the related reload, swi
 ### Response Summary
 Joined LAN players can now fight: fire, reload, switch, lethals and their own class all run on the host, and hit markers, recoil and kill labels come back. Verified with a real two-process shoot-and-kill test. Weapons now use Black Ops style match damage: the SMG takes 3 shots up close and 5 at range and never one-shots; the AR takes 3 and 4; the sniper one-shots the head and torso. This was checked against bots in game. Committed on master; the user pushes.
 ---
+
+---
+## Interaction 74
+
+### User Prompt
+The bots still don't look up to check if a user is above them, work on fixing that now because it is to easy to play if they can't look up, also add an option for a random map selection when playing
+
+### Interpretation
+Make bots notice and aim at players above (or below) them, and add a Random choice to the map selection for offline and LAN matches.
+
+### Requirements / Acceptance Criteria
+- A bot notices a player high above it and in line of sight, aims up at them and hits them.
+- Bots still need line of sight (no wall vision).
+- The offline and LAN map rows offer Random. Each match then plays on a real map, and LAN players see which one.
+
+### Actions Taken
+- **Root cause:** the engine's `AAIController::UpdateControlRotation` resets an AI's pitch to level every tick unless it is focused on a pawn. Our bots aim themselves without engine focus, so their aim pitch reset each frame and could only reach a degree or two. They also only noticed far players inside a cone ahead of their level view, so a player high up beyond 15 m went unseen.
+- **Bot fix:** `ACrosshairBotController::UpdateControlRotation` now keeps the bot's aim while it is engaging (only the body yaw follows). The view cone is now measured horizontally, so a player ahead is noticed at any height in line of sight.
+- **Random map:** added `ECrosshairMatchMap::Random` with `NextMap` and `ResolveMap`.
+  - Offline matches roll the map at travel.
+  - A LAN host rolls it once when advertising, so the listing, the travel and the lobby all agree.
+  - The menu rows cycle the four choices, and the help text explains Random.
+- **Tests:**
+  - New automation test `Crosshair.Match.RandomMap`.
+  - New match smoke steps 85-86: a player 16 m from a bot at 75° above it, under open sky, with the other bots out of sight. The bot must target the player, pitch at least 45° and hit.
+  - The match smoke's hosted LAN match now uses Random and checks that the loaded map and the lobby name match the roll.
+- **Docs:** updated the README and docs/offline-match-and-lan.md.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairBot.h, CrosshairBot.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairBotMatch.h, CrosshairBotMatch.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairMatchSession.h, CrosshairMatchSession.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairRulesTests.cpp, Tests/CrosshairMatchTest.cpp, Tests/CrosshairMatchTest.h
+- README.md, docs/offline-match-and-lan.md, docs/ai-interaction-log.md
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development`: Succeeded.
+- Automation `RunTests Crosshair`: 15 Success, 0 Fail (new `Crosshair.Match.RandomMap`).
+- `-CrosshairMatchSmoke -NullRHI`: CROSSHAIR_MATCH_OK.
+  - "bot noticed the player 16 m away at 75 degrees elevation after 1.53s, aimed up 76 degrees, dealt 40 damage"
+  - "random LAN map rolled Grid; loaded L_Grid"
+  - Bot duel: Veteran 38 shots / 1480 damage against Easy 120.
+  - Three earlier runs failed on test setup issues, which I fixed: the bot targeted nearer frozen FFA bots, the bot roamed away, and the pitch bar was too strict.
+- **Negative check:** with only the bot fix stashed, the same smoke failed at step 86 ("targeted=0 pitch=0.0 elevation=75.4"), so the test catches the bug.
+- Two-process LAN test: CROSSHAIR_LAN_HOST_OK and CROSSHAIR_LAN_CLIENT_OK.
+- The frontend, lethal, expansion and final match smoke runs were still running when the user asked to commit (see Interaction 75).
+
+### Notes / Follow-up
+- The soldier body still tilts its upper body by at most 50° for appearance. Shots follow the full aim.
+- The intermittent Easy-vs-Veteran duel failure in Interaction 73 is probably explained by this pitch reset (the Veteran lost its aim between frames). It needs more runs to confirm.
+
+### Response Summary
+Fixed bots being unable to look up or down (an engine pitch reset), and widened their noticing of players above. Added a Random map option for offline and LAN matches. Verified with new tests, including a negative check that fails without the fix.
+---
+
+---
+## Interaction 75
+
+### User Prompt
+add all the undocuments file to a commit for me to push it to github'
+
+### Interpretation
+Commit all uncommitted and untracked work so the user can push it.
+
+### Requirements / Acceptance Criteria
+- All of the project's uncommitted changes are committed, ready to push.
+
+### Actions Taken
+- Committed every modified project file from Interaction 74, plus this log.
+- Did not commit the only untracked path, `.claude/`. It holds a Claude Code worktree: a second full checkout of the project with its own `.git` link and built binaries, which would push a duplicate project into the repo. I told the user and offered to git-ignore it.
+
+### Files Changed
+- As in Interaction 74, plus docs/ai-interaction-log.md
+
+### Verification
+- `git status` before the commit: 12 modified files plus untracked `.claude/`. After the commit, only `.claude/` is left untracked.
+
+### Notes / Follow-up
+- `.claude/` can be added to `.gitignore` if the user wants it to stop appearing as untracked.
+
+### Response Summary
+Committed all project changes for pushing and explained why `.claude/` was left out.
+---

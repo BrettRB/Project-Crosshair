@@ -46,7 +46,9 @@ bool UCrosshairMatchSession::TravelToMatch(bool bListen)
  const FCrosshairBotMatchOptions& Options=bListen ? Settings.Lan.Match : Settings.BotMatch;
  auto* Library=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>();
  Library->bHomeVisited=true; Library->ActiveMapId.Reset();
- return Replay->ChangePracticeMap(UCrosshairBotMatch::MapPackage(Options.Map),TravelOptions(Options,bListen));
+ // Random is rolled here for offline matches; a LAN host rolled it when advertising, so players see the real map.
+ LastMatchMap=bListen ? HostedMap : UCrosshairBotMatch::ResolveMap(Options.Map);
+ return Replay->ChangePracticeMap(UCrosshairBotMatch::MapPackage(LastMatchMap),TravelOptions(Options,bListen));
 }
 bool UCrosshairMatchSession::StartOfflineMatch() { return TravelToMatch(false); }
 bool UCrosshairMatchSession::HasLanSession() const
@@ -70,7 +72,8 @@ bool UCrosshairMatchSession::HostLanMatch()
  Settings.NumPublicConnections=Saved.Lan.MaxPlayers;   // human players, including the host
  Settings.Set(CrosshairHostKey,UCrosshairBotMatch::CleanPlayerName(Saved.PlayerName),EOnlineDataAdvertisementType::ViaOnlineService);
  Settings.Set(CrosshairBotsKey,FString(Options.bBots ? TEXT("bots on") : TEXT("no bots")),EOnlineDataAdvertisementType::ViaOnlineService);
- Settings.Set(SETTING_MAPNAME,UCrosshairBotMatch::MapName(Options.Map),EOnlineDataAdvertisementType::ViaOnlineService);
+ HostedMap=UCrosshairBotMatch::ResolveMap(Options.Map);
+ Settings.Set(SETTING_MAPNAME,UCrosshairBotMatch::MapName(HostedMap),EOnlineDataAdvertisementType::ViaOnlineService);
  Settings.Set(CrosshairModeKey,UCrosshairBotMatch::ModeName(Options.Mode),EOnlineDataAdvertisementType::ViaOnlineService);
  ClearHandles();
  CreateHandle=Interface->AddOnCreateSessionCompleteDelegate_Handle(FOnCreateSessionCompleteDelegate::CreateUObject(this,&UCrosshairMatchSession::OnCreateComplete));

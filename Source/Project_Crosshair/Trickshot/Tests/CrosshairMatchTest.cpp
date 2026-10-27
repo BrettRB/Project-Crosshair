@@ -1017,6 +1017,73 @@ void UCrosshairMatchTest::Tick(float Delta)
   if (++DamageShots<3) { WorldMark=World->GetTimeSeconds(); return; }
   if (auto* Brain=Cast<ACrosshairBotController>(Bot->GetController())) Brain->SetActorTickEnabled(true);
   Pawn->SetBotInput(false,false);
+  Next(85); return;
+ }
+ case 85:
+ {
+  // Bots look up: hover the player 16 m above and 4 m in front of a bot, under open sky. That is outside the
+  // 15 m all-round awareness and steeper than a level 75-degree view cone, so the bot must check upward.
+  if (!Pawn || Pawn->Health->bDead) { if (Elapsed>20) Check(false,TEXT("Player alive for the look-up test")); return; }
+  FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairLookUp),false);
+  for (ACrosshairCharacter* Character:Characters()) Params.AddIgnoredActor(Character);
+  for (ACrosshairCharacter* Bot:Characters())
+  {
+   if (!Bot->IsBot() || Bot->Health->bDead) continue;
+   auto* Brain=Cast<ACrosshairBotController>(Bot->GetController()); if (!Brain) continue;
+   const FVector Eye=Bot->GetPawnViewLocation();
+   const FVector Above=Bot->GetActorLocation()+FRotator(0,Brain->GetControlRotation().Yaw,0).Vector()*400.f+FVector(0,0,1600.f);
+   FHitResult Blocked;
+   if (World->LineTraceSingleByChannel(Blocked,Eye,Above+FVector(0,0,80),ECC_Visibility,Params) || World->LineTraceSingleByChannel(Blocked,Above,Above+FVector(0,0,300),ECC_Visibility,Params)) continue;
+   // Every other bot is an enemy in Free-for-all and the nearest visible one wins, so park them under the floor
+   // (out of sight, movement off so they do not fall) for this check.
+   ParkedBots.Reset();
+   for (TActorIterator<ACrosshairBotController> It(World);It;++It) if (*It!=Brain)
+   {
+    It->SetActorTickEnabled(false); It->StopMovement();
+    if (auto* Frozen=Cast<ACrosshairCharacter>(It->GetPawn()))
+    {
+     if (Frozen->Inventory->GetCurrent()) Frozen->Inventory->GetCurrent()->StopFire();
+     ParkedBots.Add(Frozen,Frozen->GetActorLocation());
+     Frozen->GetCharacterMovement()->DisableMovement();
+     Frozen->SetActorLocation(Frozen->GetActorLocation()-FVector(0,0,1000),false,nullptr,ETeleportType::TeleportPhysics);
+    }
+   }
+   Brain->SetActorTickEnabled(true); Brain->StopMovement(); Brain->Target=nullptr;
+   Bot->SetActorLocation(Bot->GetActorLocation(),false,nullptr,ETeleportType::TeleportPhysics);
+   Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+   Pawn->SetActorLocation(Above,false,nullptr,ETeleportType::TeleportPhysics);
+   Pawn->GetCharacterMovement()->StopMovementImmediately();
+   Pawn->Health->Health=Pawn->Health->MaxHealth; Pawn->Health->TotalDamageTaken=0; Pawn->Health->LastAttacker=nullptr;
+   Victim=Brain; WorldMark=World->GetTimeSeconds(); PitchBefore=0; bSawLookUpTarget=false; LookUpBotAt=Bot->GetActorLocation();
+   Next(86); return;
+  }
+  if (Elapsed>20) Check(false,TEXT("A bot under open sky for the look-up test"));
+  return;
+ }
+ case 86:
+ {
+  auto* Brain=Cast<ACrosshairBotController>(Victim.Get());
+  auto* Bot=Brain ? Cast<ACrosshairCharacter>(Brain->GetPawn()) : nullptr;
+  if (!Pawn || !Bot || Bot->Health->bDead) { Check(false,TEXT("Look-up test soldiers stay alive")); return; }
+  // Hold both in place (the bot still thinks, turns and fires, but cannot roam away) and the player alive.
+  if (LookUpBotAt.IsZero()) LookUpBotAt=Bot->GetActorLocation();
+  Bot->SetActorLocation(LookUpBotAt); Bot->GetCharacterMovement()->StopMovementImmediately(); Brain->StopMovement();
+  Pawn->GetCharacterMovement()->StopMovementImmediately();
+  Pawn->Health->Health=Pawn->Health->MaxHealth;
+  // Track the steepest aim while the bot is engaging the player. Before the fix the engine levelled bot aim every
+  // tick, capping pitch at a degree or two.
+  if (Brain->Target==Pawn) { bSawLookUpTarget=true; PitchBefore=FMath::Max(PitchBefore,FRotator::NormalizeAxis(Brain->GetControlRotation().Pitch)); }
+  const bool bHit=Pawn->Health->TotalDamageTaken>0 && Pawn->Health->LastAttacker.Get()==Brain;
+  const FVector ToPlayer=Pawn->GetActorLocation()-Bot->GetPawnViewLocation();
+  const float Elevation=FMath::RadiansToDegrees(FMath::Atan2(ToPlayer.Z,ToPlayer.Size2D()));
+  if (!(bSawLookUpTarget && PitchBefore>=45.f && bHit)) { if (World->GetTimeSeconds()-WorldMark>15.0) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO look-up: targeted=%d pitch=%.1f elevation=%.1f hit=%d"),bSawLookUpTarget,PitchBefore,Elevation,bHit); Check(false,TEXT("A bot notices a player high above, aims up and hits them")); } return; }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO look-up: bot noticed the player %.0f m away at %.0f degrees elevation after %.2fs, aimed up %.0f degrees, dealt %.0f damage"),ToPlayer.Size()/100.f,Elevation,World->GetTimeSeconds()-WorldMark,PitchBefore,Pawn->Health->TotalDamageTaken);
+  if (!Check(true,TEXT("A bot notices a player high above, aims up and hits them"))) return;
+  Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+  for (const TPair<TWeakObjectPtr<ACrosshairCharacter>,FVector>& Parked:ParkedBots)
+   if (ACrosshairCharacter* Back=Parked.Key.Get()) { Back->SetActorLocation(Parked.Value,false,nullptr,ETeleportType::TeleportPhysics); Back->GetCharacterMovement()->SetMovementMode(MOVE_Walking); }
+  ParkedBots.Reset();
+  for (TActorIterator<ACrosshairBotController> It(World);It;++It) It->SetActorTickEnabled(true);
   Next(9); return;
  }
  case 9:
@@ -1297,9 +1364,9 @@ void UCrosshairMatchTest::Tick(float Delta)
  case 65:
  {
   if (Match || !Pawn || !MapName.Contains(TEXT("L_Practice"))) { if (Elapsed>90) Check(false,TEXT("Leaving Kill Confirmed returns to practice")); return; }
-  // Host a Team Deathmatch LAN match: it opens in the lobby.
+  // Host a Team Deathmatch LAN match on a random map: it opens in the lobby.
   FCrosshairLanOptions& Lan=Replay->GetSettings().Lan;
-  Lan.Match.Mode=ECrosshairMatchMode::TeamDeathmatch; Lan.Match.Map=ECrosshairMatchMap::Nuketown; Lan.Match.bBots=true; Lan.Match.TeamSize=2; Lan.MaxPlayers=4;
+  Lan.Match.Mode=ECrosshairMatchMode::TeamDeathmatch; Lan.Match.Map=ECrosshairMatchMap::Random; Lan.Match.bBots=true; Lan.Match.TeamSize=2; Lan.MaxPlayers=4;
   Replay->SaveSettings();
   if (!Check(Session->HostLanMatch(),TEXT("LAN host session creation starts"))) return;
   Next(16); return;
@@ -1312,6 +1379,12 @@ void UCrosshairMatchTest::Tick(float Delta)
   if (!Check(Match->bInLobby && Mode->IsInLobby() && !Pawn && Bots==0 && Match->MatchEndsAt<=0,TEXT("A hosted LAN match waits in the lobby: no soldiers, bots or clock"))) return;
   const TArray<int32> Rows=PC->GetVisibleMenuRows();
   if (!Check(PC->IsLobbyHost() && Rows.Contains(PC->LobbyStartRow) && Rows.Contains(PC->LobbyTeamRow) && Me && Me->bLobbyHost,TEXT("The host's lobby offers Start match and team choice"))) return;
+  {
+   // Random map: the host rolled a real match map, travelled there, and the lobby names it.
+   const ECrosshairMatchMap Rolled=Session->LastMatchMap;
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO random LAN map rolled %s; loaded %s"),*UCrosshairBotMatch::MapName(Rolled),*MapName);
+   if (!Check(Rolled!=ECrosshairMatchMap::Random && UCrosshairBotMatch::MapPackage(Rolled).ToString().EndsWith(MapName.RightChop(MapName.Find(TEXT("L_")))) && Match->MapName==UCrosshairBotMatch::MapName(Rolled),TEXT("A Random LAN map hosts one of the match maps and the lobby shows which"))) return;
+  }
   const uint8 Before=Me->Team;
   PC->AdjustMenuRow(PC->LobbyTeamRow,1);
   if (!Check(Before==CrosshairMatchRules::Alpha && Me->Team==CrosshairMatchRules::Bravo,TEXT("The lobby team row switches the player from Alpha to Bravo"))) return;

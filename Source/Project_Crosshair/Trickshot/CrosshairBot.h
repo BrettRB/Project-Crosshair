@@ -19,6 +19,8 @@ public:
  virtual void OnPossess(APawn* InPawn) override;
  virtual void OnUnPossess() override;
  virtual void Tick(float DeltaSeconds) override;
+ /** The engine levels an AI's view every tick unless it focuses a pawn; this bot aims itself, so keep its pitch while engaging. */
+ virtual void UpdateControlRotation(float DeltaTime, bool bUpdatePawn = true) override;
  /** True when Target's head or chest is visible from the bot's eyes. */
  bool CanSee(const ACrosshairCharacter* Target) const;
  UPROPERTY(Transient) TObjectPtr<ACrosshairCharacter> Target;

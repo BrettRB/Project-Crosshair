@@ -15,7 +15,7 @@ Main menu > **Offline match vs bots**, or Escape / Start > **Offline Match** tab
 | Row | Values | Default (COD) |
 | --- | --- | --- |
 | Mode | Free-for-all / Team Deathmatch | Free-for-all |
-| Match map | Nuketown / Grid / Space Station | Nuketown |
+| Match map | Nuketown / Grid / Space Station / Random | Nuketown |
 | Bot difficulty | Easy / Regular / Hardened / Veteran | Regular |
 | Bot count (FFA) / Team size (TDM) | 1-11 bots / 1v1-6v6 | 7 bots (8 players) / 6v6 |
 | Score limit | FFA kills 5-100 / TDM team kills 10-200 | 30 / 75 |
@@ -81,7 +81,7 @@ Bots carry their weapon in the soldier's right hand with the mannequin idle/walk
 
 Bots fire along their actual aim from eye height (the first-person camera only follows aim for whoever is viewing it, so world-view shooters use the controller rotation).
 
-`ACrosshairBotController` uses the same character, weapons and damage as the player. It notices enemies in a 150 degree view cone (or within 15 m in any direction), needs line of sight to the head or chest (no wall vision), waits its reaction time, then tracks with limited turn speed and a per-decision aim error before firing. Difficulty presets (`UCrosshairBotMatch`) are read live, so changing difficulty from the pause menu applies immediately. Bots roam using runtime navmesh inside each map's NavMeshBoundsVolume and fall back to direct movement if navigation is not ready.
+`ACrosshairBotController` uses the same character, weapons and damage as the player. It notices enemies in a 150 degree horizontal view cone at any height (or within 15 m in any direction), needs line of sight to the head or chest (no wall vision), waits its reaction time, then tracks with limited turn speed and a per-decision aim error before firing. Difficulty presets (`UCrosshairBotMatch`) are read live, so changing difficulty from the pause menu applies immediately. Bots roam using runtime navmesh inside each map's NavMeshBoundsVolume and fall back to direct movement if navigation is not ready.
 
 ## LAN multiplayer (foundation)
 
@@ -295,3 +295,27 @@ These are Black Ops style approximations rather than exact Activision data, pick
   - On an 8 m lane checked to be clear, the joined player fires with a simulated left mouse click. The host applies exactly 35 damage, credited to the joined player.
   - Ammo (30 → 29), the hit marker and recoil reach the joined player's machine.
   - The follow-up shot kills the host. The kill is credited to the joined player on both machines, and the host's dog tag drops.
+
+## Bots look up, and Random map (2026-10-26)
+
+### Bots check above and below them
+
+- **The bug:** bots could not aim at anyone above or below them. `AAIController::UpdateControlRotation` runs every tick and resets an AI's pitch to level unless it is focused on a pawn ("don't pitch view unless looking at another pawn"). Our bots aim themselves without engine focus, so each frame their aim snapped back to level and the turn toward the target restarted from there. A bot could only tilt a degree or two per frame, so a player on a roof, a ledge or mid-jump overhead was almost impossible for it to hit.
+- **The fix:** `ACrosshairBotController::UpdateControlRotation` keeps the bot's own aim while it is engaging and only turns the body to the aim's yaw. Roaming still looks level along the route.
+- **Noticing players above:** the 150 degree view cone is now measured horizontally, so a player ahead of a bot is noticed at any height in line of sight. Before, a player more than 75 degrees above the bot's level view and more than 15 m away went unseen. The 15 m all-round awareness is unchanged, and bots still never see through walls.
+- **What you see:** the soldier body still tilts its upper body by at most 50 degrees. Shots follow the full aim.
+
+**Verified:** match smoke step 86 hovers the player 16 m from a bot at 75 degrees above it, under open sky, with the other bots moved out of sight. The bot noticed the player after 1.5 s, aimed up 76 degrees and hit for 40. With only the bot fix removed, the same step fails: the bot never targets the player.
+
+### Random map
+
+The Match map row (offline) and the LAN map row now include **Random**, after Space Station. Random is a saved choice and picks Nuketown, Grid or Space Station each time:
+
+- **Offline:** rolled every time a match starts.
+- **LAN:** rolled when the host advertises, so the LAN listing, the map everyone loads and the lobby all show the same real map.
+
+The roll is `UCrosshairBotMatch::ResolveMap`, used in `UCrosshairMatchSession::HostLanMatch` and `TravelToMatch`.
+
+**Verified:**
+- `Crosshair.Match.RandomMap` (automation): checks cycling, saving, that Random always resolves to a real map, and that 200 rolls reach all three maps.
+- Match smoke: the hosted LAN match uses Random. One run rolled Grid, loaded `L_Grid`, and the lobby named Grid.

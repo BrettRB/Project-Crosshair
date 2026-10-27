@@ -29,6 +29,17 @@ void ACrosshairBotController::OnPossess(APawn* InPawn)
  }
  LastProgressAt=GetWorld()->GetTimeSeconds(); LastProgressLocation=InPawn ? InPawn->GetActorLocation() : FVector::ZeroVector;
 }
+void ACrosshairBotController::UpdateControlRotation(float DeltaTime, bool bUpdatePawn)
+{
+ // While engaging, Engage() owns the aim (pitch included): only turn the body to the aim's yaw.
+ // Before this, the engine reset pitch to level every tick, so bots could not aim at anyone above or below them.
+ if (Target)
+ {
+  if (APawn* Self=GetPawn(); Self && bUpdatePawn) Self->FaceRotation(GetControlRotation(),DeltaTime);
+  return;
+ }
+ Super::UpdateControlRotation(DeltaTime,bUpdatePawn);
+}
 void ACrosshairBotController::OnUnPossess()
 {
  StopMovement(); Target=nullptr;
@@ -72,8 +83,11 @@ void ACrosshairBotController::Decide()
   if (*It==Self || It->Health->bDead || !It->GetController() || (Mode && !Mode->CanDamage(this,It->GetController()))) continue;
   const FVector To=It->GetPawnViewLocation()-Eye;
   const float Distance=To.Size();
-  // Close enemies are noticed in any direction (footsteps); farther ones need to be in view.
-  const bool Aware=Distance<1500.f || FVector::DotProduct(To/FMath::Max(Distance,1.f),Forward)>FMath::Cos(FMath::DegreesToRadians(75.f));
+  // Close enemies are noticed in any direction (footsteps); farther ones need to be in the bot's field of view.
+  // The view cone is horizontal only: bots check up and down, so a player on a roof, ledge or mid-jump above
+  // them is noticed as long as they are ahead and in line of sight.
+  const FVector Flat=To.GetSafeNormal2D();
+  const bool Aware=Distance<1500.f || Flat.IsNearlyZero() || FVector::DotProduct(Flat,Forward.GetSafeNormal2D())>FMath::Cos(FMath::DegreesToRadians(75.f));
   if (!Aware || Distance>=BestDistance || !CanSee(*It)) continue;
   Best=*It; BestDistance=Distance;
  }

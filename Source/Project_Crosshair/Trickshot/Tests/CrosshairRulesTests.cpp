@@ -264,6 +264,22 @@ bool FCrosshairLocomotionWeightsTest::RunTest(const FString& Parameters)
  TestTrue(TEXT("Sprint speeds up the jog cycle (no foot sliding)"),PlayRate(680.f)>1.4f && PlayRate(JogSpeed)==1.f);
  return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairRandomMapTest, "Crosshair.Match.RandomMap", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairRandomMapTest::RunTest(const FString& Parameters)
+{
+ TestTrue(TEXT("Map row cycles Nuketown > Grid > Space Station > Random > Nuketown"),UCrosshairBotMatch::NextMap(ECrosshairMatchMap::SpaceStation,1)==ECrosshairMatchMap::Random && UCrosshairBotMatch::NextMap(ECrosshairMatchMap::Random,1)==ECrosshairMatchMap::Nuketown);
+ TestTrue(TEXT("Map row cycles backward Nuketown > Random"),UCrosshairBotMatch::NextMap(ECrosshairMatchMap::Nuketown,-1)==ECrosshairMatchMap::Random);
+ TestEqual(TEXT("Random is named in menus"),UCrosshairBotMatch::MapName(ECrosshairMatchMap::Random),FString(TEXT("Random")));
+ FCrosshairBotMatchOptions Options; Options.Map=ECrosshairMatchMap::Random; UCrosshairBotMatch::Validate(Options);
+ TestTrue(TEXT("Random is a saved, valid choice"),Options.Map==ECrosshairMatchMap::Random);
+ TestTrue(TEXT("Random resolves to each match map"),UCrosshairBotMatch::ResolveMap(ECrosshairMatchMap::Random,0.f)==ECrosshairMatchMap::Nuketown && UCrosshairBotMatch::ResolveMap(ECrosshairMatchMap::Random,.5f)==ECrosshairMatchMap::Grid && UCrosshairBotMatch::ResolveMap(ECrosshairMatchMap::Random,.999f)==ECrosshairMatchMap::SpaceStation);
+ TestTrue(TEXT("A chosen map is never changed"),UCrosshairBotMatch::ResolveMap(ECrosshairMatchMap::Grid,.999f)==ECrosshairMatchMap::Grid);
+ TSet<ECrosshairMatchMap> Seen;
+ for (int32 i=0;i<200;++i) { const ECrosshairMatchMap Map=UCrosshairBotMatch::ResolveMap(ECrosshairMatchMap::Random); Seen.Add(Map); TestTrue(TEXT("Random never stays Random"),Map!=ECrosshairMatchMap::Random); }
+ TestEqual(TEXT("Random rolls reach all three maps"),Seen.Num(),3);
+ TestEqual(TEXT("Every resolved map has a package"),UCrosshairBotMatch::MapPackage(UCrosshairBotMatch::ResolveMap(ECrosshairMatchMap::Random,.7f)),FName(TEXT("/Game/Crosshair/Maps/L_SpaceStation")));
+ return true;
+}
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairMatchDamageTest, "Crosshair.Weapon.MatchDamage", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
 bool FCrosshairMatchDamageTest::RunTest(const FString& Parameters)
 {
