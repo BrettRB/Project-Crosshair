@@ -3461,3 +3461,11 @@ Commit all uncommitted and untracked work so the user can push it.
 ### Response Summary
 Committed all project changes for pushing and explained why `.claude/` was left out.
 ---
+
+**Verification addendum to Interactions 74-75** (the final regression run finished after the commit):
+- Automation: 15 Success, 0 Fail.
+- Two-process LAN test: HOST_OK and CLIENT_OK.
+- Frontend, lethal and expansion smokes: OK.
+- Match smoke: OK.
+  - "bot noticed the player 16 m away at 75 degrees elevation after 3.72s, aimed up 80 degrees, dealt 70 damage"
+  - "random LAN map rolled Nuketown; loaded L_Nuketown"
