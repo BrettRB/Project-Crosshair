@@ -165,3 +165,79 @@ Verified locally:
   - Both machines saw both usernames.
   - The movement and animation checks passed.
 - **Menu check** (in the graphics check): typing on the Username row with simulated keys produced the expected name, and the bot rows hid when Bots was turned off.
+
+## Kill Confirmed and the LAN lobby (added 2026-10-26)
+
+### Kill Confirmed
+
+Kill Confirmed is a third match mode, next to Free-for-all and Team Deathmatch. It is available offline against bots and for LAN matches. On the Mode row, Left / Right cycles Free-for-all > Team Deathmatch > Kill Confirmed.
+
+- **Teams and spawns:** Alpha vs Bravo, with the same team sizes, spawns and team start areas as Team Deathmatch. Friendly fire is off.
+- **Dog tags:** when a player is killed by an enemy, they drop a dog tag where they die. If they die mid-air, the tag settles on the floor below. Suicides and falls drop no tag.
+- **Confirm:** an enemy who walks over the tag confirms the kill, and their team scores 1. Kills alone never score.
+- **Deny:** a teammate of the dead player who walks over the tag denies it, so nobody scores.
+- **Collecting:** anyone alive walks within about 1 m of a tag to collect it. The host decides every pickup, and tags stay until someone collects them.
+- **Seeing tags:** each player sees tags in their own colours. Enemy tags (to confirm) are gold and your team's tags (to deny) are blue. Tags spin and bob, and a diamond marker of the same colour shows tags in line of sight within 35 m.
+- **Feedback:** "KILL CONFIRMED +1" or "KILL DENIED" flashes on screen.
+- **Scoreboard:** shows Kills, Deaths, Conf (confirms) and Deny (denies). The top-left panel reads "First team to 65 confirmed kills".
+- **Defaults:** COD defaults, 6v6 to 65 in 10 minutes. The score limit is saved separately from Team Deathmatch's and is adjustable from 10 to 200.
+- **Bots:** when not fighting, a bot heads for the nearest tag within 25 m, whether it is an enemy tag to confirm or its own team's tag to deny. A bot that cannot reach a tag within 3 seconds gives up on it.
+
+### LAN lobby
+
+A hosted LAN match now opens in a lobby on the match map instead of starting at once. Offline matches still start straight away.
+
+- **While waiting:** nobody has a soldier, no bots are added and the clock has not started. Each player's view shows their team's start area behind the lobby screen.
+- **Lobby screen:** the left side shows the mode, map, score goal and setup, then these rows:
+  - **Start match** (host only)
+  - **Team** (Team Deathmatch and Kill Confirmed only)
+  - **Weapon classes**
+  - **Settings**
+  - **Leave lobby**
+- **Players:** the right side lists everyone who has joined, in Alpha and Bravo columns for team modes, with open slots and the host marked.
+- **Escape:** pressing Escape on the class or settings pages returns to the lobby. The lobby cannot be closed until the match starts.
+- **Teams:** new players are balanced onto the smaller team. The Team row (Left / Right, or Enter) switches teams. Each team holds up to half the human slots, rounded up (4 each for 8 players). Choosing a full team shows "Bravo is full."
+- **Starting:** only the host's own machine can start the match. Starting adds bots for any open slots, spawns everyone in their team's start area, starts the clock and closes every player's lobby screen.
+- **Leaving:** the host's Leave lobby closes the match for everyone.
+- **Joining late:** players who join after the start spawn straight in, as before.
+
+### Implementation map
+
+| Piece | Where |
+| --- | --- |
+| Mode list, KC score limit, score goal text | `ECrosshairMatchMode`, `FCrosshairBotMatchOptions::ConfirmScoreLimit`, `UCrosshairBotMatch::IsTeamMode/NextMode/ScoreLimitFor/ScoreGoal` (`CrosshairBotMatch.h/.cpp`) |
+| Tag, confirm/deny and team capacity rules | `CrosshairMatchRules::DropsTag/ConfirmsTag/TeamCapacity/CanJoinTeam` (`CrosshairMatch.h`) |
+| Dog tag actor | `ACrosshairDogTag` (`CrosshairMatch.h/.cpp`) |
+| Tag drop and pickup, lobby state, team requests, host start | `ACrosshairMatchGameMode::DropTag/CollectTag/RequestTeam/StartFromLobby/BeginMatch/PlayerCanRestart`; `ACrosshairMatchState::bInLobby/MaxHumans/LobbyInfo` |
+| Bot tag seeking | `ACrosshairBotController::SeekTag` (`CrosshairBot.cpp`) |
+| Lobby screen, team and start RPCs, notices | `ACrosshairPlayerController::ShowLobby/PlayerTick/ServerRequestTeam/ServerStartLobbyMatch/ClientNotify`, lobby branch of `ACrosshairHUD::DrawMenu` (`CrosshairGame.cpp`) |
+
+### Local verification (2026-10-26)
+
+- **Automation:** `Crosshair.Match.KillConfirmedAndLobby` (new) checks:
+  - the mode set and cycling
+  - the 65 default and its bounds
+  - the `KC` travel option and score goal text
+  - which deaths drop tags
+  - confirm versus deny
+  - team capacity
+- **Match smoke** (`-CrosshairMatchSmoke`, headless and rendered), offline Kill Confirmed on Nuketown:
+  - It is 6v6 to 65 with no lobby.
+  - A kill credits the killer, scores nothing and drops the victim's tag.
+  - The tag is coloured gold for the viewer.
+  - Walking over the tag confirms it (Alpha +1, the player's Confirms 1, "KILL CONFIRMED").
+  - Recovering a teammate's tag denies it (Denies 1, no score).
+  - With bots unfrozen, bots collect tags, and each team's score equals its members' confirmed tags.
+- **Match smoke**, hosted 2v2 Team Deathmatch LAN match:
+  - It opens in the lobby: no soldiers, bots or clock.
+  - The host's lobby offers Start and Team, and the Team row moves the host from Alpha to Bravo.
+  - Start match adds 3 bots and spawns the host in the Bravo backyard with the clock running.
+- **Two processes** (`-CrosshairLanHost` / `-CrosshairLanClient`), Kill Confirmed on Space Station, no bots, 4 players:
+  - The client's search lists "HostAce - Kill Confirmed on Space Station, no bots (1/4)".
+  - Both players wait in the lobby without soldiers.
+  - The client lands on Bravo, its lobby offers Team but not Start, and it switches to Alpha. The host sees the switch.
+  - The host starts the match. The client's lobby closes and its soldier spawns.
+  - The movement and animation checks still pass (680 and 681 cm/s, stepping weight 1.00).
+- **Screenshots inspected:** `MenuLobby.png`, `MatchDogTag.png`, `MatchKillConfirmed.png`, `MatchKillConfirmedScoreboard.png`, `MatchLobbyStarted.png`.
+
+Not verified: two separate PCs, a full Kill Confirmed match to 65, and physical controller play. LAN combat is still host-only, as described above, so in a LAN match only the host's shots and lethals cause kills and drop tags. A joined player can still collect tags, because pickup only needs movement.

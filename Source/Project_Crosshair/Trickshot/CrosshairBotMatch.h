@@ -5,8 +5,9 @@
 
 UENUM(BlueprintType)
 enum class ECrosshairBotDifficulty : uint8 { Easy, Regular, Hardened, Veteran };
+/** Kill Confirmed is a team mode: kills drop dog tags, and a team scores only by collecting enemy tags. */
 UENUM(BlueprintType)
-enum class ECrosshairMatchMode : uint8 { FreeForAll, TeamDeathmatch };
+enum class ECrosshairMatchMode : uint8 { FreeForAll, TeamDeathmatch, KillConfirmed };
 /** Matches run only on the COD maps; the Testing map and local imports are practice-only. */
 UENUM(BlueprintType)
 enum class ECrosshairMatchMap : uint8 { Nuketown, Grid, SpaceStation };
@@ -38,6 +39,8 @@ struct FCrosshairBotMatchOptions
  /** Players per team, including the local player; COD default 6v6. */
  UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 TeamSize=6;
  UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 TeamScoreLimit=75;
+ /** Kill Confirmed team score (collected enemy tags) needed to win; COD default 65. */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 ConfirmScoreLimit=65;
  /** Fill the lobby with bots (always on offline; a LAN host can turn them off). */
  UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bBots=true;
 };
@@ -62,6 +65,15 @@ public:
  UFUNCTION(BlueprintPure) static FCrosshairBotTuning TuningFor(ECrosshairBotDifficulty Difficulty);
  static FString DifficultyName(ECrosshairBotDifficulty Difficulty);
  static FString ModeName(ECrosshairMatchMode Mode);
+ /** Team Deathmatch and Kill Confirmed play Alpha vs Bravo. */
+ static bool IsTeamMode(ECrosshairMatchMode Mode) { return Mode==ECrosshairMatchMode::TeamDeathmatch || Mode==ECrosshairMatchMode::KillConfirmed; }
+ /** Menu order: Free-for-all, Team Deathmatch, Kill Confirmed. */
+ static ECrosshairMatchMode NextMode(ECrosshairMatchMode Mode,int32 Direction);
+ /** The score limit the mode plays to: kills (FFA), team kills (TDM) or confirmed tags (KC). */
+ static int32& ScoreLimitFor(FCrosshairBotMatchOptions& Options);
+ static int32 ScoreLimitFor(const FCrosshairBotMatchOptions& Options) { return ScoreLimitFor(const_cast<FCrosshairBotMatchOptions&>(Options)); }
+ /** "First team to 65 confirmed kills" and similar, for menus and the match HUD. */
+ static FString ScoreGoal(ECrosshairMatchMode Mode,int32 Limit);
  static FString MapName(ECrosshairMatchMap Map);
  static FName MapPackage(ECrosshairMatchMap Map);
  static void Validate(FCrosshairBotMatchOptions& Options);

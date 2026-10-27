@@ -60,6 +60,25 @@ public:
  /** Each player sends the username saved on their own machine; the server applies it. */
  UFUNCTION(Server,Reliable) void ServerSetPlayerName(const FString& Name);
  bool IsInMatch() const;
+ /** LAN lobby: the match waits for the host; this screen lists players and teams. */
+ bool IsInLobby() const;
+ /** The local player on a listen server hosts the LAN match and starts it. */
+ bool IsLobbyHost() const { return GetNetMode()==NM_ListenServer && IsLocalController(); }
+ void ShowLobby();
+ bool bLobbyScreen=false;
+ /** Lobby rows: Start (host only), Team (team modes), Weapon classes, Settings, Leave. */
+ static constexpr int32 LobbyStartRow=0;
+ static constexpr int32 LobbyTeamRow=1;
+ static constexpr int32 LobbyClassRow=2;
+ static constexpr int32 LobbySettingsRow=3;
+ static constexpr int32 LobbyLeaveRow=4;
+ UFUNCTION(Server,Reliable) void ServerRequestTeam(uint8 Team);
+ UFUNCTION(Server,Reliable) void ServerStartLobbyMatch();
+ /** A message from the host (kill confirmed / denied, team full); shown even without a pawn. */
+ UFUNCTION(Client,Reliable) void ClientNotify(const FString& Text);
+ FString Notice;
+ double NoticeUntil=0;
+ virtual void PlayerTick(float DeltaTime) override;
  bool bScoreboardHeld=false;
  void ShowHome();
  void StartPlaying();
@@ -80,6 +99,8 @@ public:
 	bool IsTabLockedInMatch(int32 Tab) const { return IsInMatch() && (Tab==3 || Tab==4 || Tab==7); }
 private:
 	void ApplyGameplayInputMode();
+	/** The menu belongs to the lobby and closes for everyone when the host starts. */
+	bool bLobbyMenus = false;
 	void CalibrateAxis(FKey Key, float Value);
 	FVector2D CalibrationAxis = FVector2D::ZeroVector;
 	FVector2D CalibrationDirection = FVector2D(1, 1);

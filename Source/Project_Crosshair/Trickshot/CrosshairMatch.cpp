@@ -8,6 +8,9 @@
 #include "Algo/StableSort.h"
 #include "Components/ArrowComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -89,6 +92,54 @@ void ACrosshairMatchPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProp
 {
  Super::GetLifetimeReplicatedProps(OutLifetimeProps);
  DOREPLIFETIME(ACrosshairMatchPlayerState,Kills); DOREPLIFETIME(ACrosshairMatchPlayerState,Deaths); DOREPLIFETIME(ACrosshairMatchPlayerState,Team);
+ DOREPLIFETIME(ACrosshairMatchPlayerState,Confirms); DOREPLIFETIME(ACrosshairMatchPlayerState,Denies); DOREPLIFETIME(ACrosshairMatchPlayerState,bLobbyHost);
+}
+
+ACrosshairDogTag::ACrosshairDogTag()
+{
+ bReplicates=true;
+ PrimaryActorTick.bCanEverTick=true;
+ SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
+ // A flat plate that spins and bobs; pickups are decided by distance on the host, not collision.
+ Tag=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Tag"));
+ Tag->SetupAttachment(GetRootComponent());
+ Tag->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+ Tag->SetCastShadow(false);
+ Tag->SetRelativeScale3D(FVector(.04f,.22f,.32f));
+ static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
+ static ConstructorHelpers::FObjectFinder<UMaterialInterface> Shape(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+ if (Cube.Succeeded()) Tag->SetStaticMesh(Cube.Object);
+ if (Shape.Succeeded()) Tag->SetMaterial(0,Shape.Object);
+}
+void ACrosshairDogTag::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+ Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+ DOREPLIFETIME(ACrosshairDogTag,VictimTeam); DOREPLIFETIME(ACrosshairDogTag,VictimName);
+}
+void ACrosshairDogTag::BeginPlay()
+{
+ Super::BeginPlay();
+ Material=Tag->CreateDynamicMaterialInstance(0);
+}
+void ACrosshairDogTag::Tick(float DeltaSeconds)
+{
+ Super::Tick(DeltaSeconds);
+ const float Time=GetWorld()->GetTimeSeconds();
+ Tag->SetRelativeLocationAndRotation(FVector(0,0,FMath::Sin(Time*3.f)*8.f),FRotator(0,FMath::Fmod(Time*140.f,360.f),0));
+ // Coloured for whoever is watching: gold for an enemy tag to confirm, blue for a teammate's tag to deny.
+ if (const APlayerController* Viewer=GetWorld()->GetFirstPlayerController())
+  if (const auto* Viewing=Viewer->GetPlayerState<ACrosshairMatchPlayerState>(); Viewing && Viewing->Team!=ShownForTeam)
+  {
+   ShownForTeam=Viewing->Team;
+   if (Material) Material->SetVectorParameterValue(TEXT("Color"),ShownForTeam==VictimTeam ? FLinearColor(.1f,.35f,1.f) : FLinearColor(1.f,.62f,.08f));
+  }
+ if (!HasAuthority()) return;
+ auto* Mode=GetWorld()->GetAuthGameMode<ACrosshairMatchGameMode>();
+ if (!Mode) return;
+ const FVector At=GetActorLocation();
+ for (TActorIterator<ACrosshairCharacter> It(GetWorld());It;++It)
+  if (!It->Health->bDead && It->GetController() && FVector::Dist2D(It->GetActorLocation(),At)<PickupRadius && FMath::Abs(It->GetActorLocation().Z-At.Z)<160.f)
+  { Mode->CollectTag(this,It->GetController()); return; }
 }
 
 void ACrosshairMatchState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -97,6 +148,14 @@ void ACrosshairMatchState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
  DOREPLIFETIME(ACrosshairMatchState,Mode); DOREPLIFETIME(ACrosshairMatchState,ScoreLimit); DOREPLIFETIME(ACrosshairMatchState,MatchEndsAt);
  DOREPLIFETIME(ACrosshairMatchState,AlphaScore); DOREPLIFETIME(ACrosshairMatchState,BravoScore); DOREPLIFETIME(ACrosshairMatchState,bMatchOver);
  DOREPLIFETIME(ACrosshairMatchState,Result); DOREPLIFETIME(ACrosshairMatchState,MapName); DOREPLIFETIME(ACrosshairMatchState,KillFeed);
+ DOREPLIFETIME(ACrosshairMatchState,bInLobby); DOREPLIFETIME(ACrosshairMatchState,MaxHumans); DOREPLIFETIME(ACrosshairMatchState,LobbyInfo);
+}
+int32 ACrosshairMatchState::CountHumans(uint8 Team) const
+{
+ int32 Count=0;
+ for (APlayerState* Player:PlayerArray)
+  if (const auto* Match=Cast<ACrosshairMatchPlayerState>(Player); Match && !Match->IsABot() && !Match->IsOnlyASpectator() && (Team==255 || Match->Team==Team)) ++Count;
+ return Count;
 }
 ACrosshairMatchState* ACrosshairMatchState::Get(const UObject* WorldContext)
 {
@@ -138,15 +197,24 @@ void ACrosshairMatchGameMode::InitGame(const FString& MapName,const FString& Opt
  if (!bLanMatch) MatchOptions.bBots=true;   // offline matches are always against bots
  const FString Mode=UGameplayStatics::ParseOption(Options,TEXT("CrosshairMode"));
  if (Mode==TEXT("TDM")) MatchOptions.Mode=ECrosshairMatchMode::TeamDeathmatch;
+ else if (Mode==TEXT("KC")) MatchOptions.Mode=ECrosshairMatchMode::KillConfirmed;
  else if (Mode==TEXT("FFA")) MatchOptions.Mode=ECrosshairMatchMode::FreeForAll;
  UCrosshairBotMatch::Validate(MatchOptions);
+ // LAN matches gather in a lobby until the host starts; offline matches start at once.
+ bLobby=bLanMatch && !bInvalidMap;
 }
 void ACrosshairMatchGameMode::InitGameState()
 {
  Super::InitGameState();
  auto* State=GetGameState<ACrosshairMatchState>(); if (!State) return;
  State->Mode=MatchOptions.Mode;
- State->ScoreLimit=MatchOptions.Mode==ECrosshairMatchMode::TeamDeathmatch ? MatchOptions.TeamScoreLimit : MatchOptions.ScoreLimit;
+ State->ScoreLimit=UCrosshairBotMatch::ScoreLimitFor(MatchOptions);
+ State->bInLobby=bLobby; State->MaxHumans=MaxHumans;
+ const bool bTeams=UCrosshairBotMatch::IsTeamMode(MatchOptions.Mode);
+ const FString Bots=!MatchOptions.bBots ? FString(TEXT("Players only, no bots"))
+  : bTeams ? FString::Printf(TEXT("%s bots fill open slots up to %dv%d"),*UCrosshairBotMatch::DifficultyName(MatchOptions.Difficulty),MatchOptions.TeamSize,MatchOptions.TeamSize)
+  : FString::Printf(TEXT("%d %s bots join"),MatchOptions.BotCount,*UCrosshairBotMatch::DifficultyName(MatchOptions.Difficulty));
+ State->LobbyInfo=FString::Printf(TEXT("%s  /  %d minutes"),*Bots,MatchOptions.TimeLimitMinutes);
  State->MapName=GetWorld()->GetMapName().Contains(TEXT("L_Grid")) ? TEXT("Grid") : GetWorld()->GetMapName().Contains(TEXT("L_SpaceStation")) ? TEXT("Space Station") : TEXT("Nuketown");
 }
 void ACrosshairMatchGameMode::CollectSpawnPoints()
@@ -171,9 +239,41 @@ void ACrosshairMatchGameMode::StartPlay()
  // Bot navigation: regenerate the map's navmesh asynchronously rather than trusting saved editor data.
  if (UNavigationSystemV1* Navigation=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()))
   for (TActorIterator<ANavMeshBoundsVolume> It(GetWorld());It;++It) Navigation->AddDirtyArea(It->GetComponentsBoundingBox(true),ENavigationDirtyFlag::All);
- if (State) State->MatchEndsAt=State->GetServerWorldTimeSeconds()+MatchOptions.TimeLimitMinutes*60.f;
+ if (!bLobby) BeginMatch();
+}
+bool ACrosshairMatchGameMode::IsInLobby() const { return bLobby; }
+bool ACrosshairMatchGameMode::PlayerCanRestart_Implementation(APlayerController* Player)
+{ return !bLobby && Super::PlayerCanRestart_Implementation(Player); }
+void ACrosshairMatchGameMode::PostLogin(APlayerController* NewPlayer)
+{
+ if (auto* State=NewPlayer ? NewPlayer->GetPlayerState<ACrosshairMatchPlayerState>() : nullptr) State->bLobbyHost=bLanMatch && NewPlayer->IsLocalController();
+ Super::PostLogin(NewPlayer);
+}
+bool ACrosshairMatchGameMode::RequestTeam(APlayerController* Player,uint8 Team)
+{
+ auto* PlayerState=Player ? Player->GetPlayerState<ACrosshairMatchPlayerState>() : nullptr;
+ const auto* State=GetGameState<ACrosshairMatchState>();
+ if (!bLobby || !PlayerState || !State || !UCrosshairBotMatch::IsTeamMode(MatchOptions.Mode) || (Team!=CrosshairMatchRules::Alpha && Team!=CrosshairMatchRules::Bravo)) return false;
+ if (PlayerState->Team==Team) return true;
+ if (!CrosshairMatchRules::CanJoinTeam(State->CountHumans(Team),MaxHumans)) return false;
+ PlayerState->Team=Team; PlayerState->ForceNetUpdate();
+ return true;
+}
+bool ACrosshairMatchGameMode::StartFromLobby(APlayerController* Requester)
+{
+ // Only the host's own (local) controller may start the match.
+ if (!bLobby || !Requester || !Requester->IsLocalController()) return false;
+ UE_LOG(LogTemp,Display,TEXT("Crosshair LAN lobby: host started %s with %d players"),*UCrosshairBotMatch::ModeName(MatchOptions.Mode),GetNumPlayers());
+ BeginMatch();
+ return true;
+}
+void ACrosshairMatchGameMode::BeginMatch()
+{
+ auto* State=GetGameState<ACrosshairMatchState>();
+ bLobby=false;
+ if (State) { State->bInLobby=false; State->MatchEndsAt=State->GetServerWorldTimeSeconds()+MatchOptions.TimeLimitMinutes*60.f; State->ForceNetUpdate(); }
  if (!MatchOptions.bBots) {}   // LAN host turned bots off: humans only
- else if (MatchOptions.Mode==ECrosshairMatchMode::TeamDeathmatch)
+ else if (UCrosshairBotMatch::IsTeamMode(MatchOptions.Mode))
  {
   int32 Humans[3]={0,0,0};
   for (auto It=GetWorld()->GetPlayerControllerIterator();It;++It) if (It->IsValid()) ++Humans[FMath::Min<uint8>(TeamOf(It->Get()),2)];
@@ -182,6 +282,9 @@ void ACrosshairMatchGameMode::StartPlay()
    for (int32 i=0;i<CrosshairMatchRules::BotsForTeam(MatchOptions.TeamSize,Humans[Team]);++i) AddBot(Team,++Number);
  }
  else for (int32 i=0;i<MatchOptions.BotCount;++i) AddBot(CrosshairMatchRules::NoTeam,i+1);
+ // Players who waited in the lobby spawn now, each team in its own start area.
+ for (auto It=GetWorld()->GetPlayerControllerIterator();It;++It)
+  if (APlayerController* Player=It->Get(); Player && !Player->GetPawn() && Player->PlayerState && !Player->PlayerState->IsOnlyASpectator()) RestartPlayer(Player);
 }
 void ACrosshairMatchGameMode::AddBot(uint8 Team,int32 Number)
 {
@@ -205,7 +308,7 @@ void ACrosshairMatchGameMode::AssignTeam(AController* Controller)
 {
  auto* Player=Controller ? Controller->GetPlayerState<ACrosshairMatchPlayerState>() : nullptr;
  if (!Player) return;
- if (MatchOptions.Mode!=ECrosshairMatchMode::TeamDeathmatch) { Player->Team=CrosshairMatchRules::NoTeam; return; }
+ if (!UCrosshairBotMatch::IsTeamMode(MatchOptions.Mode)) { Player->Team=CrosshairMatchRules::NoTeam; return; }
  int32 Alpha=0,Bravo=0;
  for (APlayerState* Other:GameState->PlayerArray)
   if (const auto* Match=Cast<ACrosshairMatchPlayerState>(Other); Match && Match!=Player && !Match->IsOnlyASpectator())
@@ -239,7 +342,7 @@ AActor* ACrosshairMatchGameMode::ChoosePlayerStart_Implementation(AController* P
  // Local players log in before StartPlay, so spawn points may not be gathered yet.
  if (SpawnPoints.IsEmpty()) CollectSpawnPoints();
  if (SpawnPoints.IsEmpty()) return Super::ChoosePlayerStart_Implementation(Player);
- const bool bTeamMode=MatchOptions.Mode==ECrosshairMatchMode::TeamDeathmatch;
+ const bool bTeamMode=UCrosshairBotMatch::IsTeamMode(MatchOptions.Mode);
  const uint8 Team=TeamOf(Player);
  const double Now=GetWorld()->GetTimeSeconds();
  TArray<const ACrosshairCharacter*> Enemies,Friends;
@@ -300,8 +403,11 @@ void ACrosshairMatchGameMode::NotifyKilled(AController* Killer,AController* Vict
  if (KillerState)
  {
   ++KillerState->Kills;
-  if (State->IsTeamMode()) (KillerState->Team==CrosshairMatchRules::Alpha ? State->AlphaScore : State->BravoScore)+=1;
+  // Kill Confirmed scores only when the dropped tag is collected (CollectTag).
+  if (State->IsTeamMode() && !State->IsKillConfirmed()) (KillerState->Team==CrosshairMatchRules::Alpha ? State->AlphaScore : State->BravoScore)+=1;
  }
+ if (Victim && KillerState && VictimState && CrosshairMatchRules::DropsTag(State->IsKillConfirmed(),KillerState->Team,VictimState->Team))
+  DropTag(Victim,Victim->GetPawn() ? Victim->GetPawn()->GetActorLocation() : FVector::ZeroVector);
  FCrosshairKillEntry Entry;
  Entry.Killer=KillerState ? KillerState->GetPlayerName() : FString();
  Entry.Victim=VictimState ? VictimState->GetPlayerName() : TEXT("Player");
@@ -310,7 +416,7 @@ void ACrosshairMatchGameMode::NotifyKilled(AController* Killer,AController* Vict
  Entry.ServerTime=State->GetServerWorldTimeSeconds();
  State->KillFeed.Add(Entry);
  if (State->KillFeed.Num()>6) State->KillFeed.RemoveAt(0);
- if (KillerState)
+ if (KillerState && !State->IsKillConfirmed())
  {
   const int32 Score=State->IsTeamMode() ? State->GetTeamScore(KillerState->Team) : KillerState->Kills;
   if (CrosshairMatchRules::ReachedLimit(Score,State->ScoreLimit))
@@ -322,6 +428,35 @@ void ACrosshairMatchGameMode::NotifyKilled(AController* Killer,AController* Vict
   GetWorldTimerManager().SetTimer(Handle,FTimerDelegate::CreateWeakLambda(this,[this,Weak=TWeakObjectPtr<AController>(Victim)]()
   { if (Weak.IsValid()) Respawn(Weak.Get()); }),RespawnDelay,false);
  }
+}
+void ACrosshairMatchGameMode::DropTag(AController* Victim,const FVector& Where)
+{
+ if (!Victim || !Victim->GetPawn()) return;
+ // Settle the tag above the floor below the body, so mid-air kills still drop a reachable tag.
+ FVector At=Where;
+ FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairTagDrop),false);
+ for (TActorIterator<ACrosshairCharacter> It(GetWorld());It;++It) Params.AddIgnoredActor(*It);
+ FHitResult Floor;
+ if (GetWorld()->LineTraceSingleByChannel(Floor,Where,Where-FVector(0,0,5000),ECC_Visibility,Params)) At=Floor.ImpactPoint+FVector(0,0,45);
+ auto* Tag=GetWorld()->SpawnActorDeferred<ACrosshairDogTag>(ACrosshairDogTag::StaticClass(),FTransform(At),nullptr,nullptr,ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+ if (!Tag) return;
+ const auto* VictimState=Victim->GetPlayerState<ACrosshairMatchPlayerState>();
+ Tag->VictimTeam=TeamOf(Victim); Tag->VictimName=VictimState ? VictimState->GetPlayerName() : FString();
+ Tag->FinishSpawning(FTransform(At));
+}
+void ACrosshairMatchGameMode::CollectTag(ACrosshairDogTag* Tag,AController* Collector)
+{
+ auto* State=GetGameState<ACrosshairMatchState>();
+ auto* Player=Collector ? Collector->GetPlayerState<ACrosshairMatchPlayerState>() : nullptr;
+ if (!Tag || !State || !Player || State->bMatchOver || Player->Team==CrosshairMatchRules::NoTeam) return;
+ const bool bConfirmed=CrosshairMatchRules::ConfirmsTag(Player->Team,Tag->VictimTeam);
+ if (bConfirmed) { ++Player->Confirms; (Player->Team==CrosshairMatchRules::Alpha ? State->AlphaScore : State->BravoScore)+=1; }
+ else ++Player->Denies;
+ if (auto* Human=Cast<ACrosshairPlayerController>(Collector))
+  Human->ClientNotify(bConfirmed ? TEXT("KILL CONFIRMED  +1") : FString::Printf(TEXT("KILL DENIED  -  %s's tag recovered"),*Tag->VictimName));
+ Tag->Destroy();
+ if (bConfirmed && CrosshairMatchRules::ReachedLimit(State->GetTeamScore(Player->Team),State->ScoreLimit))
+  EndMatch(ACrosshairMatchState::TeamName(Player->Team)+TEXT(" wins"));
 }
 void ACrosshairMatchGameMode::Respawn(AController* Controller)
 {

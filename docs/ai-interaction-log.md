@@ -3237,3 +3237,74 @@ Audited the source, uproject, Build.cs and config for platform-specific code. No
 ### Response Summary
 Made the project Mac-ready: no Windows-only blockers were found; added a Mac app icon, a Mac packaging script and a Mac guide (`docs/mac.md`). The Windows build and 12 automation tests pass. The Mac build itself must be run on a Mac (`sh Scripts/package_mac.sh`). Committed on master; the user pushes.
 ---
+
+---
+## Interaction 72
+
+### User Prompt
+Create a kill confirmed gamemode and set up a menu for lan games that allows the user to start the match once everyone has joined the lobby, this menu will also allow the players to select teams if they are playing team deathmatch or kill confirmed.
+
+### Interpretation
+Add Kill Confirmed as a third match mode, offline and on LAN. Change hosted LAN matches so they open in a lobby: everyone waits there, each player can pick Alpha or Bravo in the two team modes, and only the host can start the match.
+
+### Requirements / Acceptance Criteria
+- Kill Confirmed is a team mode. A kill drops the victim's dog tag, collecting an enemy tag scores 1 for your team, and collecting a teammate's tag denies the point. Kills alone never score.
+- Kill Confirmed can be chosen from the offline and LAN setup screens. Bots play it, including collecting tags.
+- A hosted LAN match waits in a lobby: no soldiers, bots or clock. The lobby shows who has joined.
+- In Team Deathmatch and Kill Confirmed, every player can choose a team from the lobby, within a per-team limit.
+- Only the host can start. Starting spawns everyone on their chosen team, adds bots for open slots and closes every player's lobby.
+- Offline matches and the existing LAN behaviour keep working.
+
+### Actions Taken
+Design decisions I made without asking the user (documented in docs/offline-match-and-lan.md):
+- The lobby runs on the match map, not on a separate map.
+- Each team holds at most half the human slots, rounded up.
+- Tags stay until collected. Suicides and falls drop no tag.
+- Kill Confirmed defaults to the COD settings: 6v6 to 65.
+
+Changes:
+- **Mode and options:** added `ECrosshairMatchMode::KillConfirmed`, `ConfirmScoreLimit` and the helpers `IsTeamMode`, `NextMode`, `ScoreLimitFor` and `ScoreGoal`. Replaced every TDM-only check with the team-mode helper.
+- **Dog tags:** new replicated `ACrosshairDogTag`. It spins and bobs, and each viewer sees it in their own colours: gold for an enemy tag, blue for their team's. The host decides pickups by distance.
+- **Scoring:** the game mode drops a tag on an enemy kill, and confirm/deny updates team score, player Confirms/Denies and a client notice.
+- **Bots:** they seek the nearest tag within 25 m and skip tags they cannot reach.
+- **Lobby (game mode):** LAN matches start in a lobby (`bInLobby`; nobody can spawn), with `RequestTeam`, host-only `StartFromLobby` and `BeginMatch` (bots, clock, spawns). The host's player state is flagged.
+- **Lobby (player controller):** a lobby screen that cannot be dismissed (Start, Team, Weapon classes, Settings, Leave) with team columns and open slots, plus server RPCs for team change and start, and a client notice. Each player's view shows their team's start area while waiting.
+- **HUD:** Kill Confirmed mode name, score goal, tag markers, and Confirm/Deny columns on the scoreboard. Menu help, setup rows and summaries now cover three modes.
+- **Tests:** a new automation test. The match smoke test gained an offline Kill Confirmed segment (confirm, deny, tag colour, bots collecting tags with a score invariant) and a lobby segment (no spawns, team switch, host start fills 2v2). The two-process LAN test now runs Kill Confirmed through the lobby, with the client switching team and the host starting.
+- **Test fix:** the match test now holds the sniper scope every tick, fixing the intermittent "Sniper ready to fire" failure already noted in Interaction 66.
+- **Docs:** updated the README and docs/offline-match-and-lan.md.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairBotMatch.h, CrosshairBotMatch.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairMatch.h, CrosshairMatch.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairMatchSession.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairBot.h, CrosshairBot.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h, CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairRulesTests.cpp, Tests/CrosshairMatchTest.cpp
+- README.md
+- docs/offline-match-and-lan.md
+- docs/ai-interaction-log.md
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development`: Succeeded.
+- `UnrealEditor-Cmd ... Automation RunTests Crosshair`: 13 Success, 0 Fail, including the new `Crosshair.Match.KillConfirmedAndLobby`.
+- `-game -CrosshairSmoke -CrosshairMatchSmoke -NullRHI`: CROSSHAIR_MATCH_OK, covering the Kill Confirmed and lobby steps.
+- Rendered match smoke (`-CrosshairMatchVisual -RenderOffscreen`): CROSSHAIR_MATCH_OK.
+  - Inspected MenuLobby, MatchDogTag (gold tag plus marker), MatchKillConfirmed and MatchKillConfirmedScoreboard.
+  - Two earlier rendered runs failed at the old intermittent "Sniper ready to fire" step before the scope-hold fix.
+  - One run failed at a tag-screenshot timing bug in my new test step, which I fixed.
+- Two processes, `-CrosshairLanHost` / `-CrosshairLanClient`: CROSSHAIR_LAN_HOST_OK and CROSSHAIR_LAN_CLIENT_OK, mode=Kill Confirmed.
+  - The listing read "HostAce - Kill Confirmed on Space Station, no bots (1/4)".
+  - The client switched to Alpha in the lobby and the host started the match.
+- `-CrosshairFrontendSmoke`, `-CrosshairLethalSmoke` and `-CrosshairExpansionSmoke`: all OK.
+- Core `-CrosshairSmoke`: CROSSHAIR_SMOKE_FAIL step=15 "Movement follows camera yaw and requested direction", in 3 of 3 runs. With this task's source changes stashed, the baseline build fails the same way, so the failure already existed and is unrelated. It was not fixed here.
+
+### Notes / Follow-up
+- **Existing failure:** the core smoke step 15 (backward movement over 0.2 s) needs investigating separately.
+- **LAN combat:** client firing still doesn't reach the host, so in LAN matches only the host's kills drop tags. Joined players can collect tags.
+- **Not verified:** two separate PCs, a full match to 65, physical controller play.
+- **Generated file:** Build/Windows/FileOpenOrder/EditorOpenOrder.log, rewritten by the editor runs, was restored and not committed.
+
+### Response Summary
+Added Kill Confirmed (dog tags, confirm/deny, bots collecting tags, scoreboard columns) and a LAN lobby with player lists, team choice for team modes and a host-only Start. The new and existing tests pass, except a core movement smoke step that also fails without these changes. Committed on master; the user pushes.
+---

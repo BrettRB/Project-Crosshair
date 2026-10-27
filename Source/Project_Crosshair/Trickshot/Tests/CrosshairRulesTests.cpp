@@ -187,6 +187,35 @@ bool FCrosshairMatchRulesTest::RunTest(const FString& Parameters)
  TestEqual(TEXT("Match maps travel to the COD map packages"),UCrosshairBotMatch::MapPackage(ECrosshairMatchMap::Grid),FName(TEXT("/Game/Crosshair/Maps/L_Grid")));
  return true;
 }
+#include "../CrosshairMatchSession.h"
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairKillConfirmedTest, "Crosshair.Match.KillConfirmedAndLobby", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairKillConfirmedTest::RunTest(const FString& Parameters)
+{
+ using namespace CrosshairMatchRules;
+ // Mode set: Kill Confirmed is a third, team-based mode with the COD 65 score limit.
+ TestTrue(TEXT("TDM and Kill Confirmed are team modes; FFA is not"),UCrosshairBotMatch::IsTeamMode(ECrosshairMatchMode::TeamDeathmatch) && UCrosshairBotMatch::IsTeamMode(ECrosshairMatchMode::KillConfirmed) && !UCrosshairBotMatch::IsTeamMode(ECrosshairMatchMode::FreeForAll));
+ TestTrue(TEXT("Mode cycles forward FFA > TDM > KC > FFA"),UCrosshairBotMatch::NextMode(ECrosshairMatchMode::TeamDeathmatch,1)==ECrosshairMatchMode::KillConfirmed && UCrosshairBotMatch::NextMode(ECrosshairMatchMode::KillConfirmed,1)==ECrosshairMatchMode::FreeForAll);
+ TestTrue(TEXT("Mode cycles backward FFA > KC"),UCrosshairBotMatch::NextMode(ECrosshairMatchMode::FreeForAll,-1)==ECrosshairMatchMode::KillConfirmed);
+ TestEqual(TEXT("Kill Confirmed is named for menus and LAN listings"),UCrosshairBotMatch::ModeName(ECrosshairMatchMode::KillConfirmed),FString(TEXT("Kill Confirmed")));
+ FCrosshairBotMatchOptions Options; Options.Mode=ECrosshairMatchMode::KillConfirmed;
+ TestEqual(TEXT("COD default: Kill Confirmed to 65"),UCrosshairBotMatch::ScoreLimitFor(Options),65);
+ UCrosshairBotMatch::ScoreLimitFor(Options)=500; UCrosshairBotMatch::Validate(Options);
+ TestTrue(TEXT("Kill Confirmed limit is bounded and separate from TDM"),Options.ConfirmScoreLimit==200 && Options.TeamScoreLimit==75 && Options.Mode==ECrosshairMatchMode::KillConfirmed);
+ TestTrue(TEXT("Kill Confirmed travels with its own mode option"),UCrosshairMatchSession::TravelOptions(Options,true).Contains(TEXT("CrosshairMode=KC?listen?CrosshairLan")));
+ TestEqual(TEXT("Score goal text names confirmed kills"),UCrosshairBotMatch::ScoreGoal(ECrosshairMatchMode::KillConfirmed,65),FString(TEXT("First team to 65 confirmed kills")));
+ // Tags: enemy kills drop one; collecting it confirms for the enemy, recovering it denies for the victim's team.
+ TestTrue(TEXT("An enemy kill drops a tag in Kill Confirmed"),DropsTag(true,Alpha,Bravo));
+ TestFalse(TEXT("No tags outside Kill Confirmed"),DropsTag(false,Alpha,Bravo));
+ TestFalse(TEXT("Suicides and environmental deaths drop no tag"),DropsTag(true,NoTeam,Bravo) || DropsTag(true,Bravo,Bravo));
+ TestTrue(TEXT("Collecting an enemy's tag confirms the kill"),ConfirmsTag(Alpha,Bravo));
+ TestFalse(TEXT("Collecting a teammate's tag denies it"),ConfirmsTag(Bravo,Bravo));
+ // Lobby team capacity: half the human slots each, rounded up.
+ TestEqual(TEXT("Eight players: four per team"),TeamCapacity(8),4);
+ TestEqual(TEXT("Odd counts round up"),TeamCapacity(5),3);
+ TestTrue(TEXT("A team with room accepts a player"),CanJoinTeam(3,8));
+ TestFalse(TEXT("A full team refuses a player"),CanJoinTeam(4,8));
+ return true;
+}
 #include "../CrosshairTrickshot.h"
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairTrickshotLabelTest, "Crosshair.Match.KillLabels", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
 bool FCrosshairTrickshotLabelTest::RunTest(const FString& Parameters)

@@ -34,4 +34,8 @@ private:
  FVector AimError=FVector::ZeroVector;
  FVector Destination=FVector::ZeroVector,LastKnown=FVector::ZeroVector,LastProgressLocation=FVector::ZeroVector;
  bool bHasDestination=false,bDirectMove=false;
+ /** Kill Confirmed: the dog tag this bot is walking to (enemy tags to confirm, its team's to deny). */
+ TWeakObjectPtr<AActor> GoalTag,SkippedTag;
+ bool bChasingTag=false;
+ bool SeekTag();
 };

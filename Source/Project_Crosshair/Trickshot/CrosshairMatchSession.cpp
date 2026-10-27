@@ -27,7 +27,7 @@ FString UCrosshairMatchSession::TravelOptions(const FCrosshairBotMatchOptions& O
 {
  // A LAN host flags the match so the game mode uses the LAN setup (bots, max players) instead of the offline one.
  return FString::Printf(TEXT("game=/Script/Project_Crosshair.CrosshairMatchGameMode?CrosshairMode=%s%s"),
-  Options.Mode==ECrosshairMatchMode::TeamDeathmatch ? TEXT("TDM") : TEXT("FFA"),bListen ? TEXT("?listen?CrosshairLan") : TEXT(""));
+  Options.Mode==ECrosshairMatchMode::KillConfirmed ? TEXT("KC") : Options.Mode==ECrosshairMatchMode::TeamDeathmatch ? TEXT("TDM") : TEXT("FFA"),bListen ? TEXT("?listen?CrosshairLan") : TEXT(""));
 }
 bool UCrosshairMatchSession::CanTravel(FString& Reason) const
 {

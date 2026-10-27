@@ -19,7 +19,7 @@ ACrosshairBotController::ACrosshairBotController()
 void ACrosshairBotController::OnPossess(APawn* InPawn)
 {
  Super::OnPossess(InPawn);
- Target=nullptr; bHasDestination=false; bDirectMove=false; NextDecisionAt=0; LastKnown=FVector::ZeroVector;
+ Target=nullptr; bHasDestination=false; bDirectMove=false; bChasingTag=false; GoalTag=nullptr; NextDecisionAt=0; LastKnown=FVector::ZeroVector;
  Tuning=GetGameInstance()->GetSubsystem<UCrosshairBotMatch>()->GetCurrentTuning();
  if (auto* Soldier=Cast<ACrosshairCharacter>(InPawn))
  {
@@ -131,10 +131,27 @@ void ACrosshairBotController::Engage(float DeltaSeconds)
  // Semi-automatic weapons need a fresh trigger pull for each shot.
  if (!Weapon->Definition->bAutomatic) Weapon->StopFire();
 }
+bool ACrosshairBotController::SeekTag()
+{
+ // Kill Confirmed: head for the nearest tag in reach, even mid-route; tags score (or deny) the match.
+ const auto* State=ACrosshairMatchState::Get(this);
+ auto* Self=Cast<ACrosshairCharacter>(GetPawn());
+ if (bChasingTag && (!GoalTag.IsValid() || !bHasDestination)) bChasingTag=false;
+ if (bChasingTag || !State || !State->IsKillConfirmed() || !Self) return bChasingTag;
+ ACrosshairDogTag* Nearest=nullptr; float Best=2500.f;
+ for (TActorIterator<ACrosshairDogTag> It(GetWorld());It;++It)
+  if (const float Distance=FVector::Dist(It->GetActorLocation(),Self->GetActorLocation()); Distance<Best && *It!=SkippedTag.Get()) { Best=Distance; Nearest=*It; }
+ if (!Nearest) return false;
+ GoalTag=Nearest; bChasingTag=bHasDestination=true; Destination=Nearest->GetActorLocation();
+ bDirectMove=MoveToLocation(Destination,30.f,false,true,true,false)==EPathFollowingRequestResult::Failed;
+ LastProgressAt=GetWorld()->GetTimeSeconds(); LastProgressLocation=Self->GetActorLocation();
+ return true;
+}
 void ACrosshairBotController::Roam()
 {
  auto* Self=Cast<ACrosshairCharacter>(GetPawn());
  const double Now=GetWorld()->GetTimeSeconds();
+ SeekTag();
  if (!bHasDestination)
  {
   FVector Goal=Self->GetActorLocation();
@@ -159,7 +176,12 @@ void ACrosshairBotController::Roam()
   SetControlRotation(FRotator(0,Direction.Rotation().Yaw,0));
  }
  else if (GetMoveStatus()==EPathFollowingStatus::Idle) bHasDestination=false;
- if (FVector::Dist2D(Self->GetActorLocation(),Destination)<150.f) bHasDestination=false;
+ if (FVector::Dist2D(Self->GetActorLocation(),Destination)<(bChasingTag ? 40.f : 150.f)) bHasDestination=false;
  if (FVector::DistSquared2D(Self->GetActorLocation(),LastProgressLocation)>FMath::Square(100.f)) { LastProgressAt=Now; LastProgressLocation=Self->GetActorLocation(); }
- else if (Now-LastProgressAt>3.0) { StopMovement(); bHasDestination=false; if (bDirectMove) Self->Jump(); LastProgressAt=Now; }
+ else if (Now-LastProgressAt>3.0)
+ {
+  // A tag the bot cannot reach (a roof, a ledge) is left for others.
+  if (bChasingTag) { SkippedTag=GoalTag; bChasingTag=false; }
+  StopMovement(); bHasDestination=false; if (bDirectMove) Self->Jump(); LastProgressAt=Now;
+ }
 }

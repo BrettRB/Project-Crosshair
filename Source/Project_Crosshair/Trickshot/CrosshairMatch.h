@@ -42,6 +42,14 @@ namespace CrosshairMatchRules
  { return SecondsSinceDamage<Delay ? Health : FMath::Min(MaxHealth,Health+Rate*Delta); }
  /** Bots needed so each team has TeamSize players; humans are already assigned. */
  inline int32 BotsForTeam(int32 TeamSize,int32 HumansOnTeam) { return FMath::Max(0,TeamSize-HumansOnTeam); }
+ /** Kill Confirmed: a kill by an enemy drops the victim's tag (suicides and falls drop none). */
+ inline bool DropsTag(bool bKillConfirmed,uint8 KillerTeam,uint8 VictimTeam)
+ { return bKillConfirmed && KillerTeam!=NoTeam && VictimTeam!=NoTeam && KillerTeam!=VictimTeam; }
+ /** Collecting an enemy's tag confirms the kill (team +1); collecting a teammate's tag denies it. */
+ inline bool ConfirmsTag(uint8 CollectorTeam,uint8 VictimTeam) { return CollectorTeam!=VictimTeam; }
+ /** LAN lobby: each team holds at most half the human slots (rounded up). */
+ inline int32 TeamCapacity(int32 MaxHumans) { return FMath::Max(1,(MaxHumans+1)/2); }
+ inline bool CanJoinTeam(int32 HumansAlreadyOnTeam,int32 MaxHumans) { return HumansAlreadyOnTeam<TeamCapacity(MaxHumans); }
 }
 
 UENUM(BlueprintType)
@@ -118,6 +126,36 @@ public:
  UPROPERTY(Replicated,BlueprintReadOnly) int32 Kills=0;
  UPROPERTY(Replicated,BlueprintReadOnly) int32 Deaths=0;
  UPROPERTY(Replicated,BlueprintReadOnly) uint8 Team=CrosshairMatchRules::NoTeam;
+ /** Kill Confirmed: enemy tags collected and teammate tags denied. */
+ UPROPERTY(Replicated,BlueprintReadOnly) int32 Confirms=0;
+ UPROPERTY(Replicated,BlueprintReadOnly) int32 Denies=0;
+ /** The LAN host, who starts the match from the lobby. */
+ UPROPERTY(Replicated,BlueprintReadOnly) bool bLobbyHost=false;
+};
+
+/**
+ * Kill Confirmed dog tag dropped where a player was killed. The killer's team collects it to score;
+ * the victim's team collects it to deny the point. The host decides pickups; clients only show it.
+ */
+UCLASS()
+class PROJECT_CROSSHAIR_API ACrosshairDogTag : public AActor
+{
+ GENERATED_BODY()
+public:
+ ACrosshairDogTag();
+ virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+ virtual void BeginPlay() override;
+ virtual void Tick(float DeltaSeconds) override;
+ UPROPERTY(VisibleAnywhere) TObjectPtr<class UStaticMeshComponent> Tag;
+ UPROPERTY(Replicated,BlueprintReadOnly) uint8 VictimTeam=CrosshairMatchRules::NoTeam;
+ UPROPERTY(Replicated,BlueprintReadOnly) FString VictimName;
+ /** Horizontal pickup reach from a living soldier's capsule centre. */
+ UPROPERTY(EditDefaultsOnly) float PickupRadius=100.f;
+ /** The team the local viewer sees this tag for (255 before it is known); tests read it. */
+ uint8 GetShownForTeam() const { return ShownForTeam; }
+private:
+ UPROPERTY(Transient) TObjectPtr<class UMaterialInstanceDynamic> Material;
+ uint8 ShownForTeam=255;
 };
 
 /** Replicated scoreboard, clock and kill feed. Its presence marks a match world. */
@@ -128,7 +166,8 @@ class PROJECT_CROSSHAIR_API ACrosshairMatchState : public AGameStateBase
 public:
  virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
  static ACrosshairMatchState* Get(const UObject* WorldContext);
- bool IsTeamMode() const { return Mode==ECrosshairMatchMode::TeamDeathmatch; }
+ bool IsTeamMode() const { return UCrosshairBotMatch::IsTeamMode(Mode); }
+ bool IsKillConfirmed() const { return Mode==ECrosshairMatchMode::KillConfirmed; }
  float GetRemainingSeconds() const;
  int32 GetTeamScore(uint8 Team) const { return Team==CrosshairMatchRules::Alpha ? AlphaScore : Team==CrosshairMatchRules::Bravo ? BravoScore : 0; }
  static FString TeamName(uint8 Team);
@@ -143,6 +182,14 @@ public:
  UPROPERTY(Replicated,BlueprintReadOnly) FString Result;
  UPROPERTY(Replicated,BlueprintReadOnly) FString MapName;
  UPROPERTY(Replicated,BlueprintReadOnly) TArray<FCrosshairKillEntry> KillFeed;
+ /** LAN matches wait here until the host starts: no pawns, bots or clock yet. */
+ UPROPERTY(Replicated,BlueprintReadOnly) bool bInLobby=false;
+ /** Human player limit, shown in the lobby. */
+ UPROPERTY(Replicated,BlueprintReadOnly) int32 MaxHumans=1;
+ /** Lobby summary of the host's setup, e.g. "Bots fill open slots  /  10 minutes". */
+ UPROPERTY(Replicated,BlueprintReadOnly) FString LobbyInfo;
+ /** Human players in the match (bots and replay spectators excluded). */
+ int32 CountHumans(uint8 Team=255) const;
 };
 
 /** Offline/LAN FFA and TDM rules for the COD maps. The host is authoritative. */
@@ -163,6 +210,17 @@ public:
  virtual bool ShouldSpawnAtStartSpot(AController* Player) override { return false; }
  /** LAN host: refuses joins once the setup's human player limit is reached. */
  virtual void PreLogin(const FString& Options,const FString& Address,const FUniqueNetIdRepl& UniqueId,FString& ErrorMessage) override;
+ /** Nobody spawns while a LAN match waits in its lobby. */
+ virtual bool PlayerCanRestart_Implementation(APlayerController* Player) override;
+ /** Marks the LAN host's player state (local players are only known after login). */
+ virtual void PostLogin(APlayerController* NewPlayer) override;
+ bool IsInLobby() const;
+ /** Lobby team choice (TDM / Kill Confirmed). False when the team is full or teams are locked. */
+ bool RequestTeam(APlayerController* Player,uint8 Team);
+ /** The host leaves the lobby: bots join, everyone spawns and the clock starts. */
+ bool StartFromLobby(APlayerController* Requester);
+ /** Kill Confirmed pickup, decided on the host. */
+ void CollectTag(ACrosshairDogTag* Tag,AController* Collector);
  /** Hosted from the LAN setup (travel option CrosshairLan) rather than the offline match setup. */
  bool IsLanMatch() const { return bLanMatch; }
  int32 GetMaxHumans() const { return MaxHumans; }
@@ -185,8 +243,11 @@ private:
  void AddBot(uint8 Team,int32 Number);
  void Respawn(AController* Controller);
  void CollectSpawnPoints();
+ /** Bots, clock and first spawns: at StartPlay offline, or when the host leaves the LAN lobby. */
+ void BeginMatch();
+ void DropTag(AController* Victim,const FVector& Where);
  FCrosshairBotMatchOptions MatchOptions;
- bool bLanMatch=false;
+ bool bLanMatch=false,bLobby=false;
  int32 MaxHumans=1;
  UPROPERTY() TArray<TObjectPtr<ACrosshairSpawnPoint>> SpawnPoints;
  TSet<TWeakObjectPtr<AController>> HasSpawned;

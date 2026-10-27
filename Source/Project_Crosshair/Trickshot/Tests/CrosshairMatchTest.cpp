@@ -409,7 +409,7 @@ void UCrosshairMatchTest::TickLan()
    if (!PC || !PC->GetPawn() || Elapsed<=1) return;
    // Host setup as a player would choose it on the LAN tab: username, Space Station, no bots, four players.
    FCrosshairSettings& S=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
-   S.PlayerName=TEXT("HostAce"); S.Lan.Match.Mode=ECrosshairMatchMode::FreeForAll; S.Lan.Match.Map=ECrosshairMatchMap::SpaceStation; S.Lan.Match.bBots=false; S.Lan.MaxPlayers=4;
+   S.PlayerName=TEXT("HostAce"); S.Lan.Match.Mode=ECrosshairMatchMode::KillConfirmed; S.Lan.Match.Map=ECrosshairMatchMap::SpaceStation; S.Lan.Match.bBots=false; S.Lan.MaxPlayers=4;
    Check(Session->HostLanMatch(),TEXT("Host starts a LAN session")); Next(1); return;
   }
   if (!Match || World->GetNetMode()!=NM_ListenServer) return;
@@ -422,14 +422,30 @@ void UCrosshairMatchTest::TickLan()
    const auto* Mode=World->GetAuthGameMode<ACrosshairMatchGameMode>();
    int32 Bots=0; for (APlayerState* Player:Match->PlayerArray) Bots+=Player && Player->IsABot() ? 1 : 0;
    if (!Check(Mode && Mode->IsLanMatch() && Mode->GetMaxHumans()==4 && !Mode->GetOptions().bBots && Bots==0 && World->GetMapName().Contains(TEXT("L_SpaceStation")),TEXT("LAN setup applies: Space Station, bots off, four players"))) return;
+   if (!Check(Match->bInLobby && Match->IsKillConfirmed() && !PC->GetPawn(),TEXT("Both players wait in the Kill Confirmed lobby before the match starts"))) return;
    Next(30); return;
+  }
+  if (Step==31)
+  {
+   // The joined player picks Alpha from their lobby; the host then starts the match.
+   if (Match->CountHumans(CrosshairMatchRules::Alpha)<2) { if (Elapsed>30) Check(false,TEXT("Host sees the joined player's team choice")); return; }
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Host sees the joined player switch to Alpha"));
+   auto* Host=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
+   if (!Check(Host && Host->bLobbyScreen && Host->GetVisibleMenuRows().Contains(Host->LobbyStartRow),TEXT("The host's lobby shows Start match"))) return;
+   Host->ActivateMenuRow(Host->LobbyStartRow);
+   Next(32); return;
+  }
+  if (Step==32)
+  {
+   if (Match->bInLobby || !PC->GetPawn()) { if (Elapsed>20) Check(false,TEXT("Host starts the match from the lobby")); return; }
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Host started the match from the lobby")); Next(3); return;
   }
   if (Step==30)
   {
    // Each machine sends its own username; wait for the client's to arrive.
    TSet<FString> Names; for (APlayerState* Player:Match->PlayerArray) if (Player) Names.Add(Player->GetPlayerName());
    if (!(Names.Contains(TEXT("HostAce")) && Names.Contains(TEXT("ClientBee")))) { if (Elapsed>10) Check(false,TEXT("Usernames reach the host")); return; }
-   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Usernames reach the host: HostAce and ClientBee")); Next(3); return;
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Usernames reach the host: HostAce and ClientBee")); Next(31); return;
   }
   // The joined player's pawn as simulated on the host: sprint intent must arrive, or the host corrects them to walk speed.
   const ACrosshairCharacter* Mine=RunForward();
@@ -451,11 +467,30 @@ void UCrosshairMatchTest::TickLan()
   if (!Check(Session->JoinLanMatch(0),TEXT("Client joins the first LAN match found"))) return;
   Next(2); return;
  case 2:
-  if (World->GetNetMode()!=NM_Client || !Match || !PC || !PC->GetPawn() || Elapsed<3) return;
-  if (!Check(Match->PlayerArray.Num()>=2,TEXT("Client receives the host's replicated match and spawns"))) return;
+ {
+  auto* Menu=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
+  if (World->GetNetMode()!=NM_Client || !Match || !Menu || !Menu->bLobbyScreen || Elapsed<3) return;
+  if (!Check(Match->PlayerArray.Num()>=2 && Match->bInLobby && !PC->GetPawn(),TEXT("Client joins the host's lobby and waits without a soldier"))) return;
   { TSet<FString> Names; for (APlayerState* Player:Match->PlayerArray) if (Player) Names.Add(Player->GetPlayerName());
     if (!(Names.Contains(TEXT("HostAce")) && Names.Contains(TEXT("ClientBee")))) { if (Elapsed>15) Check(false,TEXT("Client sees both usernames")); return; } }
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Client sees both usernames on %s"),*Match->MapName);
+  const TArray<int32> Rows=Menu->GetVisibleMenuRows();
+  if (!Check(!Menu->IsLobbyHost() && !Rows.Contains(Menu->LobbyStartRow) && Rows.Contains(Menu->LobbyTeamRow),TEXT("A joined player's lobby offers team choice but cannot start the match"))) return;
+  // Balanced on arrival (host Alpha, client Bravo); switch to the host's team.
+  const auto* Me=Menu->GetPlayerState<ACrosshairMatchPlayerState>();
+  if (!Check(Me && Me->Team==CrosshairMatchRules::Bravo,TEXT("The joined player is balanced onto Bravo"))) return;
+  Menu->AdjustMenuRow(Menu->LobbyTeamRow,1);
+  Next(4); return;
+ }
+ case 4:
+ {
+  const auto* Me=PC ? PC->GetPlayerState<ACrosshairMatchPlayerState>() : nullptr;
+  if (!Me || Me->Team!=CrosshairMatchRules::Alpha) { if (Elapsed>15) Check(false,TEXT("Client's team choice reaches the host")); return; }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Client switched to Alpha from the lobby")); Next(5); return;
+ }
+ case 5:
+  if (const auto* Menu=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController()); !Match || Match->bInLobby || !Menu || !Menu->GetPawn() || Menu->bMenuOpen) { if (Elapsed>60) Check(false,TEXT("Client spawns when the host starts")); return; }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Client's lobby closes and the soldier spawns when the host starts"));
   Next(3); return;
  case 3:
  {
@@ -474,7 +509,7 @@ void UCrosshairMatchTest::TickLan()
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO client saw the host's top speed %.0f cm/s, stepping weight %.2f"),HostSpeedMax,HostSteppingMax);
   if (!Check(HostSpeedMax>300.f,TEXT("Client sees the host player moving"))) return;
   if (!Check(HostSteppingMax>.8f,TEXT("The host's soldier plays walk/jog locomotion on the client instead of sliding"))) return;
-  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_OK mode=%s map=%s players=%d"),Match->IsTeamMode() ? TEXT("TDM") : TEXT("FFA"),*Match->MapName,Match->PlayerArray.Num());
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_OK mode=%s map=%s players=%d"),*UCrosshairBotMatch::ModeName(Match->Mode),*Match->MapName,Match->PlayerArray.Num());
   bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
  }
  default: return;
@@ -760,6 +795,8 @@ void UCrosshairMatchTest::Tick(float Delta)
   // Wait in game time (rendered frames can be slow) for the sniper draw and scope to settle.
   if (World->GetTimeSeconds()-WorldMark<1.2 || !Weapon || Weapon->IsSwitching() || Pawn->GetAimAlpha()<.95f)
   {
+   // Keep the scope held: an engine key flush (focus change while rendering offscreen) releases it.
+   Pawn->SetBotInput(true,false);
    PC->SetControlRotation((Bot->GetMesh()->GetBoneLocation(TEXT("spine_03"))-Pawn->GetFirstPersonCameraComponent()->GetComponentLocation()).Rotation());
    if (Elapsed>20)
    {
@@ -952,14 +989,157 @@ void UCrosshairMatchTest::Tick(float Delta)
  case 15:
   if (Match || !Pawn || !MapName.Contains(TEXT("L_Practice"))) { if (Elapsed>90) Check(false,TEXT("Leave match returns to practice")); return; }
   if (!Check(!World->IsPaused(),TEXT("Leaving a paused match unpauses"))) return;
-  Options.Mode=ECrosshairMatchMode::FreeForAll; Options.Map=ECrosshairMatchMap::Nuketown; Replay->SaveSettings();
+  Options.Mode=ECrosshairMatchMode::KillConfirmed; Options.Map=ECrosshairMatchMap::Nuketown; Options.TeamSize=6; Replay->SaveSettings();
+  if (!Check(Session->StartOfflineMatch(),TEXT("Offline Kill Confirmed travel to Nuketown starts"))) return;
+  Next(60); return;
+ case 60: case 61: case 62: case 66:
+ {
+  if (!Match || !Mode || !MapName.Contains(TEXT("L_Nuketown")) || !Pawn) { if (Elapsed>180) Check(false,TEXT("Nuketown Kill Confirmed loads")); return; }
+  if (Characters().Num()<12) { if (Elapsed>60) Check(false,TEXT("Kill Confirmed spawns twelve players")); return; }
+  auto FindTag=[&](uint8 Team)->ACrosshairDogTag* { for (TActorIterator<ACrosshairDogTag> It(World);It;++It) if (It->VictimTeam==Team) return *It; return nullptr; };
+  // The spawn point farthest from every living soldier, so nobody else walks over the test tag.
+  auto Isolated=[&]()
+  {
+   FVector Best=FVector::ZeroVector; float BestGap=-1.f;
+   for (const ACrosshairSpawnPoint* Point:Mode->GetSpawnPoints())
+   {
+    float Gap=FLT_MAX;
+    for (const ACrosshairCharacter* Other:Characters()) if (!Other->Health->bDead) Gap=FMath::Min(Gap,float(FVector::Dist(Other->GetActorLocation(),Point->GetActorLocation())));
+    if (Gap>BestGap) { BestGap=Gap; Best=Point->GetActorLocation(); }
+   }
+   return Best;
+  };
+  // Kill Victim at an isolated spot with Killer's credit, then stand the player on the dropped tag.
+  auto DropAndWalkOver=[&](ACrosshairCharacter* Dying,AController* Killer,uint8 TagTeam,bool bWalkOver=true)->bool
+  {
+   if (!Dying || !Killer) return Check(false,TEXT("Kill Confirmed test soldiers are alive"));
+   Dying->SetActorLocation(Isolated(),false,nullptr,ETeleportType::TeleportPhysics);
+   const int32 Alpha=Match->AlphaScore,Bravo=Match->BravoScore;
+   if (!Check(Dying->Health->ApplyDamage(500,Killer,nullptr,false,TEXT("Test"))>0 && Dying->Health->bDead,TEXT("Kill Confirmed test kill lands"))) return false;
+   if (!Check(Match->AlphaScore==Alpha && Match->BravoScore==Bravo,TEXT("A Kill Confirmed kill does not score until its tag is collected"))) return false;
+   ACrosshairDogTag* Tag=FindTag(TagTeam);
+   if (!Check(Tag!=nullptr,TEXT("The kill drops the victim's dog tag"))) return false;
+   if (bWalkOver) Pawn->SetActorLocation(Tag->GetActorLocation()+FVector(0,0,55),false,nullptr,ETeleportType::TeleportPhysics);
+   return true;
+  };
+  if (Step==66)
+  {
+   // Rendered check of the tag itself: stand a few metres back and look at it before collecting.
+   ACrosshairDogTag* Tag=FindTag(CrosshairMatchRules::Bravo);
+   if (!Check(Tag!=nullptr,TEXT("The dropped tag waits to be collected"))) return;
+   if (Elapsed<.1)
+   {
+    // A spot about 3 m away on open ground with a clear view of the tag.
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairTagView),false);
+    for (ACrosshairCharacter* Character:Characters()) Params.AddIgnoredActor(Character);
+    Params.AddIgnoredActor(Tag);
+    for (int32 Yaw=0;Yaw<360;Yaw+=45)
+    {
+     const FVector Probe=Tag->GetActorLocation()+FRotator(0,Yaw,0).Vector()*300.f;
+     FHitResult Floor,Blocked;
+     if (!World->LineTraceSingleByChannel(Floor,Probe+FVector(0,0,200),Probe-FVector(0,0,300),ECC_Visibility,Params)) continue;
+     const FVector Stand=Floor.ImpactPoint+FVector(0,0,97);
+     if (World->LineTraceSingleByChannel(Blocked,Stand+FVector(0,0,60),Tag->GetActorLocation(),ECC_Visibility,Params)) continue;
+     Pawn->SetActorLocation(Stand,false,nullptr,ETeleportType::TeleportPhysics);
+     break;
+    }
+   }
+   PC->SetControlRotation((Tag->GetActorLocation()-Pawn->GetPawnViewLocation()).Rotation());
+   if (Elapsed<1.5) return;
+   if (!Check(Tag->GetShownForTeam()==CrosshairMatchRules::Alpha,TEXT("The tag is coloured for the viewer's team (gold: an enemy tag to confirm)"))) return;
+   // Capture well before walking over it, so the last screenshot is not taken mid-pickup.
+   if (Elapsed<2.2) Capture(TEXT("MatchDogTag.png"));
+   if (Elapsed<3.5) return;
+   Pawn->SetActorLocation(Tag->GetActorLocation()+FVector(0,0,55),false,nullptr,ETeleportType::TeleportPhysics);
+   Next(61); return;
+  }
+  if (Step==60)
+  {
+   if (!Check(Match->IsKillConfirmed() && Match->IsTeamMode() && Match->ScoreLimit==65 && !Match->bInLobby && Me && Me->Team==CrosshairMatchRules::Alpha,TEXT("Offline Kill Confirmed: 6v6 to 65, no lobby, player on Alpha"))) return;
+   // Hold the bots still so only the test collects these tags.
+   for (TActorIterator<ACrosshairBotController> It(World);It;++It)
+   {
+    It->SetActorTickEnabled(false); It->StopMovement();
+    if (auto* Frozen=Cast<ACrosshairCharacter>(It->GetPawn())) if (Frozen->Inventory->GetCurrent()) Frozen->Inventory->GetCurrent()->StopFire();
+   }
+   const int32 Kills=Me->Kills;
+   if (!DropAndWalkOver(LiveBot(CrosshairMatchRules::Bravo),PC,CrosshairMatchRules::Bravo,false)) return;
+   if (!Check(Me->Kills==Kills+1,TEXT("The killer is still credited with the kill"))) return;
+   Next(66); return;
+  }
+  if (Step==61)
+  {
+   if (FindTag(CrosshairMatchRules::Bravo)) { if (Elapsed>5) Check(false,TEXT("Walking over an enemy tag collects it")); return; }
+   if (!Check(Match->AlphaScore==1 && Match->BravoScore==0 && Me->Confirms==1 && PC->Notice.Contains(TEXT("CONFIRMED")),TEXT("Collecting an enemy tag confirms the kill: team +1"))) return;
+   Capture(TEXT("MatchKillConfirmed.png"));
+   // A teammate killed by an enemy: recovering their tag denies Bravo the point.
+   ACrosshairCharacter* Killer=LiveBot(CrosshairMatchRules::Bravo);
+   if (!DropAndWalkOver(LiveBot(CrosshairMatchRules::Alpha),Killer ? Killer->GetController() : nullptr,CrosshairMatchRules::Alpha)) return;
+   Next(62); return;
+  }
+  if (FindTag(CrosshairMatchRules::Alpha)) { if (Elapsed>5) Check(false,TEXT("Walking over a teammate's tag collects it")); return; }
+  if (!Check(Match->AlphaScore==1 && Match->BravoScore==0 && Me->Denies==1 && PC->Notice.Contains(TEXT("DENIED")),TEXT("Recovering a teammate's tag denies the kill: no score"))) return;
+  for (TActorIterator<ACrosshairBotController> It(World);It;++It) It->SetActorTickEnabled(true);
+  Next(63); return;
+ }
+ case 63:
+ {
+  // Bots fight on their own: their kills drop tags, and they go and collect them.
+  int32 BotConfirms=0,BotDenies=0;
+  for (TActorIterator<ACrosshairBotController> It(World);It;++It) if (const auto* State=It->GetPlayerState<ACrosshairMatchPlayerState>()) { BotConfirms+=State->Confirms; BotDenies+=State->Denies; }
+  if (BotConfirms+BotDenies==0) { if (Elapsed>150) Check(false,TEXT("Bots collect dog tags")); return; }
+  // Team score is exactly the tags its members confirmed (kills alone never score).
+  int32 Confirmed[3]={0,0,0};
+  for (const ACrosshairMatchPlayerState* Player:Match->GetStandings()) Confirmed[FMath::Min<uint8>(Player->Team,2)]+=Player->Confirms;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO bots confirmed %d and denied %d tags after %.0fs; score Alpha %d Bravo %d"),BotConfirms,BotDenies,Elapsed,Match->AlphaScore,Match->BravoScore);
+  if (!Check(Match->AlphaScore==Confirmed[CrosshairMatchRules::Alpha] && Match->BravoScore==Confirmed[CrosshairMatchRules::Bravo],TEXT("Bots collect dog tags, and each team's score equals its confirmed tags"))) return;
+  Key(EKeys::Tab,IE_Pressed); Capture(TEXT("MatchKillConfirmedScoreboard.png"));
+  Next(64); return;
+ }
+ case 64:
+  if (Elapsed<1.5) return;
+  Key(EKeys::Tab,IE_Released);
+  Session->LeaveMatch(); Next(65); return;
+ case 65:
+ {
+  if (Match || !Pawn || !MapName.Contains(TEXT("L_Practice"))) { if (Elapsed>90) Check(false,TEXT("Leaving Kill Confirmed returns to practice")); return; }
+  // Host a Team Deathmatch LAN match: it opens in the lobby.
+  FCrosshairLanOptions& Lan=Replay->GetSettings().Lan;
+  Lan.Match.Mode=ECrosshairMatchMode::TeamDeathmatch; Lan.Match.Map=ECrosshairMatchMap::Nuketown; Lan.Match.bBots=true; Lan.Match.TeamSize=2; Lan.MaxPlayers=4;
+  Replay->SaveSettings();
   if (!Check(Session->HostLanMatch(),TEXT("LAN host session creation starts"))) return;
   Next(16); return;
+ }
  case 16:
-  if (!Match || !Pawn || World->GetNetMode()!=NM_ListenServer) { if (Elapsed>120) Check(false,Session->LanStatus.IsEmpty() ? TEXT("LAN host opens a listen server") : *Session->LanStatus); return; }
+ {
+  if (!Match || !Mode || !PC || World->GetNetMode()!=NM_ListenServer || !PC->bLobbyScreen) { if (Elapsed>120) Check(false,Session->LanStatus.IsEmpty() ? TEXT("LAN host opens a listen server") : *Session->LanStatus); return; }
   if (!Check(Session->HasLanSession(),TEXT("LAN host advertises a same-network session as a listen server"))) return;
+  int32 Bots=0; for (ACrosshairCharacter* Character:Characters()) Bots+=Character->IsBot() ? 1 : 0;
+  if (!Check(Match->bInLobby && Mode->IsInLobby() && !Pawn && Bots==0 && Match->MatchEndsAt<=0,TEXT("A hosted LAN match waits in the lobby: no soldiers, bots or clock"))) return;
+  const TArray<int32> Rows=PC->GetVisibleMenuRows();
+  if (!Check(PC->IsLobbyHost() && Rows.Contains(PC->LobbyStartRow) && Rows.Contains(PC->LobbyTeamRow) && Me && Me->bLobbyHost,TEXT("The host's lobby offers Start match and team choice"))) return;
+  const uint8 Before=Me->Team;
+  PC->AdjustMenuRow(PC->LobbyTeamRow,1);
+  if (!Check(Before==CrosshairMatchRules::Alpha && Me->Team==CrosshairMatchRules::Bravo,TEXT("The lobby team row switches the player from Alpha to Bravo"))) return;
+  Next(70); return;
+ }
+ case 70:
+  if (Elapsed<1) return;
+  Capture(TEXT("MenuLobby.png"));
+  if (Elapsed<3) return;
+  PC->ActivateMenuRow(PC->LobbyStartRow);
+  Next(71); return;
+ case 71:
+ {
+  if (!Match || Match->bInLobby || !Pawn || PC->bMenuOpen) { if (Elapsed>30) Check(false,TEXT("Start match leaves the lobby and spawns the host")); return; }
+  int32 Bots=0; for (ACrosshairCharacter* Character:Characters()) Bots+=Character->IsBot() ? 1 : 0;
+  const ACrosshairSpawnPoint* Start=Mode->GetLastSpawn(PC);
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO lobby start: bots=%d team=%d start=%s"),Bots,Me ? Me->Team : 0,Start ? *Start->Area : TEXT("-"));
+  if (!Check(Bots==3 && Me && Me->Team==CrosshairMatchRules::Bravo && Start && Start->InitialTeam==ECrosshairSpawnTeam::Bravo && Match->GetRemainingSeconds()>0,TEXT("Starting from the lobby fills 2v2 with bots and spawns the host on the chosen team"))) return;
+  Capture(TEXT("MatchLobbyStarted.png"));
   Session->FindLanMatches();
   Next(17); return;
+ }
  case 17:
   if (Session->bSearching && Elapsed<15) return;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO LAN search: %s"),*Session->LanStatus);
