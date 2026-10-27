@@ -40,6 +40,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Aiming") ECrosshairAimStyle AimStyle = ECrosshairAimStyle::IronSights;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage", meta=(ClampMin="0")) float BodyDamage = 100.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage", meta=(ClampMin="0")) float HeadDamage = 100.f;
+	/**
+	 * Match damage against soldiers (players and bots, every match mode); practice targets use Body/HeadDamage.
+	 * Black Ops style: full damage out to FalloffStart, easing to MinDamage at FalloffEnd (players have 100 health).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Match damage", meta=(ClampMin="0")) float MatchMaxDamage = 100.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Match damage", meta=(ClampMin="0")) float MatchMinDamage = 100.f;
+	/** Distances in cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Match damage", meta=(ClampMin="0")) float MatchFalloffStart = 100000.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Match damage", meta=(ClampMin="0")) float MatchFalloffEnd = 100000.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Match damage", meta=(ClampMin="0")) float MatchHeadMultiplier = 1.f;
+	/** Arms and legs. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Match damage", meta=(ClampMin="0")) float MatchLimbMultiplier = 1.f;
 	/** Thin-wall penetration measures each solid's entry-to-exit distance in cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Penetration", meta=(ClampMin="0")) float PenetrationDepth = 40.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Penetration", meta=(ClampMin="0", ClampMax="4")) int32 PenetrationLayers = 2;
@@ -170,6 +182,24 @@ public:
 
 namespace CrosshairRules
 {
+	enum class EHitZone : uint8 { Body, Head, Limb };
+	/** Skeleton bone -> hit zone: the head bone is a headshot; arm and leg bones are limbs. */
+	inline EHitZone ZoneForBone(FName Bone)
+	{
+		if (Bone == TEXT("head")) return EHitZone::Head;
+		const FString Name = Bone.ToString();
+		for (const TCHAR* Limb : {TEXT("upperarm"), TEXT("lowerarm"), TEXT("hand"), TEXT("thigh"), TEXT("calf"), TEXT("foot"), TEXT("ball")})
+			if (Name.Contains(Limb)) return EHitZone::Limb;
+		return EHitZone::Body;
+	}
+	/** One bullet's match damage at a distance (cm), before wallbang scaling. */
+	inline float MatchDamage(const UCrosshairWeaponDefinition& W, float DistanceCm, EHitZone Zone)
+	{
+		const float Span = W.MatchFalloffEnd - W.MatchFalloffStart;
+		const float Alpha = Span <= 0.f ? (DistanceCm > W.MatchFalloffStart ? 1.f : 0.f) : FMath::Clamp((DistanceCm - W.MatchFalloffStart) / Span, 0.f, 1.f);
+		const float Base = FMath::Lerp(W.MatchMaxDamage, W.MatchMinDamage, Alpha);
+		return Base * (Zone == EHitZone::Head ? W.MatchHeadMultiplier : Zone == EHitZone::Limb ? W.MatchLimbMultiplier : 1.f);
+	}
 	// Radial dead zone: preserve stick direction and rescale the remaining usable travel.
 	inline FVector2D FilterStick(FVector2D Input, float DeadZone, float Exponent)
 	{

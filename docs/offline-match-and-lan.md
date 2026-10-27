@@ -91,7 +91,7 @@ The Match tab also has **Host LAN match (same network)**, **Find LAN matches** a
 - The host advertises a session and opens the selected map as a listen server with the selected mode. Match rules, scoring, spawns and bots run on the host and replicate to clients.
 - Joining resolves the host's address and travels to it. Windows Firewall may ask to allow the game on private networks the first time.
 
-Current limitation (next stage): gameplay code from practice is still host-authoritative without client RPCs, so a joined client can move and see the match, but client firing, lethals, reload/weapon switching and some HUD feedback are not yet sent to the host. Full LAN combat needs server RPCs for those actions, client-side hit feedback replication and multi-machine testing.
+Resolved on 2026-10-26 (see [LAN combat](#lan-combat-for-joined-players-2026-10-26)). Original limitation: gameplay code from practice is still host-authoritative without client RPCs, so a joined client can move and see the match, but client firing, lethals, reload/weapon switching and some HUD feedback are not yet sent to the host. Full LAN combat needs server RPCs for those actions, client-side hit feedback replication and multi-machine testing.
 
 ## Implementation map
 
@@ -123,7 +123,7 @@ Engine-bundled additions: `NavigationSystem`, `OnlineSubsystem`, `OnlineSubsyste
 - The duel exposed and fixed a real bug: bots fired along their body facing with no pitch (their camera never received aim), so distant shots missed. They now fire along their aim.
 - New automation test `Crosshair.Match.KillLabels`. Screenshots `MenuHome.png`, `MenuMatchSetup.png`, `MatchReplay.png` inspected.
 
-Not verified: two separate PCs on a real LAN, Windows Firewall prompts, packaged/cooked builds, physical controller play, and match balance (bots and weapons are untuned; `Scripts/create_crosshair_assets.py` gives every weapon except the AR 100 body damage, so the SMG kills in one hit like the sniper; weapon tuning was not changed).
+Not verified: two separate PCs on a real LAN, Windows Firewall prompts, packaged/cooked builds, physical controller play, and match balance (bots and weapons are untuned; `Scripts/create_crosshair_assets.py` gives every weapon except the AR 100 body damage, so the SMG kills in one hit like the sniper; weapon tuning was not changed). Fixed on 2026-10-26 with per-weapon match damage; see [Weapon damage in matches](#weapon-damage-in-matches-2026-10-26).
 
 ## Soldier animation and LAN movement (2026-10-21)
 
@@ -240,4 +240,58 @@ A hosted LAN match now opens in a lobby on the match map instead of starting at 
   - The movement and animation checks still pass (680 and 681 cm/s, stepping weight 1.00).
 - **Screenshots inspected:** `MenuLobby.png`, `MatchDogTag.png`, `MatchKillConfirmed.png`, `MatchKillConfirmedScoreboard.png`, `MatchLobbyStarted.png`.
 
-Not verified: two separate PCs, a full Kill Confirmed match to 65, and physical controller play. LAN combat is still host-only, as described above, so in a LAN match only the host's shots and lethals cause kills and drop tags. A joined player can still collect tags, because pickup only needs movement.
+Not verified: two separate PCs, a full Kill Confirmed match to 65, and physical controller play. (When this section was written, only the host's shots could cause kills in a LAN match. Joined players can now fight too; see below.)
+
+## LAN combat for joined players (2026-10-26)
+
+Joined players now fight fully. The host still decides every hit, so the host and every joined player see the same result. Each action is sent to the host, which re-checks it against its own copy of the soldier (alive, not mid-throw, match running) before acting:
+
+| Joined player's action | Sent to the host as | Comes back as |
+| --- | --- | --- |
+| Fire (press and release, automatic fire included) | `ServerFire` with the view the player had when they pulled the trigger | Shot sound and kick on everyone's screen; ammo; recoil on the shooter's own view; hit marker (`ClientTargetHit`) |
+| Reload, switch weapon (1 / 2 / wheel / Y) | `ServerReload`, `ServerSelectWeaponSlot` | The replicated weapon and inventory |
+| Lethal hold, release and change | `ServerLethal` | The thrown frag or tomahawk |
+| Weapon class | `ServerApplyLoadout` at every spawn (`PawnClientRestart`) | The class they chose on their own machine, not the host's |
+| Kill | (decided on the host) | Kill feed and scoreboard; the kill label and TRICKSHOT banner are worked out on the shooter's machine (`ClientMatchKill`) |
+
+Fixes made along the way:
+
+- **Sprint/aim intent:** the host no longer clears a joined player's sprint and aim intent when it resets their actions (for example when applying their class). Clearing it had left them simulated at walk speed.
+- **Lethal changes:** changing lethal no longer writes the joined player's choice into the host's saved settings.
+
+**Not covered:** kill replays are recorded only on the host's machine, so a joined player's kills are not saved to their Replays.
+
+## Weapon damage in matches (2026-10-26)
+
+The SMG and the sniper both had 100 body damage, so every SMG bullet killed. Matches now use a per-weapon match damage profile in the style of Black Ops core modes (100 health). The same values apply in Free-for-all, Team Deathmatch and Kill Confirmed, against players and bots alike.
+
+Practice targets are unchanged: they still use the old per-weapon `BodyDamage` / `HeadDamage` values, so trickshot practice plays as before.
+
+| Weapon | Damage up close → at range | Falloff | Head | Arms / legs | Shots to kill |
+| --- | --- | --- | --- | --- | --- |
+| Bolt-action sniper | 100 | none | x1.0 | x0.7 (70) | 1 to the head or torso at any range; 2 to an arm or leg |
+| Assault rifle | 40 → 30 | 25 m → 50 m | x1.4 (56) | x1.0 | 3 close, 4 far; 2 headshots |
+| SMG | 35 → 20 | 10 m → 25 m | x1.4 (49) | x1.0 | 3 close (fastest up close), 5 from 25 m; 3 headshots; never 1 |
+
+- **Hit zones:** the `head` bone is a headshot. Upper arm, lower arm, hand, thigh, calf, foot and ball bones are limbs. Everything else, including the neck, is body.
+- **Other scaling:** wallbangs still scale damage by the weapon's penetration factor. Frags (150 near the centre, down to 20% at the blast edge) and tomahawks (one-hit kill) are unchanged.
+- **Where it lives:** `MatchMaxDamage`, `MatchMinDamage`, `MatchFalloffStart/End`, `MatchHeadMultiplier` and `MatchLimbMultiplier` on `UCrosshairWeaponDefinition`, applied by `CrosshairRules::MatchDamage` / `ZoneForBone` (`CrosshairData.h`).
+- **Asset values:** set on `DA_Sniper`, `DA_AR` and `DA_SMG` by `Scripts/tune_match_damage.py`, and kept by `Scripts/create_crosshair_assets.py` on repair:
+
+  ```
+  UnrealEditor-Cmd <project> -run=pythonscript -script=Scripts/tune_match_damage.py -unattended -NullRHI -nosound
+  ```
+
+  The values are editable per weapon in the editor (category "Match damage").
+
+These are Black Ops style approximations rather than exact Activision data, picked so each weapon has its COD role: the sniper for one-shot trickshots, the AR for range and the SMG for close range.
+
+### Verification (2026-10-26)
+
+- **`Crosshair.Weapon.MatchDamage` (automation):** loads the real weapon assets and checks hit zones, the sniper one-shot (and two to a limb), the AR's 3 / 4 shots and 2 headshots, that the SMG never one-shots at any range or zone (3 close, 5 at range), that the AR beats the SMG at 20 m, and that the SMG kills faster up close.
+- **Match smoke, weapons against bots:** fires the player's real AR and SMG at a still bot 6 m away. The AR chest shot deals 40, the SMG chest shot 35 and the SMG headshot 49, and the bot survives each.
+- **Two processes, LAN combat** (Kill Confirmed on Space Station, the host on Bravo and the joined player on Alpha):
+  - The joined player's own SMG + AR class is applied on the host.
+  - On an 8 m lane checked to be clear, the joined player fires with a simulated left mouse click. The host applies exactly 35 damage, credited to the joined player.
+  - Ammo (30 → 29), the hit marker and recoil reach the joined player's machine.
+  - The follow-up shot kills the host. The kill is credited to the joined player on both machines, and the host's dog tag drops.

@@ -1235,7 +1235,7 @@ void ACrosshairHUD::DrawMenu(ACrosshairPlayerController* PC,ACrosshairMatchState
 	{
 		Rect(PanelColor,ContentX,470,ContentRight-ContentX,64); Frame(Line,ContentX,470,ContentRight-ContentX,64);
 		Text(TEXT("NETWORK"),Amber,ContentX+20,479,.66f);
-		Text(Session->LanStatus.IsEmpty() ? FString(TEXT("Local network only. Joined players can move and watch; LAN combat is a preview.")) : Session->LanStatus,Ink,ContentX+20,502,.78f);
+		Text(Session->LanStatus.IsEmpty() ? FString(TEXT("Local network only. Every player can fight; the host decides hits and damage.")) : Session->LanStatus,Ink,ContentX+20,502,.78f);
 	}
 	if (PC->MenuTab==7 && !PC->IsTabLockedInMatch(7))
 	{

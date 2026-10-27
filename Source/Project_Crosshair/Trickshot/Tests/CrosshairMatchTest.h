@@ -33,6 +33,12 @@ private:
  TWeakObjectPtr<AController> Victim;
  bool bSawBotKillsBot=false,bSawBotHitsPlayer=false;
  int32 ReplaysBefore=0;
+ int32 DamageShots=0;
+ /** LAN combat check: the host's health before the joined player's shot. */
+ float LanHealthBefore=0;
+ double LanFiredAt=0;
+ int32 AmmoBefore=0;
+ float PitchBefore=0;
  double WorldMark=0;
  bool bCapturedHome=false;
  float RemoteSpeedMax=0,HostSpeedMax=0,HostSteppingMax=0;

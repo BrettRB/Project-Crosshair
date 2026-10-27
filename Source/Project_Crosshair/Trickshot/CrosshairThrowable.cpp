@@ -257,6 +257,8 @@ FString UCrosshairLethalComponent::GetName() const { return Selected==ECrosshair
 void UCrosshairLethalComponent::Prepare()
 {
     auto* Player=Cast<ACrosshairCharacter>(GetOwner());
+    // LAN client: the host spawns and throws the lethal.
+    if (Player && !Player->HasAuthority()) { if (Player->IsLocallyControlled() && Player->CanAct()) Player->ServerLethal(0); return; }
     if (!Player || !Player->HasAuthority() || !Player->CanAct() || IsBusy() || Player->Placement->bPlacing || Player->Traversal->bMantling) return;
     const auto* Weapon=Player->Inventory->GetCurrent(); if (Weapon && Weapon->bReloading) return;
     if (Remaining<=0) { Player->Notify(TEXT("No lethals left. Reset to restock.")); return; }
@@ -270,6 +272,7 @@ void UCrosshairLethalComponent::Prepare()
 void UCrosshairLethalComponent::Throw()
 {
     auto* Player=Cast<ACrosshairCharacter>(GetOwner());
+    if (Player && !Player->HasAuthority()) { if (Player->IsLocallyControlled()) Player->ServerLethal(1); return; }
     if (!IsHolding() || !Player || !Player->CanAct()) { Cancel(); return; }
     const FVector Start=Player->GetFirstPersonCameraComponent()->GetComponentLocation();
     const FVector Direction=Player->GetControlRotation().Vector();
@@ -285,9 +288,13 @@ void UCrosshairLethalComponent::Cycle()
 {
     auto* Player=Cast<ACrosshairCharacter>(GetOwner());
     if (!Player || Player->IsReplayPlayback() || Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->IsFinishing() || IsBusy()) return;
-    Selected=Selected==ECrosshairLethalType::Frag ? ECrosshairLethalType::Tomahawk : ECrosshairLethalType::Frag;
-    auto* Replay=Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>(); auto& S=Replay->GetSettings(); S.LethalType=Selected;
-    if (S.Classes.IsValidIndex(S.ActiveClass)) S.Classes[S.ActiveClass].Lethal=Selected;
+    if (!Player->HasAuthority()) { if (Player->IsLocallyControlled()) Player->ServerLethal(2); }
+    else Selected=Selected==ECrosshairLethalType::Frag ? ECrosshairLethalType::Tomahawk : ECrosshairLethalType::Frag;
+    // Each player's lethal choice is saved on their own machine (never the host's settings for a joined player).
+    if (!Player->IsLocallyControlled()) return;
+    const ECrosshairLethalType Chosen=Player->HasAuthority() ? Selected : (Selected==ECrosshairLethalType::Frag ? ECrosshairLethalType::Tomahawk : ECrosshairLethalType::Frag);
+    auto* Replay=Player->GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>(); auto& S=Replay->GetSettings(); S.LethalType=Chosen;
+    if (S.Classes.IsValidIndex(S.ActiveClass)) S.Classes[S.ActiveClass].Lethal=Chosen;
     Replay->SaveSettings();
 }
 void UCrosshairLethalComponent::Cancel() { if (IsValid(HeldActor)) HeldActor->Destroy(); HeldActor=nullptr; }

@@ -120,8 +120,16 @@ void ACrosshairCharacter::BeginPlay()
 			const int32 Primary = FMath::RandRange(0, Count - 1);
 			Inventory->ApplyLoadout(Primary, (Primary + FMath::RandRange(1, FMath::Max(1, Count - 1))) % Count, FMath::RandBool() ? ECrosshairLethalType::Frag : ECrosshairLethalType::Tomahawk);
 		}
-		else Inventory->ApplyClass();
+		// A joined player's class comes from their own machine (PawnClientRestart -> ServerApplyLoadout).
+		else if (!IsRemotePlayer()) Inventory->ApplyClass();
 	}));
+}
+void ACrosshairCharacter::PawnClientRestart()
+{
+	Super::PawnClientRestart();
+	if (HasAuthority() || IsReplayPlayback() || !IsLocallyControlled()) return;
+	const FCrosshairSettings& S = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+	if (S.Classes.IsValidIndex(S.ActiveClass)) ServerApplyLoadout(S.Classes[S.ActiveClass].Primary, S.Classes[S.ActiveClass].Secondary, S.Classes[S.ActiveClass].Lethal);
 }
 void ACrosshairCharacter::PossessedBy(AController* NewController)
 {
@@ -171,13 +179,16 @@ float ACrosshairCharacter::GetRecentSpin(double Window) const
 }
 void ACrosshairCharacter::RecordMatchKill(const ACrosshairCharacter* Victim, bool bHeadshot, bool bWallbang, const FString& Weapon, bool bScopedWeapon, bool bLethal)
 {
-	if (!Victim || !IsInMatch() || IsBot() || !IsLocallyControlled() || IsReplayPlayback()) return;
+	// A joined player's kill is labelled on their machine, which knows their spin, jump and aim.
+	if (IsRemotePlayer()) { ClientMatchKill(Victim, bHeadshot, bWallbang, Weapon, bScopedWeapon, bLethal); return; }
+	if (!IsInMatch() || IsBot() || !IsLocallyControlled() || IsReplayPlayback()) return;
 	CrosshairTrickshotRules::FKillContext Kill;
 	Kill.Weapon = Weapon; Kill.bHeadshot = bHeadshot; Kill.bWallbang = bWallbang; Kill.bScopedWeapon = bScopedWeapon; Kill.bLethal = bLethal;
 	Kill.bAirborne = GetCharacterMovement()->IsFalling();
 	Kill.bAiming = AimAlpha >= .5f;
 	Kill.SpinDegrees = GetRecentSpin();
-	Kill.DistanceMeters = FVector::Dist(GetActorLocation(), Victim->GetActorLocation()) / 100.f;
+	// On a LAN client the victim may already be gone by the time the kill message arrives.
+	Kill.DistanceMeters = Victim ? FVector::Dist(GetActorLocation(), Victim->GetActorLocation()) / 100.f : 0.f;
 	const FString Label = CrosshairTrickshotRules::Describe(Kill);
 	if (CrosshairTrickshotRules::IsTrickshot(Kill)) { TrickshotBanner = Label; TrickshotUntil = GetWorld()->GetTimeSeconds() + 2.5f; }
 	UE_LOG(LogTemp, Display, TEXT("Crosshair match kill: %s"), *Label);
@@ -231,7 +242,13 @@ bool ACrosshairCharacter::CanAct() const
 	return !GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing() && !IsReplayPlayback() && PC && !PC->bMenuOpen && !Attempt->bSucceeded;
 }
 void ACrosshairCharacter::SelectWeaponSlot(int32 Slot)
-{ if (CanAct() && !Lethals->IsBusy()) { bAimHeld=false; if (Slot<0) Inventory->Cycle(); else Inventory->EquipSlot(Slot); } }
+{
+	if (!CanAct() || Lethals->IsBusy()) return;
+	bAimHeld=false;
+	// LAN client: the host owns the inventory; the switch replicates back.
+	if (!HasAuthority()) { if (IsLocallyControlled()) ServerSelectWeaponSlot(Slot); return; }
+	if (Slot<0) Inventory->Cycle(); else Inventory->EquipSlot(Slot);
+}
 void ACrosshairCharacter::ControllerSprintPressed() { if (CanAct()) { bControllerSprint=!bControllerSprint; bSprintHeld=bControllerSprint; } }
 void ACrosshairCharacter::Notify(const FString& Text) { Notice = Text; NoticeUntil = GetWorld()->GetTimeSeconds() + 4; }
 void ACrosshairCharacter::Tick(float DeltaSeconds)
@@ -397,12 +414,27 @@ void ACrosshairCharacter::JumpReleased() { Traversal->ReleaseJump(); }
 void ACrosshairCharacter::SprintPressed() { if (CanAct()) { bControllerSprint=false; bSprintHeld = true; } }
 void ACrosshairCharacter::SprintReleased() { bSprintHeld = false; bControllerSprint=false; }
 void ACrosshairCharacter::CrouchPressed() { if (CanAct()) { if (bIsCrouched) UnCrouch(); else Crouch(); } }
-void ACrosshairCharacter::FirePressed() { if (!CanAct() || Lethals->IsBusy()) return; bSprintHeld = false; bControllerSprint=false; if (Placement->bPlacing) Placement->Confirm(); else if (auto* W = Inventory->GetCurrent()) W->StartFire(); }
-void ACrosshairCharacter::FireReleased() { if (auto* W = Inventory->GetCurrent()) W->StopFire(); }
+void ACrosshairCharacter::FirePressed()
+{
+	if (!CanAct() || Lethals->IsBusy()) return;
+	bSprintHeld = false; bControllerSprint=false;
+	if (!HasAuthority()) { ServerFire(true, GetControlRotation()); return; }   // LAN client: the host fires and decides the hit
+	if (Placement->bPlacing) Placement->Confirm(); else if (auto* W = Inventory->GetCurrent()) W->StartFire();
+}
+void ACrosshairCharacter::FireReleased()
+{
+	if (!HasAuthority()) { if (IsLocallyControlled()) ServerFire(false, GetControlRotation()); return; }
+	if (auto* W = Inventory->GetCurrent()) W->StopFire();
+}
 void ACrosshairCharacter::AimPressed() { if (!CanAct() || Lethals->IsBusy()) return; if (Placement->bPlacing) Placement->Toggle(); else { bAimHeld = true; bSprintHeld = false; bControllerSprint=false; } }
 void ACrosshairCharacter::AimReleased() { bAimHeld = false; }
-void ACrosshairCharacter::ReloadPressed() { if (CanAct() && !Lethals->IsBusy()) { if (Placement->bPlacing) Placement->Rotate(); else if (auto* W = Inventory->GetCurrent()) W->Reload(); } }
-void ACrosshairCharacter::SwitchPressed() { if (CanAct() && !Lethals->IsBusy()) { bAimHeld = false; Inventory->Cycle(); } }
+void ACrosshairCharacter::ReloadPressed()
+{
+	if (!CanAct() || Lethals->IsBusy()) return;
+	if (!HasAuthority()) { ServerReload(); return; }
+	if (Placement->bPlacing) Placement->Rotate(); else if (auto* W = Inventory->GetCurrent()) W->Reload();
+}
+void ACrosshairCharacter::SwitchPressed() { SelectWeaponSlot(-1); }
 // Target editing and attempt save/reset are practice tools; matches ignore them.
 void ACrosshairCharacter::PlacementPressed() { if (!IsInMatch()) Placement->Toggle(); }
 void ACrosshairCharacter::RotatePressed() { if (!IsInMatch()) Placement->Rotate(); }
@@ -420,6 +452,7 @@ void ACrosshairCharacter::ApplyRecoil(float Degrees)
 }
 void ACrosshairCharacter::TargetHit(ACrosshairDummy* Target, bool bHeadshot, bool bWallbang)
 {
+	if (IsRemotePlayer()) ClientTargetHit(bHeadshot, bWallbang);
 	RecordedView.bHeadshot = bHeadshot; RecordedView.bWallbang = bWallbang;
 	++RecordedView.HitSequence;
 	PresentedHit = RecordedView.HitSequence;
@@ -427,7 +460,13 @@ void ACrosshairCharacter::TargetHit(ACrosshairDummy* Target, bool bHeadshot, boo
 	HitMarkerUntil = GetWorld()->GetTimeSeconds() + (bHeadshot ? 0.4f : 0.25f);
 	if (Target && Target->bHit) Attempt->HandleTargetHit(Target);
 }
-void ACrosshairCharacter::StopActions() { Lethals->Cancel(); Traversal->CancelMantle(); FireReleased(); bAimHeld = false; bSprintHeld = false; bControllerSprint=false; StopJumping(); }
+void ACrosshairCharacter::StopActions()
+{
+	Lethals->Cancel(); Traversal->CancelMantle(); FireReleased(); StopJumping();
+	// A joined player's sprint/aim intent is owned by their machine (ServerSetMoveIntent sends only changes);
+	// clearing it here would leave the host simulating them at walk speed.
+	if (!IsRemotePlayer()) { bAimHeld = false; bSprintHeld = false; bControllerSprint=false; }
+}
 
 bool ACrosshairCharacter::CanJumpWhileFalling() const { return Traversal && Traversal->AllowsCoyoteJump(); }
 void ACrosshairCharacter::ServerSetMoveIntent_Implementation(bool bSprint, bool bAim)
@@ -435,3 +474,37 @@ void ACrosshairCharacter::ServerSetMoveIntent_Implementation(bool bSprint, bool 
 	bSprintHeld = bSprint;
 	bAimHeld = bAim;
 }
+// The host re-checks every request against its own copy of this soldier (alive, not mid-throw, match running).
+void ACrosshairCharacter::ServerFire_Implementation(bool bPressed, FRotator AimRotation)
+{
+	if (!bPressed) { FireReleased(); return; }
+	if (!CanAct() || Lethals->IsBusy()) return;
+	// Fire along the view the player had when they pulled the trigger, not the last movement update.
+	if (AController* Brain = GetController()) Brain->SetControlRotation(FRotator(FMath::ClampAngle(FRotator::NormalizeAxis(AimRotation.Pitch), -85.f, 85.f), AimRotation.Yaw, 0));
+	bSprintHeld = false; bControllerSprint = false;
+	if (auto* W = Inventory->GetCurrent()) W->StartFire();
+}
+void ACrosshairCharacter::ServerReload_Implementation() { ReloadPressed(); }
+void ACrosshairCharacter::ServerSelectWeaponSlot_Implementation(int32 Slot) { SelectWeaponSlot(FMath::Clamp(Slot, -1, 1)); }
+void ACrosshairCharacter::ServerLethal_Implementation(uint8 Action)
+{
+	if (Action == 0) Lethals->Prepare();
+	else if (Action == 1) Lethals->Throw();
+	else Lethals->Cycle();
+}
+void ACrosshairCharacter::ServerApplyLoadout_Implementation(int32 Primary, int32 Secondary, ECrosshairLethalType Lethal)
+{
+	const int32 Count = Inventory->Weapons.Num();
+	if (Count < 2 || !IsInMatch()) return;
+	Primary = FMath::Clamp(Primary, 0, Count - 1);
+	Secondary = FMath::Clamp(Secondary, 0, Count - 1);
+	if (Secondary == Primary) Secondary = (Primary + 1) % Count;
+	Inventory->ApplyLoadout(Primary, Secondary, Lethal == ECrosshairLethalType::Tomahawk ? Lethal : ECrosshairLethalType::Frag);
+}
+void ACrosshairCharacter::ClientTargetHit_Implementation(bool bHeadshot, bool bWallbang)
+{
+	bLastHitHeadshot = bHeadshot; bLastHitWallbang = bWallbang;
+	HitMarkerUntil = GetWorld()->GetTimeSeconds() + (bHeadshot ? 0.4f : 0.25f);
+}
+void ACrosshairCharacter::ClientMatchKill_Implementation(const ACrosshairCharacter* Victim, bool bHeadshot, bool bWallbang, const FString& Weapon, bool bScopedWeapon, bool bLethal)
+{ RecordMatchKill(Victim, bHeadshot, bWallbang, Weapon, bScopedWeapon, bLethal); }

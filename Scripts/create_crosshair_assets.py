@@ -148,6 +148,12 @@ for name, automatic, magazine, interval, reload_time, ads, spread, recoil in [
         definition.set_editor_property("aim_style", ue.CrosshairAimStyle.SCOPE if name == "Sniper" else ue.CrosshairAimStyle.IRON_SIGHTS)
         definition.set_editor_property("body_damage", 20.0 if name == "AR" else 100.0)
         definition.set_editor_property("head_damage", 100.0 / 3.0 if name == "AR" else 100.0)
+        # Match damage against soldiers; see Scripts/tune_match_damage.py for the Black Ops style reasoning.
+        match = {"Sniper": (100.0, 100.0, 100000.0, 100000.0, 1.0, 0.7), "AR": (40.0, 30.0, 2500.0, 5000.0, 1.4, 1.0),
+                 "SMG": (35.0, 20.0, 1000.0, 2500.0, 1.4, 1.0)}[name]
+        for key, value in zip(("match_max_damage", "match_min_damage", "match_falloff_start", "match_falloff_end",
+                               "match_head_multiplier", "match_limb_multiplier"), match):
+            definition.set_editor_property(key, value)
         if name != "Sniper":
             definition.set_editor_property("aim_offset", ue.Vector(65, 0, -22))
         save(definition)

@@ -19,13 +19,14 @@ This project was made for an **AI-Assisted Software Engineering** course. It was
 
 ### Offline matches against bots
 - **Free-for-all**, **Team Deathmatch** and **Kill Confirmed** on Nuketown, Grid and the new Space Station (the testing map stays practice-only), with Call of Duty default settings: 8-player FFA to 30 kills, 6v6 TDM to 75, 6v6 Kill Confirmed to 65, 10 minutes.
+- Black Ops style weapon damage in matches (100 health): the sniper kills in one shot to the head or torso; the AR takes 3 shots up close and 4 at range; the SMG takes 3 shots up close and 5 at range and never kills in one shot. See [weapon damage](docs/offline-match-and-lan.md#weapon-damage-in-matches-2026-10-26).
 - **Kill Confirmed**: every kill drops a dog tag. Grab an enemy's tag to score for your team, or grab a teammate's tag to deny the enemy the point. Bots collect tags too.
 - Bots with four difficulty presets (Easy, Regular, Hardened, Veteran) that change reaction time, aim error, turn speed and movement. Bots need line of sight, shoot each other and you, and roam the map on navigation meshes.
 - COD-style spawns (teams start on opposite sides; respawns avoid enemy sight lines), regenerating health, kill feed, scoreboard and end-of-match results.
 - **Every kill you make is saved to Replays**, labelled with how it happened (for example "Mid-air 360 No-scope Headshot - Bolt-Action Sniper, 42 m"), and real trickshots flash a TRICKSHOT banner.
 
 ### LAN multiplayer (early preview)
-- Host, find and join matches on the same local network using Unreal's built-in local session system (no internet or online service). Joined players can move and watch; full LAN combat is planned.
+- Host, find and join matches on the same local network using Unreal's built-in local session system (no internet or online service). Joined players fight fully: their shots, reloads, weapon switches and lethals run on the host, which decides hits and damage, and each player keeps their own weapon class.
 - A LAN setup screen: your username, game mode, map, bots on or off, bot difficulty and count, score and time limits, and max players. Everyone appears under their own username.
 - A **LAN lobby**: hosted matches wait until everyone has joined. The lobby lists every player, lets each player choose Alpha or Bravo in Team Deathmatch and Kill Confirmed, and only the host can start the match.
 

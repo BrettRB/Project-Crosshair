@@ -268,16 +268,18 @@ void ACrosshairWeapon::TryFire()
 	LastImpact = Hit.bBlockingHit ? Hit.ImpactPoint : AimPoint;
 	++ShotSequence;
 	OnRep_Shot();
-	Player->ApplyRecoil(Definition->RecoilDegrees);
+	// A LAN client owns its view rotation, so its recoil is applied on its machine (OnRep_Shot).
+	if (Player->IsLocallyControlled()) Player->ApplyRecoil(Definition->RecoilDegrees);
 	if (ACrosshairDummy* Dummy = Cast<ACrosshairDummy>(Hit.GetActor()))
 	{
 		if (UGameplayStatics::ApplyPointDamage(Dummy, (Dummy->IsHeadHit(Hit) ? Definition->HeadDamage : Definition->BodyDamage)*DamageScale, Direction, Hit, Player->GetController(), this, nullptr) > 0) Player->TargetHit(Dummy,Dummy->IsHeadHit(Hit),PenetratedLayers>0);
 	}
 	else if (ACrosshairCharacter* Victim = Cast<ACrosshairCharacter>(Hit.GetActor()))
 	{
-		// Match combat: same head/body damage and wallbang scaling as practice targets.
-		const bool bHead = Hit.GetComponent() == Victim->GetMesh() && Hit.BoneName == TEXT("head");
-		const float Amount = (bHead ? Definition->HeadDamage : Definition->BodyDamage) * DamageScale;
+		// Match combat: the weapon's match damage profile (range falloff, head and limb multipliers), with wallbang scaling.
+		const CrosshairRules::EHitZone Zone = Hit.GetComponent() == Victim->GetMesh() ? CrosshairRules::ZoneForBone(Hit.BoneName) : CrosshairRules::EHitZone::Body;
+		const bool bHead = Zone == CrosshairRules::EHitZone::Head;
+		const float Amount = CrosshairRules::MatchDamage(*Definition, FVector::Dist(Start, Hit.ImpactPoint), Zone) * DamageScale;
 		if (Victim->Health->ApplyDamage(Amount, Player->GetController(), this, bHead, Definition->DisplayName.ToString()) > 0)
 		{
 			Player->TargetHit(nullptr, bHead, PenetratedLayers > 0);
@@ -289,7 +291,11 @@ void ACrosshairWeapon::TryFire()
 void ACrosshairWeapon::OnRep_Shot()
 {
 	if (ShotSequence <= PresentedShot) { PresentedShot = ShotSequence; return; }
+	const int32 NewShots = ShotSequence - PresentedShot;
 	PresentedShot = ShotSequence;
+	// LAN client: the host fired for us; kick our own view once per shot fired since the last update.
+	if (auto* Shooter = Cast<ACrosshairCharacter>(GetOwner()); Shooter && !HasAuthority() && Shooter->IsLocallyControlled() && Definition)
+		Shooter->ApplyRecoil(Definition->RecoilDegrees * NewShots);
 	Kick = 5;
 	if (Definition && Definition->FireSound) UGameplayStatics::PlaySoundAtLocation(this, Definition->FireSound, GetActorLocation(), 0.35f);
 	DrawDebugPoint(GetWorld(), LastImpact, 10.f, FColor(255, 190, 80), false, 0.15f);

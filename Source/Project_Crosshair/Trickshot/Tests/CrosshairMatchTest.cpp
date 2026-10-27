@@ -385,7 +385,7 @@ void UCrosshairMatchTest::TickLan()
  const double Elapsed=FPlatformTime::Seconds()-StepStarted;
  const APlayerController* PC=World->GetFirstPlayerController();
  const ACrosshairMatchState* Match=ACrosshairMatchState::Get(World);
- if (FPlatformTime::Seconds()-Started>300) { Check(false,TEXT("LAN test timeout")); return; }
+ if (FPlatformTime::Seconds()-Started>420) { Check(false,TEXT("LAN test timeout")); return; }
  // Both sides run forward sprinting so each can check how the other player moves.
  auto RunForward=[&]()
  {
@@ -432,8 +432,82 @@ void UCrosshairMatchTest::TickLan()
    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Host sees the joined player switch to Alpha"));
    auto* Host=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
    if (!Check(Host && Host->bLobbyScreen && Host->GetVisibleMenuRows().Contains(Host->LobbyStartRow),TEXT("The host's lobby shows Start match"))) return;
+   // The host takes Bravo so the two players are enemies for the combat check.
+   Host->AdjustMenuRow(Host->LobbyTeamRow,1);
+   Next(33); return;
+  }
+  if (Step==33)
+  {
+   if (Match->CountHumans(CrosshairMatchRules::Alpha)!=1 || Match->CountHumans(CrosshairMatchRules::Bravo)!=1) { if (Elapsed>10) Check(false,TEXT("Host switches to Bravo in the lobby")); return; }
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Host switched to Bravo: one player per team"));
+   auto* Host=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
    Host->ActivateMenuRow(Host->LobbyStartRow);
    Next(32); return;
+  }
+  if (Step>=40)
+  {
+   // Combat: the joined player shoots the host. The host decides the hit and applies the weapon's match damage.
+   auto* HostPawn=Cast<ACrosshairCharacter>(PC->GetPawn());
+   ACrosshairCharacter* Joined=nullptr;
+   for (TActorIterator<ACrosshairCharacter> It(World);It;++It) if (*It!=HostPawn && !It->IsBot()) Joined=*It;
+   if (Step==40)
+   {
+    if (!HostPawn || !Joined) { if (Elapsed>20) Check(false,TEXT("Both soldiers alive for the combat check")); return; }
+    if (!Check(Joined->Inventory->PrimaryIndex==2 && Joined->Inventory->SecondaryIndex==1,TEXT("The joined player's own class (SMG + AR) is applied on the host"))) return;
+    // Stand both on the street, 8 m apart and facing each other, where nothing (cars, barriers) is between them.
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairLanCombat),false); Params.AddIgnoredActor(HostPawn); Params.AddIgnoredActor(Joined);
+    FVector HostSpot=FVector::ZeroVector,JoinedSpot=FVector::ZeroVector;
+    for (float X:{-600.f,-400.f,-800.f,-200.f,-1000.f})
+    {
+     for (float Y=2900.f;Y>=500.f && HostSpot.IsZero();Y-=200.f)
+     {
+      FHitResult A,B,Blocked;
+      if (!World->LineTraceSingleByChannel(A,FVector(X,Y,3000),FVector(X,Y,-3000),ECC_Visibility,Params) || !World->LineTraceSingleByChannel(B,FVector(X,Y-800,3000),FVector(X,Y-800,-3000),ECC_Visibility,Params)) continue;
+      const FVector AStand=A.ImpactPoint+FVector(0,0,97),BStand=B.ImpactPoint+FVector(0,0,97);
+      if (FMath::Abs(AStand.Z-BStand.Z)>30.f) continue;
+      // Eye and muzzle height to the chest, and eye to eye.
+      bool bClear=true;
+      for (const FVector& From:{BStand+FVector(0,0,64),BStand+FVector(0,0,54)}) for (const FVector& To:{AStand+FVector(0,0,40),AStand+FVector(0,0,64)})
+       bClear&=!World->LineTraceSingleByChannel(Blocked,From,To,ECC_Visibility,Params);
+      if (bClear) { HostSpot=AStand; JoinedSpot=BStand; }
+     }
+     if (!HostSpot.IsZero()) break;
+    }
+    if (!Check(!HostSpot.IsZero(),TEXT("A clear 8 m firing lane exists on the street"))) return;
+    HostPawn->SetActorLocationAndRotation(HostSpot,FRotator(0,-90,0),false,nullptr,ETeleportType::TeleportPhysics);
+    Joined->SetActorLocationAndRotation(JoinedSpot,FRotator(0,90,0),false,nullptr,ETeleportType::TeleportPhysics);
+    HostPawn->GetCharacterMovement()->StopMovementImmediately(); Joined->GetCharacterMovement()->StopMovementImmediately();
+    HostPawn->SetBotInput(false,false);
+    HostPawn->Health->Health=HostPawn->Health->MaxHealth; LanHealthBefore=HostPawn->Health->Health;
+    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO combat: host at %s, joined player at %s"),*HostPawn->GetActorLocation().ToCompactString(),*Joined->GetActorLocation().ToCompactString());
+    Next(41); return;
+   }
+   if (Step==41)
+   {
+    if (!HostPawn || !Joined || HostPawn->Health->Health>=LanHealthBefore) { if (Elapsed>60) Check(false,TEXT("The joined player's shot reaches the host")); return; }
+    const ACrosshairWeapon* Weapon=Joined->Inventory->GetCurrent();
+    const float Dealt=LanHealthBefore-HostPawn->Health->Health;
+    const float Distance=FVector::Dist(Joined->GetPawnViewLocation(),HostPawn->GetActorLocation());
+    const float Expected=Weapon && Weapon->Definition ? CrosshairRules::MatchDamage(*Weapon->Definition,Distance,CrosshairRules::EHitZone::Body) : -1.f;
+    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO joined player's %s hit the host for %.1f at %.1f m (expected %.1f)"),Weapon && Weapon->Definition ? *Weapon->Definition->DisplayName.ToString() : TEXT("-"),Dealt,Distance/100.f,Expected);
+    if (!Check(HostPawn->Health->LastAttacker.Get()==Joined->GetController(),TEXT("The host credits the damage to the joined player"))) return;
+    if (!Check(FMath::IsNearlyEqual(Dealt,Expected,.5f) && !HostPawn->Health->bDead,TEXT("The joined player's SMG deals its match damage (35 at 8 m) and does not one-shot"))) return;
+    // Leave one more shot's worth of health so the next hit is the kill.
+    HostPawn->Health->Health=30.f; HostPawn->Health->LastDamageAt=World->GetTimeSeconds();
+    Next(42); return;
+   }
+   if (Step==42)
+   {
+    if (!HostPawn || !HostPawn->Health->bDead) { if (Elapsed>30) Check(false,TEXT("The joined player kills the host")); return; }
+    const auto* Shooter=Joined ? Joined->GetPlayerState<ACrosshairMatchPlayerState>() : nullptr;
+    bool bTag=false; for (TActorIterator<ACrosshairDogTag> It(World);It;++It) bTag|=It->VictimTeam==CrosshairMatchRules::Bravo;
+    if (!Check(HostPawn->Health->KilledBy==TEXT("ClientBee") && Shooter && Shooter->Kills==1,TEXT("The kill is credited to the joined player"))) return;
+    if (!Check(bTag,TEXT("The joined player's kill drops the host's dog tag"))) return;
+    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_HOST_OK")); Next(43); return;
+   }
+   // Stay up briefly so the joined player can confirm the kill on their side.
+   if (Elapsed>10) { bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); }
+   return;
   }
   if (Step==32)
   {
@@ -454,11 +528,20 @@ void UCrosshairMatchTest::TickLan()
   if (Elapsed<20) return;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO host saw the joined player's top speed %.0f cm/s"),RemoteSpeedMax);
   if (!Check(RemoteSpeedMax>=560.f,TEXT("Joined player's sprint is simulated at sprint speed on the host (no walk-speed correction)"))) return;
-  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_HOST_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
+  Next(40); return;
  }
  switch (Step)
  {
- case 0: if (PC && PC->GetPawn() && Elapsed>3) { GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().PlayerName=TEXT("ClientBee"); Session->FindLanMatches(); Next(1); } return;
+ case 0:
+  if (PC && PC->GetPawn() && Elapsed>3)
+  {
+   // Join with this machine's own class: SMG primary, AR secondary.
+   FCrosshairSettings& S=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+   S.PlayerName=TEXT("ClientBee");
+   if (S.Classes.IsValidIndex(S.ActiveClass)) { S.Classes[S.ActiveClass].Primary=2; S.Classes[S.ActiveClass].Secondary=1; }
+   Session->FindLanMatches(); Next(1);
+  }
+  return;
  case 1:
   if (Session->bSearching) return;
   if (Session->LanResults.IsEmpty()) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_SEARCH %s"),*Session->LanStatus); Next(0); return; }
@@ -509,8 +592,63 @@ void UCrosshairMatchTest::TickLan()
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO client saw the host's top speed %.0f cm/s, stepping weight %.2f"),HostSpeedMax,HostSteppingMax);
   if (!Check(HostSpeedMax>300.f,TEXT("Client sees the host player moving"))) return;
   if (!Check(HostSteppingMax>.8f,TEXT("The host's soldier plays walk/jog locomotion on the client instead of sliding"))) return;
-  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_OK mode=%s map=%s players=%d"),*UCrosshairBotMatch::ModeName(Match->Mode),*Match->MapName,Match->PlayerArray.Num());
-  bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Client sees the host move with walk/jog locomotion (mode=%s map=%s players=%d)"),*UCrosshairBotMatch::ModeName(Match->Mode),*Match->MapName,Match->PlayerArray.Num());
+  Next(40); return;
+ }
+ case 40: case 41: case 42: case 43: case 44:
+ {
+  // Combat: shoot the host with the real fire input (left mouse) and confirm what comes back from the host.
+  auto* Menu=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
+  auto* Mine=Menu ? Cast<ACrosshairCharacter>(Menu->GetPawn()) : nullptr;
+  ACrosshairCharacter* Host=nullptr;
+  for (TActorIterator<ACrosshairCharacter> It(World);It;++It) if (*It!=Mine && !It->IsBot()) Host=*It;
+  if (!Mine || !Host || !Match) { if (Elapsed>60) Check(false,TEXT("Client and host soldiers present for combat")); return; }
+  const auto* Me=Menu->GetPlayerState<ACrosshairMatchPlayerState>();
+  auto Click=[&](EInputEvent Event){ Menu->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::LeftMouseButton,Event,Event==IE_Released ? 0.f : 1.f)); };
+  auto AimAtHost=[&]{ Menu->SetControlRotation((Host->GetMesh()->GetBoneLocation(TEXT("spine_03"))-Mine->GetFirstPersonCameraComponent()->GetComponentLocation()).Rotation()); };
+  if (Step==40)
+  {
+   // Wait for the host to stand us 8 m apart, then aim down sights.
+   const float Gap=FVector::Dist2D(Mine->GetActorLocation(),Host->GetActorLocation());
+   if (Gap<700.f || Gap>900.f || Mine->GetVelocity().Size2D()>10.f || Host->GetVelocity().Size2D()>10.f) { StepStarted=FPlatformTime::Seconds(); return; }
+   if (Elapsed<1.5) return;
+   Mine->SetBotInput(true,false);
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO combat: %.1f m from the host, weapon %s"),Gap/100.f,Mine->Inventory->GetCurrent() && Mine->Inventory->GetCurrent()->Definition ? *Mine->Inventory->GetCurrent()->Definition->DisplayName.ToString() : TEXT("-"));
+   Next(41); return;
+  }
+  ACrosshairWeapon* Weapon=Mine->Inventory->GetCurrent();
+  if (Step==41)
+  {
+   Mine->SetBotInput(true,false); AimAtHost();
+   if (Elapsed<1.5 || Mine->GetAimAlpha()<.95f || !Weapon || Weapon->IsSwitching()) { if (Elapsed>20) Check(false,TEXT("Client aims down sights")); return; }
+   AmmoBefore=Weapon->Ammo; PitchBefore=FRotator::NormalizeAxis(Menu->GetControlRotation().Pitch);
+   Click(IE_Pressed); Next(42); return;
+  }
+  if (Step==42) { Click(IE_Released); Next(43); return; }
+  if (Step==43)
+  {
+   // Ammo, the hit marker and recoil all come back from the host.
+   const bool bAmmo=Weapon && Weapon->Ammo<AmmoBefore;
+   const bool bMarker=World->GetTimeSeconds()<Mine->HitMarkerUntil;
+   const bool bRecoil=FRotator::NormalizeAxis(Menu->GetControlRotation().Pitch)>PitchBefore+.1f;
+   if (!(bAmmo && bMarker && bRecoil)) { if (Elapsed>10) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO ammo=%d marker=%d recoil=%d"),bAmmo,bMarker,bRecoil); Check(false,TEXT("The host fires the client's shot: ammo, hit marker and recoil reach the client")); } return; }
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS The host fires the client's shot: ammo %d -> %d, hit marker shown, recoil applied"),AmmoBefore,Weapon->Ammo);
+   Next(44); return;
+  }
+  // Keep firing single shots until the host is down, then check the kill is ours.
+  if (Host->Health->bDead || (Me && Me->Kills>0))
+  {
+   if (!Me || Me->Kills!=1 || Match->KillFeed.IsEmpty() || Match->KillFeed.Last().Killer!=TEXT("ClientBee")) { if (Elapsed>15) Check(false,TEXT("The client sees its kill credited")); return; }
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS The client's kill is credited: %s [%s] %s"),*Match->KillFeed.Last().Killer,*Match->KillFeed.Last().Weapon,*Match->KillFeed.Last().Victim);
+   Click(IE_Released); Mine->SetBotInput(false,false);
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_OK mode=%s map=%s"),*UCrosshairBotMatch::ModeName(Match->Mode),*Match->MapName);
+   bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
+  }
+  if (Elapsed>30) { Check(false,TEXT("The client's follow-up shot kills the host")); return; }
+  AimAtHost();
+  if (DamageShots) { Click(IE_Released); DamageShots=0; }
+  else if (FPlatformTime::Seconds()-LanFiredAt>1.0) { Click(IE_Pressed); DamageShots=1; LanFiredAt=FPlatformTime::Seconds(); }
+  return;
  }
  default: return;
  }
@@ -825,6 +963,60 @@ void UCrosshairMatchTest::Tick(float Delta)
   if (!Check(Saved.Map.Contains(TEXT("L_Nuketown")) && Saved.Label.Contains(TEXT(" m")) && !Saved.Label.Contains(TEXT(": ")),TEXT("Match kill is saved to Replays with a kill label"))) return;
   if (!Check(!Replay->IsPlayback() && Replay->IsMatchRecording() && Match && !Match->bMatchOver,TEXT("Saving a kill does not interrupt the match; recording continues"))) return;
   if (!Check(Match->GetStandings().Num()==8,TEXT("Scoreboard lists only the eight players while the replay recorder runs"))) return;
+  Next(80); return;
+ }
+ case 80:
+ {
+  // Weapons against bots: a still bot 6 m away, back turned so its rifle cannot shield the shot.
+  ACrosshairCharacter* Bot=LiveBot(-1);
+  if (!Pawn || !Bot || !Pawn->CanAct()) { if (Elapsed>20) Check(false,TEXT("Weapon damage test setup")); return; }
+  const FVector Eye=Pawn->GetFirstPersonCameraComponent()->GetComponentLocation();
+  FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairDamageLane),false,Pawn);
+  for (int32 Yaw=0;Yaw<360;Yaw+=30)
+  {
+   const FVector Direction=FRotator(0,Yaw,0).Vector();
+   FHitResult Wall,Ground;
+   if (World->LineTraceSingleByChannel(Wall,Eye,Eye+Direction*800,ECC_Visibility,Params)) continue;
+   const FVector Stand=Pawn->GetActorLocation()+Direction*600;
+   if (!World->LineTraceSingleByChannel(Ground,Stand,Stand-FVector(0,0,300),ECC_Visibility,Params)) continue;
+   if (auto* Brain=Cast<ACrosshairBotController>(Bot->GetController())) { Brain->SetActorTickEnabled(false); Brain->StopMovement(); }
+   Bot->SetActorLocationAndRotation(Ground.ImpactPoint+FVector(0,0,96),FRotator(0,Yaw,0),false,nullptr,ETeleportType::TeleportPhysics);
+   Pawn->Inventory->ApplyLoadout(1,2,ECrosshairLethalType::Frag);   // AR primary, SMG secondary
+   Pawn->SetBotInput(true,false);
+   Victim=Bot->GetController(); WorldMark=World->GetTimeSeconds(); DamageShots=0;
+   Next(81); return;
+  }
+  if (Elapsed>20) Check(false,TEXT("Clear 6 m lane for the weapon damage test"));
+  return;
+ }
+ case 81:
+ {
+  // Shots: AR to the chest, SMG to the chest, SMG to the head. Each must deal that weapon's match damage.
+  auto* Bot=Victim.IsValid() ? Cast<ACrosshairCharacter>(Victim->GetPawn()) : nullptr;
+  if (!Pawn || !Bot || Bot->Health->bDead || Pawn->Health->bDead) { if (auto* Brain=Cast<ACrosshairBotController>(Victim.Get())) Brain->SetActorTickEnabled(true); Next(80); return; }
+  static const TCHAR* Bones[]={TEXT("spine_03"),TEXT("spine_03"),TEXT("head")};
+  // A respawn re-applies the saved class; keep the test loadout (AR primary, SMG secondary).
+  if (Pawn->Inventory->PrimaryIndex!=1 || Pawn->Inventory->SecondaryIndex!=2) { Pawn->Inventory->ApplyLoadout(1,2,ECrosshairLethalType::Frag); WorldMark=World->GetTimeSeconds(); return; }
+  const int32 WantSlot=DamageShots==0 ? 0 : 1;
+  if (Pawn->Inventory->ActiveIndex!=(WantSlot==0 ? Pawn->Inventory->PrimaryIndex : Pawn->Inventory->SecondaryIndex)) { Pawn->SelectWeaponSlot(WantSlot); Pawn->SetBotInput(true,false); WorldMark=World->GetTimeSeconds(); }
+  ACrosshairWeapon* Weapon=Pawn->Inventory->GetCurrent();
+  const FVector Eye=Pawn->GetFirstPersonCameraComponent()->GetComponentLocation();
+  // The head bone pivots at the skull base, which the thicker neck overlaps: aim at the head itself.
+  const FVector Point=Bot->GetMesh()->GetBoneLocation(Bones[DamageShots])+FVector(0,0,DamageShots==2 ? 10.f : 0.f);
+  PC->SetControlRotation((Point-Eye).Rotation());
+  Pawn->SetBotInput(true,false);
+  if (World->GetTimeSeconds()-WorldMark<1.0 || !Weapon || !Weapon->Definition || Weapon->IsSwitching() || Weapon->bReloading || Pawn->GetAimAlpha()<.95f) { if (Elapsed>25) Check(false,TEXT("Weapon ready for the damage test")); return; }
+  Bot->Health->Health=Bot->Health->MaxHealth; Bot->Health->TotalDamageTaken=0;
+  const CrosshairRules::EHitZone Zone=DamageShots==2 ? CrosshairRules::EHitZone::Head : CrosshairRules::EHitZone::Body;
+  const float Expected=CrosshairRules::MatchDamage(*Weapon->Definition,FVector::Dist(Eye,Point),Zone);
+  Weapon->ResetWeapon(); Weapon->StartFire(); Weapon->StopFire();
+  const float Dealt=Bot->Health->TotalDamageTaken;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO %s %s at %.1f m: %.1f damage (expected %.1f), bot health %.0f"),*Weapon->Definition->DisplayName.ToString(),DamageShots==2 ? TEXT("head") : TEXT("chest"),FVector::Dist(Eye,Point)/100.f,Dealt,Expected,Bot->Health->Health);
+  const TCHAR* Labels[]={TEXT("AR chest shot deals its match damage (40 up close)"),TEXT("SMG chest shot deals its match damage (35) and does not kill"),TEXT("SMG headshot deals 1.4x (49) and does not kill")};
+  if (!Check(FMath::IsNearlyEqual(Dealt,Expected,.5f) && !Bot->Health->bDead && Dealt<100.f,Labels[DamageShots])) return;
+  if (++DamageShots<3) { WorldMark=World->GetTimeSeconds(); return; }
+  if (auto* Brain=Cast<ACrosshairBotController>(Bot->GetController())) Brain->SetActorTickEnabled(true);
+  Pawn->SetBotInput(false,false);
   Next(9); return;
  }
  case 9:
@@ -946,6 +1138,8 @@ void UCrosshairMatchTest::Tick(float Delta)
    TEXT("Changing difficulty updates an active bot's live tuning"))) return;
   const double First=FirstHit<0 ? 99.0 : FirstHit; const float Damage=Target->Health->TotalDamageTaken; const int32 Shots=Shooter->ShotsFired-RunShotsBefore;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO duel %s: first hit %.2fs, damage %.0f, shots %d"),*UCrosshairBotMatch::DifficultyName(Expected),First,Damage,Shots);
+  if (const ACrosshairWeapon* Gun=ShooterPawn->Inventory->GetCurrent())
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO duel weapon: %s ammo=%d reloading=%d aim=%.2f"),Gun->Definition ? *Gun->Definition->DisplayName.ToString() : TEXT("-"),Gun->Ammo,int32(Gun->bReloading),ShooterPawn->GetAimAlpha());
   {
    // Diagnostics: what the shooter is engaging and what its line of fire meets.
    const FVector Eye=ShooterPawn->GetPawnViewLocation();

@@ -264,4 +264,37 @@ bool FCrosshairLocomotionWeightsTest::RunTest(const FString& Parameters)
  TestTrue(TEXT("Sprint speeds up the jog cycle (no foot sliding)"),PlayRate(680.f)>1.4f && PlayRate(JogSpeed)==1.f);
  return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairMatchDamageTest, "Crosshair.Weapon.MatchDamage", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairMatchDamageTest::RunTest(const FString& Parameters)
+{
+ using namespace CrosshairRules;
+ // Hit zones from the mannequin skeleton.
+ TestTrue(TEXT("Head bone is a headshot"),ZoneForBone(TEXT("head"))==EHitZone::Head);
+ TestTrue(TEXT("Arm and leg bones are limbs"),ZoneForBone(TEXT("lowerarm_l"))==EHitZone::Limb && ZoneForBone(TEXT("thigh_r"))==EHitZone::Limb && ZoneForBone(TEXT("calf_l"))==EHitZone::Limb && ZoneForBone(TEXT("hand_r"))==EHitZone::Limb);
+ TestTrue(TEXT("Torso and neck bones are body hits"),ZoneForBone(TEXT("spine_03"))==EHitZone::Body && ZoneForBone(TEXT("pelvis"))==EHitZone::Body && ZoneForBone(TEXT("neck_01"))==EHitZone::Body);
+ // The real weapon assets, as tuned by Scripts/tune_match_damage.py.
+ const auto* Sniper=LoadObject<UCrosshairWeaponDefinition>(nullptr,TEXT("/Game/Crosshair/Weapons/DA_Sniper.DA_Sniper"));
+ const auto* AR=LoadObject<UCrosshairWeaponDefinition>(nullptr,TEXT("/Game/Crosshair/Weapons/DA_AR.DA_AR"));
+ const auto* SMG=LoadObject<UCrosshairWeaponDefinition>(nullptr,TEXT("/Game/Crosshair/Weapons/DA_SMG.DA_SMG"));
+ if (!TestTrue(TEXT("Weapon definitions load"),Sniper && AR && SMG)) return false;
+ auto ShotsToKill=[](float Damage){ return FMath::CeilToInt(100.f/FMath::Max(Damage,.01f)); };
+ // Sniper: one shot to the head or torso at any range; two to an arm or leg.
+ TestEqual(TEXT("Sniper torso is a one-shot kill up close"),ShotsToKill(MatchDamage(*Sniper,500.f,EHitZone::Body)),1);
+ TestEqual(TEXT("Sniper torso is a one-shot kill across the map"),ShotsToKill(MatchDamage(*Sniper,8000.f,EHitZone::Body)),1);
+ TestEqual(TEXT("Sniper limb hit is not a one-shot kill"),ShotsToKill(MatchDamage(*Sniper,2000.f,EHitZone::Limb)),2);
+ // AR: 3 shots close, 4 at range, 2 headshots close.
+ TestEqual(TEXT("AR close: 40 damage, 3 shots"),MatchDamage(*AR,1000.f,EHitZone::Body),40.f);
+ TestEqual(TEXT("AR far: 30 damage, 4 shots"),ShotsToKill(MatchDamage(*AR,6000.f,EHitZone::Body)),4);
+ TestEqual(TEXT("AR falloff is halfway at 37.5 m"),MatchDamage(*AR,3750.f,EHitZone::Body),35.f);
+ TestEqual(TEXT("AR headshots: 2 to kill"),ShotsToKill(MatchDamage(*AR,1000.f,EHitZone::Head)),2);
+ // SMG: never a one-shot kill; 3 shots close, 5 at range, AR wins past 10 m.
+ for (const float Distance:{100.f,500.f,1000.f,2500.f,6000.f})
+  for (const EHitZone Zone:{EHitZone::Body,EHitZone::Head,EHitZone::Limb})
+   TestTrue(FString::Printf(TEXT("SMG never one-shots (%.0f m)"),Distance/100.f),MatchDamage(*SMG,Distance,Zone)<100.f);
+ TestEqual(TEXT("SMG close: 3 shots"),ShotsToKill(MatchDamage(*SMG,500.f,EHitZone::Body)),3);
+ TestEqual(TEXT("SMG at 25 m+: 5 shots"),ShotsToKill(MatchDamage(*SMG,3000.f,EHitZone::Body)),5);
+ TestTrue(TEXT("At 20 m the AR out-damages the SMG"),MatchDamage(*AR,2000.f,EHitZone::Body)>MatchDamage(*SMG,2000.f,EHitZone::Body));
+ TestTrue(TEXT("Up close the SMG kills faster (higher fire rate, same shots)"),ShotsToKill(MatchDamage(*SMG,500.f,EHitZone::Body))*SMG->ShotInterval<ShotsToKill(MatchDamage(*AR,500.f,EHitZone::Body))*AR->ShotInterval);
+ return true;
+}
 #endif

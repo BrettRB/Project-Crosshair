@@ -72,6 +72,8 @@ public:
 	void TargetHit(ACrosshairDummy* Target, bool bHeadshot = false, bool bWallbang = false);
 	void StopActions();
 	virtual void PossessedBy(AController* NewController) override;
+	/** Owning LAN client at each spawn: sends its saved class to the host. */
+	virtual void PawnClientRestart() override;
 	bool IsBot() const;
 	bool IsInMatch() const;
 	/** Bots and remote players present a third-person soldier carrying the weapon. */
@@ -89,6 +91,19 @@ public:
 	bool IsAimHeld() const { return bAimHeld; }
 	/** LAN client -> host: sprint and aim change movement speed, so the host must simulate the same intent. */
 	UFUNCTION(Server, Reliable) void ServerSetMoveIntent(bool bSprint, bool bAim);
+	/** LAN client -> host: weapons and lethals run on the host, which decides hits and damage. */
+	UFUNCTION(Server, Reliable) void ServerFire(bool bPressed, FRotator AimRotation);
+	UFUNCTION(Server, Reliable) void ServerReload();
+	UFUNCTION(Server, Reliable) void ServerSelectWeaponSlot(int32 Slot);
+	/** 0 = prepare (hold), 1 = throw (release), 2 = change lethal. */
+	UFUNCTION(Server, Reliable) void ServerLethal(uint8 Action);
+	/** The joined player's own saved class, applied on the host at each spawn. */
+	UFUNCTION(Server, Reliable) void ServerApplyLoadout(int32 Primary, int32 Secondary, ECrosshairLethalType Lethal);
+	/** Host -> LAN client: hit markers and kill labels for that player's own shots. */
+	UFUNCTION(Client, Unreliable) void ClientTargetHit(bool bHeadshot, bool bWallbang);
+	UFUNCTION(Client, Reliable) void ClientMatchKill(const ACrosshairCharacter* Victim, bool bHeadshot, bool bWallbang, const FString& Weapon, bool bScopedWeapon, bool bLethal);
+	/** True for a pawn the host simulates for a joined LAN player. */
+	bool IsRemotePlayer() const { return HasAuthority() && !IsLocallyControlled() && !IsBot(); }
  void SelectWeaponSlot(int32 Slot);
  void ControllerSprintPressed();
 	void ApplyLookInput(FVector2D MouseDelta, FVector2D StickAxis, float DeltaSeconds);
