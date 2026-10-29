@@ -3469,3 +3469,34 @@ Committed all project changes for pushing and explained why `.claude/` was left 
 - Match smoke: OK.
   - "bot noticed the player 16 m away at 75 degrees elevation after 3.72s, aimed up 80 degrees, dealt 70 damage"
   - "random LAN map rolled Nuketown; loaded L_Nuketown"
+
+---
+## Interaction 76
+
+### User Prompt
+write a markdown file for the newest release of the game. it is labeled as version 1.2.0 and place that file inside my downloads folder so i can attach it
+
+### Interpretation
+Write v1.2.0 release notes as a Markdown file in the user's Downloads folder, ready to attach to a release.
+
+### Requirements / Acceptance Criteria
+- A Markdown file for v1.2.0 is in the Downloads folder.
+- It describes what changed since the previous build, accurately.
+
+### Actions Taken
+- Took the changes from the commits since the previous build (7fac43a, 2026-10-21), the README and the interaction log. Checked `Project Crosshair v1.2.0.zip` in Downloads, which is a Windows-only package.
+- Wrote release notes covering download steps, Kill Confirmed, the LAN lobby and combat, match damage, bots aiming up and down, Space Station, the Random map, map skies, graphics, Mac support, known limitations and credits.
+
+### Files Changed
+- ~/Downloads/Project Crosshair v1.2.0 Release Notes.md (outside the repo)
+- docs/ai-interaction-log.md
+
+### Verification
+- `git log`, `git tag`, `unzip -l` on the release zip. Documentation only, so no build was run.
+
+### Notes / Follow-up
+- The repo has no 1.0/1.1 version tags (only `Alpha` and `v1`), so "since the previous build" means since commit 7fac43a.
+
+### Response Summary
+Wrote v1.2.0 release notes to the Downloads folder and described what they cover.
+---
