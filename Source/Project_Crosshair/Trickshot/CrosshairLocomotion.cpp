@@ -34,15 +34,16 @@ void UCrosshairLocomotionAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
   }
  }
  const APawn* Pawn=TryGetPawnOwner();
- if (!Pawn) return;
+ if (!Pawn && !bDriven) return;
  // Replicated movement only: velocity, falling state and aim pitch exist on every machine and in replays.
- const FVector Velocity=Pawn->GetVelocity();
+ // A killcam stand-in has no pawn; its recorded movement is supplied as the Driven* values.
+ const FVector Velocity=Pawn ? Pawn->GetVelocity() : DrivenVelocity;
  Speed=Velocity.Size2D();
- const FVector Local=Pawn->GetActorRotation().UnrotateVector(Velocity);
+ const FVector Local=(Pawn ? Pawn->GetActorRotation() : DrivenFacing).UnrotateVector(Velocity);
  Direction=Speed>1.f ? FMath::RadiansToDegrees(FMath::Atan2(Local.Y,Local.X)) : 0.f;
- AimPitch=FRotator::NormalizeAxis(Pawn->GetBaseAimRotation().Pitch);
+ AimPitch=Pawn ? FRotator::NormalizeAxis(Pawn->GetBaseAimRotation().Pitch) : DrivenPitch;
  const auto* Character=Cast<ACharacter>(Pawn);
- const bool bFalling=Character && Character->GetCharacterMovement() && Character->GetCharacterMovement()->IsFalling();
+ const bool bFalling=Pawn ? Character && Character->GetCharacterMovement() && Character->GetCharacterMovement()->IsFalling() : bDrivenFalling;
  FallAlpha=FMath::FInterpConstantTo(FallAlpha,bFalling ? 1.f : 0.f,DeltaSeconds,6.f);
  FallTime=bFalling ? FallTime+DeltaSeconds : 0.0;
  IdleTime+=DeltaSeconds;

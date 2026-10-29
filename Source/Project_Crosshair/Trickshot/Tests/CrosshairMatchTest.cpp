@@ -11,6 +11,8 @@
 #include "../CrosshairWeapon.h"
 #include "../CrosshairThrowable.h"
 #include "../CrosshairLocomotion.h"
+#include "../CrosshairKillcam.h"
+#include "Camera/CameraActor.h"
 #include "../CrosshairPractice.h"
 #include "AIController.h"
 #include "../CrosshairEnvironment.h"
@@ -434,7 +436,7 @@ void UCrosshairMatchTest::TickLan()
  const double Elapsed=FPlatformTime::Seconds()-StepStarted;
  const APlayerController* PC=World->GetFirstPlayerController();
  const ACrosshairMatchState* Match=ACrosshairMatchState::Get(World);
- if (FPlatformTime::Seconds()-Started>420) { Check(false,TEXT("LAN test timeout")); return; }
+ if (FPlatformTime::Seconds()-Started>600) { Check(false,TEXT("LAN test timeout")); return; }
  // Both sides run forward sprinting so each can check how the other player moves.
  auto RunForward=[&]()
  {
@@ -493,10 +495,52 @@ void UCrosshairMatchTest::TickLan()
    Host->ActivateMenuRow(Host->LobbyStartRow);
    Next(32); return;
   }
+  if (Step>=48)
+  {
+   // Back in the same lobby with the same player, still hosting; then the host changes the setup there.
+   auto* Host=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
+   const int32 L=Host ? Host->GetLanRow() : 0;
+   const auto& Lan=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().Lan.Match;
+   if (Step==48)
+   {
+    if (!Host || !Match->bInLobby || !Host->bLobbyScreen || Humans<2 || PC->GetPawn()) { if (Elapsed>60) Check(false,TEXT("After the match everyone returns to the same lobby")); return; }
+    // Let the joined player look at the lobby before the setup changes.
+    if (WorldMark<=0) WorldMark=FPlatformTime::Seconds();
+    if (FPlatformTime::Seconds()-WorldMark<5) return;
+    if (!Check(Session->HasLanSession() && Match->MapName==TEXT("Space Station") && Match->IsKillConfirmed(),TEXT("After the match everyone returns to the same lobby (same map, mode and session)"))) return;
+    Host->ActivateMenuRow(Host->LobbySetupRow);
+    const TArray<int32> Rows=Host->GetVisibleMenuRows();
+    if (!Check(Host->MenuTab==9 && Rows.Contains(L+1) && Rows.Contains(L+2) && !Rows.Contains(L) && !Rows.Contains(Host->GetBotMatchRow()+7),TEXT("The host's Match settings show the LAN setup without username, host or search"))) return;
+    Host->AdjustMenuRow(L+1,1);   // next mode
+    Host->ToggleMenu();           // back to the lobby applies it
+    Next(49); return;
+   }
+   if (Step==49)
+   {
+    if (Match->Mode!=Lan.Mode || !Host || !Host->bLobbyScreen) { if (Elapsed>10) Check(false,TEXT("A new mode applies to the lobby")); return; }
+    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS The host's new mode applies in the lobby: %s (%s)"),*UCrosshairBotMatch::ModeName(Match->Mode),*Match->LobbyInfo);
+    if (!Check(Match->MapName==TEXT("Space Station") && Match->bInLobby,TEXT("A mode change keeps everyone in this lobby"))) return;
+    Host->ActivateMenuRow(Host->LobbySetupRow);
+    Host->AdjustMenuRow(L+2,-1);  // previous map: not Space Station
+    Host->ToggleMenu();
+    Next(50); return;
+   }
+   if (Step==50)
+   {
+    if (!Host || !Match->bInLobby || Match->MapName==TEXT("Space Station") || Humans<2 || !Host->bLobbyScreen) { if (Elapsed>60) Check(false,TEXT("A new map reloads the lobby with everyone")); return; }
+    if (!Check(Match->Mode==Lan.Mode && Session->HasLanSession(),TEXT("A new map reloads the lobby there, with everyone and the chosen mode"))) return;
+    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS The lobby moved to %s with both players"),*Match->MapName);
+    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_HOST_OK")); Next(51); return;
+   }
+   // Stay up briefly so the joined player can confirm the new lobby on their side.
+   if (Elapsed>10) { bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); }
+   return;
+  }
   if (Step>=40)
   {
    // Combat: the joined player shoots the host. The host decides the hit and applies the weapon's match damage.
    auto* HostPawn=Cast<ACrosshairCharacter>(PC->GetPawn());
+   auto* Host=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
    ACrosshairCharacter* Joined=nullptr;
    for (TActorIterator<ACrosshairCharacter> It(World);It;++It) if (*It!=HostPawn && !It->IsBot()) Joined=*It;
    if (Step==40)
@@ -555,17 +599,53 @@ void UCrosshairMatchTest::TickLan()
     bool bTag=false; for (TActorIterator<ACrosshairDogTag> It(World);It;++It) bTag|=It->VictimTeam==CrosshairMatchRules::Bravo;
     if (!Check(HostPawn->Health->KilledBy==TEXT("ClientBee") && Shooter && Shooter->Kills==1,TEXT("The kill is credited to the joined player"))) return;
     if (!Check(bTag,TEXT("The joined player's kill drops the host's dog tag"))) return;
-    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_HOST_OK")); Next(43); return;
+    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS The joined player kills the host")); Next(43); return;
    }
    // After the respawn the host's new soldier must have controls too (the playtest's host never moved again).
    // This also keeps the host up while the joined player confirms the kill on their side.
    if (Step==43)
    {
+    // Killed by the joined player: the host watches their killcam, then respawns when it ends.
+    if (HostPawn && HostPawn->Health->bDead && Host->Killcam->IsPlaying() && Host->Killcam->KillerName==TEXT("ClientBee")) bSawKillcam=true;
     if (!HostPawn || HostPawn->Health->bDead) { if (Elapsed>20) Check(false,TEXT("Host respawns after being killed")); return; }
-    if (TickRealInput(TEXT("Host after respawn"))) Next(44);
+    if (InputPhase==0 && InputPhaseAt==0 && !Check(bSawKillcam,TEXT("The host sees the joined player's killcam before respawning"))) return;
+    if (TickRealInput(TEXT("Host after respawn"))) { bSawKillcam=false; Next(44); }
     return;
    }
-   if (Elapsed>5) { bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); }
+   if (Step==44)
+   {
+    // The host kills the joined player, whose machine plays its own killcam; they skip it with F.
+    if (!HostPawn || !Joined || Joined->Health->bDead) { if (Elapsed>20) Check(false,TEXT("Joined player alive for their killcam")); return; }
+    if (Elapsed<2) return;
+    if (!Check(Joined->Health->ApplyDamage(1000.f,PC->GetPawn()->GetController(),HostPawn->Inventory->GetCurrent(),false,TEXT("Bolt-Action Sniper"))>0,TEXT("The host kills the joined player"))) return;
+    KillcamVictim=Joined; LanFiredAt=FPlatformTime::Seconds();
+    Next(45); return;
+   }
+   if (Step==45)
+   {
+    ACrosshairCharacter* Back=nullptr;
+    for (TActorIterator<ACrosshairCharacter> It(World);It;++It) if (*It!=HostPawn && !It->IsBot() && *It!=KillcamVictim.Get() && !It->Health->bDead) Back=*It;
+    if (!Back) { if (Elapsed>15) Check(false,TEXT("The joined player respawns after their killcam")); return; }
+    const double Down=FPlatformTime::Seconds()-LanFiredAt;
+    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO joined player respawned %.2fs after the death"),Down);
+    // Watching the whole killcam takes about 6.6 s; respawning sooner means their skip reached the host.
+    if (!Check(Down<6.0,TEXT("The joined player's killcam skip (F) reaches the host and they respawn early"))) return;
+    Next(46); return;
+   }
+   if (Step==46)
+   {
+    // End the match; on the results screen the host presses Enter to take everyone back to the lobby.
+    if (Elapsed<2) return;
+    World->GetAuthGameMode<ACrosshairMatchGameMode>()->EndMatch(TEXT("Test end"));
+    if (!Check(Match->bMatchOver && Match->bLanMatch && Match->ResultsEndAt>Match->GetServerWorldTimeSeconds(),TEXT("The LAN results screen counts down to the lobby"))) return;
+    Next(47); return;
+   }
+   if (Step==47)
+   {
+    if (Elapsed<3) return;
+    Host->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::Enter,IE_Pressed,1.f));
+    Next(48); return;
+   }
    return;
   }
   if (Step==32)
@@ -710,14 +790,52 @@ void UCrosshairMatchTest::TickLan()
    if (!Me || Me->Kills!=1 || Match->KillFeed.IsEmpty() || Match->KillFeed.Last().Killer!=TEXT("ClientBee")) { if (Elapsed>15) Check(false,TEXT("The client sees its kill credited")); return; }
    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS The client's kill is credited: %s [%s] %s"),*Match->KillFeed.Last().Killer,*Match->KillFeed.Last().Weapon,*Match->KillFeed.Last().Victim);
    Click(IE_Released); Mine->SetBotInput(false,false);
-   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_OK mode=%s map=%s"),*UCrosshairBotMatch::ModeName(Match->Mode),*Match->MapName);
-   bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
+   Next(45); return;
   }
   if (Elapsed>30) { Check(false,TEXT("The client's follow-up shot kills the host")); return; }
   AimAtHost();
   if (DamageShots) { Click(IE_Released); DamageShots=0; }
   else if (FPlatformTime::Seconds()-LanFiredAt>1.0) { Click(IE_Pressed); DamageShots=1; LanFiredAt=FPlatformTime::Seconds(); }
   return;
+ }
+ case 45: case 46:
+ {
+  // The host kills us: our own machine plays the killcam from the host's eyes, and F skips it.
+  auto* Menu=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
+  auto* Mine=Menu ? Cast<ACrosshairCharacter>(Menu->GetPawn()) : nullptr;
+  if (Step==45)
+  {
+   if (!Mine || !Mine->Health->bDead || !Menu->Killcam->IsPlaying()) { if (Elapsed>40) Check(false,TEXT("The joined player's killcam plays after the host kills them")); return; }
+   if (!Check(Menu->Killcam->KillerName==TEXT("HostAce") && Cast<ACameraActor>(Menu->GetViewTarget())!=nullptr,TEXT("The joined player's killcam shows the host's view"))) return;
+   if (Elapsed<.5) return;
+   Menu->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::F,IE_Pressed,1.f)); Menu->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::F,IE_Released,0.f));
+   if (!Check(!Menu->Killcam->IsPlaying(),TEXT("F skips the joined player's killcam"))) return;
+   KillcamVictim=Mine; Next(46); return;
+  }
+  if (!Mine || Mine==KillcamVictim.Get() || Mine->Health->bDead) { if (Elapsed>15) Check(false,TEXT("The joined player respawns after skipping the killcam")); return; }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS The joined player skipped the killcam and respawned"));
+  Next(47); return;
+ }
+ case 47: case 48: case 49:
+ {
+  // The host ends the match and brings everyone back to the lobby, then changes the mode and the map there.
+  auto* Menu=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
+  if (!Match || !Menu || !Match->bInLobby || !Menu->bLobbyScreen || World->GetNetMode()!=NM_Client) { if (Elapsed>90) Check(false,TEXT("The joined player follows the host back to the lobby")); return; }
+  if (Step==47)
+  {
+   if (!Check(Match->MapName==TEXT("Space Station") && !Menu->GetPawn(),TEXT("The joined player is back in the same lobby after the match"))) return;
+   Next(48); return;
+  }
+  if (Step==48)
+  {
+   if (Match->IsKillConfirmed()) { if (Elapsed>30) Check(false,TEXT("The joined player sees the host's new mode")); return; }
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS The joined player sees the host's new mode: %s"),*UCrosshairBotMatch::ModeName(Match->Mode));
+   Next(49); return;
+  }
+  if (Match->MapName==TEXT("Space Station")) { if (Elapsed>90) Check(false,TEXT("The joined player follows the lobby to the new map")); return; }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS The joined player followed the lobby to %s"),*Match->MapName);
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_CLIENT_OK mode=%s map=%s"),*UCrosshairBotMatch::ModeName(Match->Mode),*Match->MapName);
+  bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
  }
  default: return;
  }
@@ -1164,6 +1282,89 @@ void UCrosshairMatchTest::Tick(float Delta)
    if (ACrosshairCharacter* Back=Parked.Key.Get()) { Back->SetActorLocation(Parked.Value,false,nullptr,ETeleportType::TeleportPhysics); Back->GetCharacterMovement()->SetMovementMode(MOVE_Walking); }
   ParkedBots.Reset();
   for (TActorIterator<ACrosshairBotController> It(World);It;++It) It->SetActorTickEnabled(true);
+  Next(90); return;
+ }
+ case 90: case 94:
+ {
+  // Killcam: an enemy bot 6 m in front of the player aims at them for 2 s, then kills them (enemy damage
+  // through the match rules, as its shot would). The killcam must then show the player's stand-in in its sights.
+  if (!Pawn || Pawn->Health->bDead || !PC->Killcam || PC->Killcam->IsPlaying()) { if (Elapsed>20) Check(false,TEXT("Player alive for the killcam test")); return; }
+  if (Elapsed<1.0) return;   // a few frames recorded on the fresh spawn
+  ACrosshairCharacter* Shooter=KillcamShooter.Get();
+  if (!Shooter || Shooter->Health->bDead)
+  {
+   KillcamShooter.Reset();
+   const FVector Eye=Pawn->GetFirstPersonCameraComponent()->GetComponentLocation();
+   FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairKillcamLane),false,Pawn);
+   for (ACrosshairCharacter* Bot:Characters())
+   {
+    if (!Bot->IsBot() || Bot->Health->bDead || !Bot->Inventory->GetCurrent() || !Mode->CanDamage(Bot->GetController(),PC)) continue;
+    Params.AddIgnoredActor(Bot);
+    for (int32 Yaw=0;Yaw<360 && !KillcamShooter.IsValid();Yaw+=30)
+    {
+     const FVector Direction=FRotator(0,Yaw,0).Vector();
+     FHitResult Wall,Ground;
+     if (World->LineTraceSingleByChannel(Wall,Eye,Eye+Direction*700,ECC_Visibility,Params)) continue;
+     const FVector Stand=Pawn->GetActorLocation()+Direction*600;
+     if (!World->LineTraceSingleByChannel(Ground,Stand,Stand-FVector(0,0,300),ECC_Visibility,Params)) continue;
+     if (auto* Brain=Cast<ACrosshairBotController>(Bot->GetController())) { Brain->SetActorTickEnabled(false); Brain->StopMovement(); }
+     Bot->SetActorLocationAndRotation(Ground.ImpactPoint+FVector(0,0,96),FRotator(0,Yaw+180,0),false,nullptr,ETeleportType::TeleportPhysics);
+     Bot->GetCharacterMovement()->StopMovementImmediately();
+     PC->SetControlRotation(FRotator(0,Yaw,0));
+     KillcamShooter=Bot; KillcamStagedAt=FPlatformTime::Seconds();
+    }
+    if (KillcamShooter.IsValid()) return;
+   }
+   if (Elapsed>20) Check(false,TEXT("An enemy bot can be placed to kill the player for the killcam test"));
+   return;
+  }
+  // Hold the aim (the bot's brain is paused) while the killcam records it.
+  Shooter->GetController()->SetControlRotation((Pawn->GetFirstPersonCameraComponent()->GetComponentLocation()-Shooter->GetFirstPersonCameraComponent()->GetComponentLocation()).Rotation());
+  Shooter->GetCharacterMovement()->StopMovementImmediately(); Pawn->GetCharacterMovement()->StopMovementImmediately();
+  if (FPlatformTime::Seconds()-KillcamStagedAt<2.0) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO killcam facing: player actor yaw %.0f, body yaw %.0f, view yaw %.0f, toward the bot %.0f"),Pawn->GetActorRotation().Yaw,Pawn->GetMesh()->GetComponentRotation().Yaw,PC->GetControlRotation().Yaw,(Shooter->GetActorLocation()-Pawn->GetActorLocation()).Rotation().Yaw);
+  if (!Check(Pawn->Health->ApplyDamage(1000.f,Shooter->GetController(),Shooter->Inventory->GetCurrent(),false,TEXT("Assault Rifle"))>0,TEXT("The staged bot kills the player"))) return;
+  Victim=Shooter->GetController(); KillcamVictim=Pawn; WorldMark=World->GetTimeSeconds();
+  if (auto* Brain=Cast<ACrosshairBotController>(Shooter->GetController())) Brain->SetActorTickEnabled(true);
+  KillcamShooter.Reset();
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO killcam: %s killed the player from 6 m (%s)"),*Shooter->GetPlayerState()->GetPlayerName(),Step==90 ? TEXT("will skip") : TEXT("will watch to the end"));
+  Next(Step+1); return;
+ }
+ case 91:
+ {
+  if (!PC->Killcam->IsPlaying()) { if (World->GetTimeSeconds()-WorldMark>4.0) Check(false,TEXT("The killcam starts after the player is killed")); return; }
+  const auto* KillerState=Victim.IsValid() ? Victim->PlayerState.Get() : nullptr;
+  int32 Ghosts=0; for (TActorIterator<ACrosshairKillcamGhost> It(World);It;++It) ++Ghosts;
+  bool bLiveHidden=true; for (ACrosshairCharacter* Character:Characters()) bLiveHidden&=PC->HiddenActors.Contains(Character);
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO killcam started %.2fs after the death: killer %s, weapon '%s', %d stand-ins, %d frames recorded"),World->GetTimeSeconds()-WorldMark,*PC->Killcam->KillerName,*PC->Killcam->WeaponName,Ghosts,PC->Killcam->GetRecordedFrames());
+for (TActorIterator<ACrosshairKillcamGhost> It(World);It;++It) if (KillcamVictim.IsValid() && FVector::Dist2D(It->GetActorLocation(),KillcamVictim->GetActorLocation())<150.f)   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO killcam facing: the player's stand-in actor yaw %.0f, body yaw %.0f"),It->GetActorRotation().Yaw,It->Body->GetComponentRotation().Yaw);
+  if (!Check(KillerState && PC->Killcam->KillerName==KillerState->GetPlayerName() && PC->Killcam->WeaponName==TEXT("Assault Rifle"),TEXT("The killcam names the killer and the weapon"))) return;
+  if (!Check(Cast<ACameraActor>(PC->GetViewTarget())!=nullptr && Ghosts>=2 && bLiveHidden,TEXT("The killcam views from the killer on stand-in soldiers, with the live soldiers hidden"))) return;
+  Next(92); return;
+ }
+ case 92:
+ {
+  if (Elapsed>.6 && Elapsed<2.0) Capture(TEXT("MatchKillcam.png"));   // mid-killcam, well before the skip
+  // Past the old 3 s respawn: still dead, the respawn waits for the killcam.
+  if (World->GetTimeSeconds()-WorldMark<4.5) return;
+  if (!Check(Pawn==KillcamVictim.Get() && Pawn->Health->bDead && PC->Killcam->IsPlaying(),TEXT("The respawn waits for the killcam (still down 4.5 s after the death)"))) return;
+  Key(EKeys::F,IE_Pressed); Key(EKeys::F,IE_Released);
+  if (!Check(!PC->Killcam->IsPlaying() && PC->GetViewTarget()==Pawn,TEXT("F skips the killcam and returns the view"))) return;
+  Next(93); return;
+ }
+ case 93: case 95:
+ {
+  // Near the end of the watched killcam (the moments just before the death), on the stand-ins.
+  if (Step==95 && PC->Killcam->IsPlaying()) { const double Into=World->GetTimeSeconds()-WorldMark; if (Into>5.8 && Into<6.3) Capture(TEXT("MatchKillcamStandIns.png")); }
+  if (!Pawn || Pawn==KillcamVictim.Get() || Pawn->Health->bDead) { if (Elapsed>12) Check(false,TEXT("The player respawns after the killcam")); return; }
+  const double Down=World->GetTimeSeconds()-WorldMark;
+  bool bShown=true; for (ACrosshairCharacter* Character:Characters()) bShown&=!PC->HiddenActors.Contains(Character);
+  int32 Ghosts=0; for (TActorIterator<ACrosshairKillcamGhost> It(World);It;++It) ++Ghosts;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO killcam: respawned %.2fs after the death (%s)"),Down,Step==93 ? TEXT("skipped") : TEXT("watched to the end"));
+  if (!Check(bShown && Ghosts==0 && !PC->Killcam->IsPlaying(),TEXT("After the killcam the live soldiers show again and the stand-ins are gone"))) return;
+  // Skipped: respawn as soon as allowed. Watched: about 1.2 s + 5 s replay + 0.4 s, before the host's 10 s timeout.
+  if (Step==93) { if (!Check(Down<6.0,TEXT("Skipping the killcam respawns the player straight away"))) return; Next(94); return; }
+  if (!Check(Down>6.0 && Down<9.5,TEXT("Watching the whole killcam respawns the player when it ends"))) return;
   Next(9); return;
  }
  case 9:

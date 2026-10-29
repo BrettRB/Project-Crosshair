@@ -149,6 +149,7 @@ void ACrosshairMatchState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
  DOREPLIFETIME(ACrosshairMatchState,AlphaScore); DOREPLIFETIME(ACrosshairMatchState,BravoScore); DOREPLIFETIME(ACrosshairMatchState,bMatchOver);
  DOREPLIFETIME(ACrosshairMatchState,Result); DOREPLIFETIME(ACrosshairMatchState,MapName); DOREPLIFETIME(ACrosshairMatchState,KillFeed);
  DOREPLIFETIME(ACrosshairMatchState,bInLobby); DOREPLIFETIME(ACrosshairMatchState,MaxHumans); DOREPLIFETIME(ACrosshairMatchState,LobbyInfo);
+ DOREPLIFETIME(ACrosshairMatchState,bLanMatch); DOREPLIFETIME(ACrosshairMatchState,ResultsEndAt);
 }
 int32 ACrosshairMatchState::CountHumans(uint8 Team) const
 {
@@ -207,15 +208,40 @@ void ACrosshairMatchGameMode::InitGameState()
 {
  Super::InitGameState();
  auto* State=GetGameState<ACrosshairMatchState>(); if (!State) return;
+ State->bInLobby=bLobby; State->bLanMatch=bLanMatch;
+ PublishSetup();
+ State->MapName=GetWorld()->GetMapName().Contains(TEXT("L_Grid")) ? TEXT("Grid") : GetWorld()->GetMapName().Contains(TEXT("L_SpaceStation")) ? TEXT("Space Station") : TEXT("Nuketown");
+}
+void ACrosshairMatchGameMode::PublishSetup()
+{
+ auto* State=GetGameState<ACrosshairMatchState>(); if (!State) return;
  State->Mode=MatchOptions.Mode;
  State->ScoreLimit=UCrosshairBotMatch::ScoreLimitFor(MatchOptions);
- State->bInLobby=bLobby; State->MaxHumans=MaxHumans;
+ State->MaxHumans=MaxHumans;
  const bool bTeams=UCrosshairBotMatch::IsTeamMode(MatchOptions.Mode);
  const FString Bots=!MatchOptions.bBots ? FString(TEXT("Players only, no bots"))
   : bTeams ? FString::Printf(TEXT("%s bots fill open slots up to %dv%d"),*UCrosshairBotMatch::DifficultyName(MatchOptions.Difficulty),MatchOptions.TeamSize,MatchOptions.TeamSize)
   : FString::Printf(TEXT("%d %s bots join"),MatchOptions.BotCount,*UCrosshairBotMatch::DifficultyName(MatchOptions.Difficulty));
  State->LobbyInfo=FString::Printf(TEXT("%s  /  %d minutes"),*Bots,MatchOptions.TimeLimitMinutes);
- State->MapName=GetWorld()->GetMapName().Contains(TEXT("L_Grid")) ? TEXT("Grid") : GetWorld()->GetMapName().Contains(TEXT("L_SpaceStation")) ? TEXT("Space Station") : TEXT("Nuketown");
+ State->ForceNetUpdate();
+}
+void ACrosshairMatchGameMode::RefreshLobbySetup()
+{
+ if (!bLobby || !bLanMatch) return;
+ const FCrosshairSettings& Settings=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+ const bool bHadTeams=UCrosshairBotMatch::IsTeamMode(MatchOptions.Mode);
+ MatchOptions=Settings.Lan.Match;
+ MaxHumans=FMath::Clamp(Settings.Lan.MaxPlayers,2,12);
+ UCrosshairBotMatch::Validate(MatchOptions);
+ // Switching between Free-for-all and a team mode re-balances everyone; otherwise lobby team picks stay.
+ if (UCrosshairBotMatch::IsTeamMode(MatchOptions.Mode)!=bHadTeams)
+ {
+  for (APlayerState* Player:GameState->PlayerArray) if (auto* Match=Cast<ACrosshairMatchPlayerState>(Player)) Match->Team=CrosshairMatchRules::NoTeam;
+  for (APlayerState* Player:GameState->PlayerArray)
+   if (auto* Match=Cast<ACrosshairMatchPlayerState>(Player)) { AssignTeam(Cast<AController>(Match->GetOwner())); Match->ForceNetUpdate(); }
+ }
+ PublishSetup();
+ UE_LOG(LogTemp,Display,TEXT("Crosshair LAN lobby: setup now %s, %s"),*UCrosshairBotMatch::ModeName(MatchOptions.Mode),*GetGameState<ACrosshairMatchState>()->LobbyInfo);
 }
 void ACrosshairMatchGameMode::CollectSpawnPoints()
 {
@@ -424,10 +450,30 @@ void ACrosshairMatchGameMode::NotifyKilled(AController* Killer,AController* Vict
  }
  if (Victim && !State->bMatchOver)
  {
+  // A player killed by someone else watches the killcam first; the respawn waits for it (KillcamDone),
+  // or for the timeout if their machine never reports. Bots and other deaths respawn after RespawnDelay.
+  const bool bKillcam=Victim->IsPlayerController() && KillerState;
+  const double DiedAt=GetWorld()->GetTimeSeconds();
+  if (bKillcam) KillcamPending.Add(Victim,DiedAt);
   FTimerHandle Handle;
-  GetWorldTimerManager().SetTimer(Handle,FTimerDelegate::CreateWeakLambda(this,[this,Weak=TWeakObjectPtr<AController>(Victim)]()
-  { if (Weak.IsValid()) Respawn(Weak.Get()); }),RespawnDelay,false);
+  // The timeout belongs to this death only: an earlier death's timer must not cut a later killcam short.
+  GetWorldTimerManager().SetTimer(Handle,FTimerDelegate::CreateWeakLambda(this,[this,bKillcam,DiedAt,Weak=TWeakObjectPtr<AController>(Victim)]()
+  {
+   if (!Weak.IsValid()) return;
+   if (bKillcam) { const double* Pending=KillcamPending.Find(Weak); if (!Pending || *Pending!=DiedAt) return; KillcamPending.Remove(Weak); }
+   Respawn(Weak.Get());
+  }),bKillcam ? KillcamTimeout : RespawnDelay,false);
  }
+}
+void ACrosshairMatchGameMode::KillcamDone(AController* Player)
+{
+ const double* DiedAt=KillcamPending.Find(Player);
+ if (!DiedAt) return;
+ const float Wait=FMath::Max(.05f,float(*DiedAt+RespawnDelay-GetWorld()->GetTimeSeconds()));
+ KillcamPending.Remove(Player);
+ FTimerHandle Handle;
+ GetWorldTimerManager().SetTimer(Handle,FTimerDelegate::CreateWeakLambda(this,[this,Weak=TWeakObjectPtr<AController>(Player)]()
+ { if (Weak.IsValid()) Respawn(Weak.Get()); }),Wait,false);
 }
 void ACrosshairMatchGameMode::DropTag(AController* Victim,const FVector& Where)
 {
@@ -492,10 +538,15 @@ void ACrosshairMatchGameMode::EndMatch(const FString& Result)
  State->bMatchOver=true; State->Result=Result;
  for (TActorIterator<ACrosshairCharacter> It(GetWorld());It;++It) It->StopActions();
  UE_LOG(LogTemp,Display,TEXT("Crosshair match over: %s"),*Result);
- // Players can leave immediately from the results screen; otherwise return to Home.
+ // Players can leave immediately from the results screen; otherwise return to Home, or on LAN
+ // bring everyone back to the same lobby to change classes and setup and play again.
+ State->ResultsEndAt=State->GetServerWorldTimeSeconds()+ResultsSeconds; State->ForceNetUpdate();
  FTimerHandle Handle;
  GetWorldTimerManager().SetTimer(Handle,FTimerDelegate::CreateWeakLambda(this,[this]()
- { GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->LeaveMatch(); }),ResultsSeconds,false);
+ {
+  auto* Session=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>();
+  if (!bLanMatch || !Session->ReturnToLobby()) Session->LeaveMatch();
+ }),ResultsSeconds,false);
 }
 void ACrosshairMatchGameMode::PreLogin(const FString& Options,const FString& Address,const FUniqueNetIdRepl& UniqueId,FString& ErrorMessage)
 {

@@ -3675,3 +3675,93 @@ Write a new description for the repository's GitHub "About" box, shown on the re
 ### Response Summary
 Saved a GitHub About description note with two options, topics and setup steps to Downloads.
 ---
+
+---
+## Interaction 81
+
+### User Prompt
+Add a kill replay that you see when you die, the game should keep running in the background and you will press f to skip it. Also, make it so the LAN game doesn't kick you to home screen and just back to the same lobby in case you want to keep playing with the same people.
+
+### Interpretation
+Two features:
+1. A killcam that replays your death from the killer's view while the live match keeps running, skippable with F.
+2. After a LAN match, everyone returns to the same lobby instead of the main menu.
+
+### Clarifications (asked before implementing)
+- **Killcam view:** the killer's eyes (recommended option).
+- **Respawn:** after the killcam ends or is skipped (recommended option).
+- **Lobby:** the user said: "It doesn't put you back into the game, just back into the lobby in case someone wants to change class or host wants to change settings". So the lobby needs class changes (already there) and host settings changes (new).
+
+### Requirements / Acceptance Criteria
+- **Killcam:**
+  - After being killed by another soldier, the player sees the moments before their death from the killer's view, offline and on LAN.
+  - The match keeps running.
+  - F skips it, and the player respawns when it ends or is skipped.
+- **Lobby:**
+  - After a LAN match, everyone lands in the same lobby with the session open.
+  - Players can change class and team there.
+  - The host can change the match settings there, then start again.
+- Offline matches and existing behaviour are unchanged.
+
+### Actions Taken
+- **Killcam (new `CrosshairKillcam.h/.cpp`):**
+  - `UCrosshairKillcam` on the player controller records every soldier at 30 Hz and keeps 7 s. On death it plays the last 5 s plus the death moment on local `ACrosshairKillcamGhost` stand-ins. The stand-ins copy the body, materials, gear and gun camo, are animated by the locomotion anim through new driven inputs, and ragdoll at their recorded death.
+  - The live soldiers are hidden for this player only (`HiddenActors`). A local camera follows the killer's recorded eye, view and FOV, with their gun as the viewmodel, the scope overlay, shot sounds and kick.
+  - The HUD draws a letterbox, the killer and weapon, and "F / Y Skip".
+- **Character:** replicates the aim-down-sights amount to other machines (`SharedAim`, skipping the owner) so the killcam knows when the killer was scoped.
+- **Respawn:** the host holds a killed player's respawn until `ServerKillcamDone` arrives, never sooner than 3 s, with a 10 s timeout. Bots and falls are unchanged.
+- **Lobby return:**
+  - LAN results count down to the lobby, and the host can press Enter to go now. The host then server-travels to the same map as a lobby (`ChangePracticeMap` gained `bBringPlayers`), and the session stays open.
+  - New host-only lobby row **Match settings** opens the LAN setup rows. Leaving it applies the changes: mode, bots and limits in place (`RefreshLobbySetup`, which re-balances teams on an FFA/team switch), and a new map by reloading the lobby there. The LAN listing is updated.
+  - Lobby rows tighten when there are six.
+- **Tests:**
+  - **Match smoke** (steps 90-95):
+    - Staged 6 m bot kill.
+    - Killcam start, killer, weapon, stand-ins and hidden live soldiers.
+    - Respawn held at 4.5 s, then F skip.
+    - A second kill watched to the end.
+    - Cleanup checks and rendered captures.
+  - **LAN test:**
+    - Host killcam.
+    - Joined player's killcam and F skip, with the early respawn checked on the host.
+    - The results screen and Enter back to the lobby.
+    - A mode change in the lobby, then a map change that reloads the lobby with both players.
+- **Bugs found by the tests and fixed during the task:**
+  - An earlier death's timeout respawning the player mid-killcam.
+  - No killcam for a player killed the frame they respawned.
+  - Stand-ins copying a ragdoll's mesh offset and facing the wrong way.
+- Documented in README.md and docs/offline-match-and-lan.md.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairKillcam.h, CrosshairKillcam.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h/.cpp, CrosshairGame.h/.cpp, CrosshairLocomotion.h/.cpp, CrosshairMatch.h/.cpp, CrosshairMatchSession.h/.cpp, CrosshairReplaySubsystem.h/.cpp, CrosshairWeapon.h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.h/.cpp
+- README.md, docs/offline-match-and-lan.md, docs/ai-interaction-log.md
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development`: Succeeded.
+- **Two-process LAN test:** HOST_OK and CLIENT_OK.
+  - The host saw ClientBee's killcam before respawning.
+  - The joined player saw HostAce's killcam and skipped it with F. The host respawned them 3.01 s after the death.
+  - Both returned to the Space Station Kill Confirmed lobby.
+  - The mode change to Free-for-all applied in the lobby and was seen by the joined player.
+  - The map change reloaded the lobby on Grid with both players.
+  - The first run failed only on a test race (the host changed the mode before the joined player checked). Fixed by waiting 5 s.
+- **Match smoke** (rendered, and NullRHI in the regression run): CROSSHAIR_MATCH_OK.
+  - The killcam starts 1.36 s after the death with 8 stand-ins.
+  - Respawn at 4.6-4.9 s when skipped and 8.0-8.2 s when watched.
+  - The capture `MatchKillcamStandIns.png` was inspected: the player's stand-in is in uniform and gear and faces the bot in its sights.
+  - The facing log confirms the stand-in body at the standing offset (actor 0 → body -90).
+- Automation: 15 Success, 0 Fail.
+- Frontend, lethal and expansion smokes: OK.
+- Core smoke: the known pre-existing step 15 failure (Interaction 72).
+
+### Notes / Follow-up
+- Not verified on two separate PCs. The Y button is untested (same path as F).
+- Stand-ins do not show crouching, reload or switch animations, or thrown lethals in flight.
+- A soldier whose old body was already removed before the killcam begins has no stand-in.
+- A joined player pressing Enter on the LAN results screen still leaves for the main menu (they can also wait for the lobby).
+
+### Response Summary
+Explained both features, the clarified behaviour, the three bugs the tests caught, and the test results.
+---

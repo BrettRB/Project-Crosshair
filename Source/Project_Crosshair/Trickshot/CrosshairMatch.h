@@ -188,6 +188,10 @@ public:
  UPROPERTY(Replicated,BlueprintReadOnly) int32 MaxHumans=1;
  /** Lobby summary of the host's setup, e.g. "Bots fill open slots  /  10 minutes". */
  UPROPERTY(Replicated,BlueprintReadOnly) FString LobbyInfo;
+ /** Hosted from the LAN setup: after the results, everyone returns to the lobby instead of Home. */
+ UPROPERTY(Replicated,BlueprintReadOnly) bool bLanMatch=false;
+ /** Server time when the results screen ends (back to the lobby on LAN, Home offline). */
+ UPROPERTY(Replicated,BlueprintReadOnly) float ResultsEndAt=0;
  /** Human players in the match (bots and replay spectators excluded). */
  int32 CountHumans(uint8 Team=255) const;
 };
@@ -219,6 +223,12 @@ public:
  bool RequestTeam(APlayerController* Player,uint8 Team);
  /** The host leaves the lobby: bots join, everyone spawns and the clock starts. */
  bool StartFromLobby(APlayerController* Requester);
+ /** LAN lobby: re-reads the host's saved LAN setup (mode, bots, limits, max players) without reloading the map. */
+ void RefreshLobbySetup();
+ /** A player's killcam ended or was skipped: respawn them (never sooner than RespawnDelay after the death). */
+ void KillcamDone(AController* Player);
+ /** Longest a player killed by someone waits for their killcam before respawning anyway. */
+ UPROPERTY(EditDefaultsOnly) float KillcamTimeout=10.f;
  /** Kill Confirmed pickup, decided on the host. */
  void CollectTag(ACrosshairDogTag* Tag,AController* Collector);
  /** Hosted from the LAN setup (travel option CrosshairLan) rather than the offline match setup. */
@@ -235,7 +245,7 @@ public:
  ACrosshairSpawnPoint* GetLastSpawn(const AController* Controller) const { return LastSpawn.FindRef(Controller).Get(); }
  /** Seconds between death and respawn. */
  UPROPERTY(EditDefaultsOnly) float RespawnDelay=3.f;
- /** Results screen time before returning to Home. */
+ /** Results screen time before returning to Home (offline) or the lobby (LAN). */
  UPROPERTY(EditDefaultsOnly) float ResultsSeconds=20.f;
  bool bInvalidMap=false;
 private:
@@ -246,10 +256,14 @@ private:
  /** Bots, clock and first spawns: at StartPlay offline, or when the host leaves the LAN lobby. */
  void BeginMatch();
  void DropTag(AController* Victim,const FVector& Where);
+ /** Mode, score limit, player limit and lobby summary on the game state. */
+ void PublishSetup();
  FCrosshairBotMatchOptions MatchOptions;
  bool bLanMatch=false,bLobby=false;
  int32 MaxHumans=1;
  UPROPERTY() TArray<TObjectPtr<ACrosshairSpawnPoint>> SpawnPoints;
  TSet<TWeakObjectPtr<AController>> HasSpawned;
+ /** Players watching a killcam, with the time they died. */
+ TMap<TWeakObjectPtr<AController>,double> KillcamPending;
  TMap<TWeakObjectPtr<const AController>,TWeakObjectPtr<ACrosshairSpawnPoint>> LastSpawn;
 };

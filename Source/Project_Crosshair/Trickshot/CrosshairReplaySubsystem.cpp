@@ -131,7 +131,7 @@ void UCrosshairReplaySubsystem::BeginAttempt()
 	Phase = Save->Settings.bContinuousPractice ? ECrosshairReplayPhase::Idle : ECrosshairReplayPhase::StartPending;
 	PhaseStarted = FPlatformTime::Seconds();
 }
-bool UCrosshairReplaySubsystem::ChangePracticeMap(FName Map, const FString& Options)
+bool UCrosshairReplaySubsystem::ChangePracticeMap(FName Map, const FString& Options, bool bBringPlayers)
 {
 	// A match kill clip may still be saving when the player leaves; it finishes across travel.
 	const bool bKeepClip = bMatchClip && IsFinishing();
@@ -162,7 +162,9 @@ bool UCrosshairReplaySubsystem::ChangePracticeMap(FName Map, const FString& Opti
 	LivePlayer.Reset();
 	ReturnMap = Map.ToString();
 	Status.Empty();
-	UGameplayStatics::OpenLevel(GetGameInstance(), Map, true, Options);
+	// A listen server travelling with OpenLevel would drop its joined players; server travel brings them along.
+	if (bBringPlayers && GetWorld() && GetWorld()->GetNetMode() == NM_ListenServer) GetWorld()->ServerTravel(Map.ToString() + (Options.IsEmpty() ? FString() : TEXT("?") + Options));
+	else UGameplayStatics::OpenLevel(GetGameInstance(), Map, true, Options);
 	return true;
 }
 void UCrosshairReplaySubsystem::CompleteAttempt()

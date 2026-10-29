@@ -68,6 +68,8 @@ public:
 	UFUNCTION(BlueprintPure) bool CanAct() const;
 	bool IsReplayPlayback() const;
 	float GetAimAlpha() const { return AimAlpha; }
+	/** How far aimed down sights this soldier is on any machine (other players' soldiers use the host's value). */
+	float GetSharedAimAlpha() const { return HasAuthority() || IsLocallyControlled() ? AimAlpha : SharedAim / 255.f; }
 	void ApplyRecoil(float Degrees);
 	void TargetHit(ACrosshairDummy* Target, bool bHeadshot = false, bool bWallbang = false);
 	void StopActions();
@@ -134,6 +136,8 @@ private:
 	void ResetPressed();
 	void MenuPressed();
 	UPROPERTY(Replicated) FCrosshairViewState RecordedView;
+	/** Aim-down-sights amount (0-255) for the killcam on other machines; the owner has its own. */
+	UPROPERTY(Replicated) uint8 SharedAim = 0;
 	bool bAimHeld = false;
 	bool bSprintHeld = false;
  bool bControllerSprint=false;

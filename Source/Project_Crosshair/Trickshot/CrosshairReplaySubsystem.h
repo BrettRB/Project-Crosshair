@@ -25,8 +25,11 @@ public:
 	virtual UWorld* GetTickableGameObjectWorld() const override { return GetWorld(); }
 	void PracticeReady(ACrosshairCharacter* Player);
 	void BeginAttempt();
-	/** Discards the active unsaved attempt and starts fresh on another map. Options are URL options such as a match game mode. */
-	UFUNCTION(BlueprintCallable) bool ChangePracticeMap(FName Map, const FString& Options = TEXT(""));
+	/**
+	 * Discards the active unsaved attempt and starts fresh on another map. Options are URL options such as a match game mode.
+	 * bBringPlayers: a LAN host travels with its joined players (server travel) instead of opening the map alone.
+	 */
+	UFUNCTION(BlueprintCallable) bool ChangePracticeMap(FName Map, const FString& Options = TEXT(""), bool bBringPlayers = false);
 	void CompleteAttempt();
 	/** Starts continuous recording for the local player in a match (no-op if already recording). */
 	void BeginMatchRecording(ACrosshairCharacter* Player);

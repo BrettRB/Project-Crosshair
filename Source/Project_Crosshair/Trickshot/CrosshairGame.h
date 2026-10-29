@@ -66,14 +66,20 @@ public:
  bool IsLobbyHost() const { return GetNetMode()==NM_ListenServer && IsLocalController(); }
  void ShowLobby();
  bool bLobbyScreen=false;
- /** Lobby rows: Start (host only), Team (team modes), Weapon classes, Settings, Leave. */
+ /** Lobby rows: Start and Match settings (host only), Team (team modes), Weapon classes, Settings, Leave. */
  static constexpr int32 LobbyStartRow=0;
  static constexpr int32 LobbyTeamRow=1;
  static constexpr int32 LobbyClassRow=2;
  static constexpr int32 LobbySettingsRow=3;
  static constexpr int32 LobbyLeaveRow=4;
+ /** Host only: the LAN setup (mode, map, bots, limits); applied on returning to the lobby. */
+ static constexpr int32 LobbySetupRow=5;
  UFUNCTION(Server,Reliable) void ServerRequestTeam(uint8 Team);
  UFUNCTION(Server,Reliable) void ServerStartLobbyMatch();
+ /** Replays the last seconds before this player's death from the killer's eyes (local player only). */
+ UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UCrosshairKillcam> Killcam;
+ /** The killcam ended or was skipped (F): the host may respawn this player. */
+ UFUNCTION(Server,Reliable) void ServerKillcamDone();
  /** A message from the host (kill confirmed / denied, team full); shown even without a pawn. */
  UFUNCTION(Client,Reliable) void ClientNotify(const FString& Text);
  FString Notice;

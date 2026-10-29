@@ -25,6 +25,8 @@ public:
  bool IsSwitching() const;
  /** The host's clock. Draw, stow and reload start times are stamped on the host, and a LAN client's own clock started later. */
  float GetSharedTime() const;
+ /** Shots fired so far (replicated); the killcam replays the killer's shots from it. */
+ int32 GetShotSequence() const { return ShotSequence; }
  void UpdateCarry();
 	void StartFire();
 	void StopFire();

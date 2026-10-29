@@ -1,5 +1,6 @@
 #include "CrosshairMatchSession.h"
 #include "CrosshairMapLibrary.h"
+#include "CrosshairMatch.h"
 #include "CrosshairReplaySubsystem.h"
 #include "CrosshairStartup.h"
 #include "Engine/GameInstance.h"
@@ -72,7 +73,7 @@ bool UCrosshairMatchSession::HostLanMatch()
  Settings.NumPublicConnections=Saved.Lan.MaxPlayers;   // human players, including the host
  Settings.Set(CrosshairHostKey,UCrosshairBotMatch::CleanPlayerName(Saved.PlayerName),EOnlineDataAdvertisementType::ViaOnlineService);
  Settings.Set(CrosshairBotsKey,FString(Options.bBots ? TEXT("bots on") : TEXT("no bots")),EOnlineDataAdvertisementType::ViaOnlineService);
- HostedMap=UCrosshairBotMatch::ResolveMap(Options.Map);
+ HostedChoice=Options.Map; HostedMap=UCrosshairBotMatch::ResolveMap(Options.Map);
  Settings.Set(SETTING_MAPNAME,UCrosshairBotMatch::MapName(HostedMap),EOnlineDataAdvertisementType::ViaOnlineService);
  Settings.Set(CrosshairModeKey,UCrosshairBotMatch::ModeName(Options.Mode),EOnlineDataAdvertisementType::ViaOnlineService);
  ClearHandles();
@@ -157,6 +158,42 @@ void UCrosshairMatchSession::LeaveMatch()
  // Arrive on Home, as when the game first opens.
  Library->bHomeVisited=false; Library->ActiveMapId.Reset();
  GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->ChangePracticeMap(TEXT("/Game/Crosshair/Maps/L_Practice"));
+}
+bool UCrosshairMatchSession::ReturnToLobby()
+{
+ UWorld* World=GetWorld();
+ FString Reason;
+ if (!World || World->GetNetMode()!=NM_ListenServer || !HasLanSession() || !CanTravel(Reason)) return false;
+ auto& Settings=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+ UCrosshairBotMatch::Validate(Settings.Lan);
+ if (Settings.Lan.Match.Map!=HostedChoice) { HostedChoice=Settings.Lan.Match.Map; HostedMap=UCrosshairBotMatch::ResolveMap(HostedChoice); }
+ UpdateAdvertisement();
+ LastMatchMap=HostedMap;
+ UE_LOG(LogTemp,Display,TEXT("Crosshair LAN: returning everyone to the lobby on %s"),*UCrosshairBotMatch::MapName(HostedMap));
+ return GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->ChangePracticeMap(UCrosshairBotMatch::MapPackage(HostedMap),TravelOptions(Settings.Lan.Match,true),true);
+}
+void UCrosshairMatchSession::ApplyLobbySettings()
+{
+ auto* Mode=GetWorld() ? GetWorld()->GetAuthGameMode<ACrosshairMatchGameMode>() : nullptr;
+ if (!Mode || !Mode->IsLanMatch() || !Mode->IsInLobby()) return;
+ auto& Settings=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+ UCrosshairBotMatch::Validate(Settings.Lan);
+ // A different map needs the map loaded; everything else applies to this lobby as it is.
+ if (Settings.Lan.Match.Map!=HostedChoice && ReturnToLobby()) return;
+ Mode->RefreshLobbySetup();
+ UpdateAdvertisement();
+}
+void UCrosshairMatchSession::UpdateAdvertisement()
+{
+ const IOnlineSessionPtr Interface=Sessions(this);
+ FOnlineSessionSettings* Settings=Interface.IsValid() ? Interface->GetSessionSettings(NAME_GameSession) : nullptr;
+ if (!Settings) return;
+ const auto& Saved=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
+ Settings->NumPublicConnections=Saved.Lan.MaxPlayers;
+ Settings->Set(CrosshairBotsKey,FString(Saved.Lan.Match.bBots ? TEXT("bots on") : TEXT("no bots")),EOnlineDataAdvertisementType::ViaOnlineService);
+ Settings->Set(SETTING_MAPNAME,UCrosshairBotMatch::MapName(HostedMap),EOnlineDataAdvertisementType::ViaOnlineService);
+ Settings->Set(CrosshairModeKey,UCrosshairBotMatch::ModeName(Saved.Lan.Match.Mode),EOnlineDataAdvertisementType::ViaOnlineService);
+ Interface->UpdateSession(NAME_GameSession,*Settings,true);
 }
 void UCrosshairMatchSession::ClearHandles()
 {

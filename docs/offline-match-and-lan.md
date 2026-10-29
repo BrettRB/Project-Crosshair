@@ -358,3 +358,59 @@ Not verified: two separate PCs, and a joined player's controls after their own r
 The LAN tab drew a "NETWORK" status box at a fixed spot over the option list. With bots on, it covered the bottom rows (Max players, Host and Find). The box is gone. Its status message ("Searching this network...", "No LAN matches found on this network.", "Hosting LAN match", and so on) now follows the tab description under the LAN title, above the rows.
 
 **Verified:** the rendered match smoke (`-CrosshairMatchVisual -RenderOffscreen`) now opens the LAN tab with bots on, a search status and the last row selected, and captures it. The capture shows all rows down to "Find LAN matches" uncovered, and the status on the description line. CROSSHAIR_MATCH_OK. (The smoke's screenshot files are written one request late, so that image landed in `MenuMatchSetup.png`.)
+
+## Killcam, and back to the lobby after a LAN match (2026-10-29)
+
+### Killcam
+
+When another soldier kills you in a match (offline or LAN), you see the last moments before your death from their eyes. The match keeps running underneath: nothing pauses, and other players are unaffected.
+
+- **What you see:**
+  - The 5 seconds before the death and the moment after it, from the killer's eyes.
+  - Their gun in view, moving from the hip to the sights as they aimed. A sniper shows its scope view when they were scoped in.
+  - Their shots, with sound and kick.
+  - Every soldier as a stand-in with the same uniform, gear, gun and walk/jog animation, falling as a ragdoll when they died.
+  - A letterbox with "KILLCAM", "Killed by *name* with the *weapon*" and **F / Y Skip**.
+- **Timing:** "KILLED BY ..." shows for 1.2 s, then the killcam plays (about 6.6 s in all). You respawn when it ends or when you press F (on a controller, Y), but never sooner than the usual 3 s after the death.
+- **No killcam for:** falls, your own grenade, or a killer who was no longer in the recording. Those respawn after 3 s as before. Bots respawn after 3 s as before.
+
+**How it works:**
+- `UCrosshairKillcam` (on each player's controller) records every soldier on that player's own machine 30 times a second and keeps the last 7 seconds. It records position, facing, velocity, eye position and view, aim amount, falling/dead, held weapon and shot count. That is what the machine already sees through replication, so it works the same offline, for the LAN host and for joined players.
+- On death it spawns local `ACrosshairKillcamGhost` stand-ins. They are never replicated, and they copy the body mesh, materials, attached gear and the held gun's camo. The locomotion animation takes the recorded movement through new `bDriven` inputs.
+- The live soldiers and their weapons are hidden from that player only (`PlayerController::HiddenActors`), and a local camera follows the killer's recorded view and FOV.
+- How far a soldier is aimed in now replicates to other machines (`ACrosshairCharacter::SharedAim`), so a joined player's killcam knows when the killer was scoped.
+- The host holds a killed player's respawn until their machine reports the killcam done or skipped (`ACrosshairPlayerController::ServerKillcamDone` → `ACrosshairMatchGameMode::KillcamDone`). If no report arrives, `KillcamTimeout` (10 s) respawns them anyway. Each death's timeout only applies to that death.
+
+### Back to the same lobby after a LAN match
+
+- **When a LAN match ends:** the results screen counts down ("Back to the lobby in N s"). Then the host reloads the map as a fresh lobby and brings every joined player along. This is server travel, and the LAN session stays open.
+  - Everyone is back in the lobby with their username. They can change team and weapon class there, and the host starts the next match.
+  - On the results screen, the host can press Enter to go now. A joined player who presses Enter leaves for the main menu. Offline matches still return to the main menu.
+- **Match settings (host only):** a new lobby row opens the LAN setup: mode, map, bots, bot difficulty and count or team size, score and time limits, and max players.
+  - Changes apply when the host returns to the lobby (Esc / B).
+  - Everything except the map applies in place (`ACrosshairMatchGameMode::RefreshLobbySetup`). Switching between Free-for-all and a team mode re-balances the teams.
+  - A new map reloads the lobby there with everyone (`UCrosshairMatchSession::ApplyLobbySettings` / `ReturnToLobby`).
+  - The LAN listing (map, mode, bots, player limit) is updated for anyone searching.
+- **Random map:** a Random map choice keeps the same rolled map between matches until the host changes the map choice.
+
+### Verification
+
+- **Match smoke (offline):**
+  - An enemy bot is placed 6 m in front of the player, aims at them for 2 s, and kills them.
+  - The killcam starts 1.4 s after the death. It names the killer and weapon, views through the bot's eyes on 8 stand-ins, and hides the live soldiers.
+  - At 4.5 s the player is still down, so the respawn waited. F skips the killcam and the player respawns at 4.6-4.9 s. A second kill watched to the end respawns at 8.0-8.2 s.
+  - Afterwards the live soldiers show again and no stand-ins remain.
+  - The rendered capture `MatchKillcamStandIns.png` shows the player's stand-in in uniform and gear, facing the bot with its gun up, in the bot's sights.
+- **Two-process LAN test:**
+  - **Host killcam:** the joined player kills the host, and the host sees "ClientBee"'s killcam before respawning.
+  - **Joined player's killcam:** the host kills the joined player, who sees the host's view, and F skips it. The host respawns them 3.0 s after the death (watching it all takes about 6.6 s), so the skip reached the host.
+  - **Lobby return:** the host ends the match and presses Enter on the results screen. Both players land back in the Space Station Kill Confirmed lobby, with the LAN session still open.
+  - **Mode change:** Match settings show only the setup rows. Changing the mode to Free-for-all applies in the lobby, and the joined player sees it.
+  - **Map change:** changing the map reloads the lobby on Grid, and the joined player follows.
+
+**Bugs found by these tests and fixed:**
+- An earlier death's 10 s safety timer could respawn the player in the middle of a later killcam.
+- A player killed in the frame they respawned got no killcam.
+- A stand-in copied a ragdoll's mesh offset, so it faced the wrong way.
+
+**Not verified:** two separate PCs, a controller's Y button (the same code path as F), and the killcam during a lethal throw or a wallbang. The stand-ins don't show reload or switch animations, crouching, or thrown lethals in flight.

@@ -228,6 +228,7 @@ void ACrosshairCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME_CONDITION(ACrosshairCharacter, RecordedView, COND_ReplayOnly);
 	DOREPLIFETIME_CONDITION(ACrosshairCharacter, bReplayFocus, COND_ReplayOnly);
+	DOREPLIFETIME_CONDITION(ACrosshairCharacter, SharedAim, COND_SkipOwner);
 }
 bool ACrosshairCharacter::IsReplayPlayback() const
 {
@@ -297,6 +298,7 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		RecordedView.Rotation = Camera->GetComponentRotation();
 		RecordedView.FOV = Camera->FieldOfView;
 		RecordedView.AimAlpha = AimAlpha;
+		if (HasAuthority()) SharedAim = uint8(FMath::RoundToInt(FMath::Clamp(AimAlpha, 0.f, 1.f) * 255.f));
 		if (IsLocallyControlled() && !IsBot())
 		{
 			// Yaw history for spin (360) detection on kills.

@@ -24,11 +24,13 @@ This project was made for an **AI-Assisted Software Engineering** course. It was
 - Bots with four difficulty presets (Easy, Regular, Hardened, Veteran) that change reaction time, aim error, turn speed and movement. Bots need line of sight, check above and below them (players on roofs, ledges or mid-jump get shot), shoot each other and you, and roam the map on navigation meshes.
 - COD-style spawns (teams start on opposite sides; respawns avoid enemy sight lines), regenerating health, kill feed, scoreboard and end-of-match results.
 - **Every kill you make is saved to Replays**, labelled with how it happened (for example "Mid-air 360 No-scope Headshot - Bolt-Action Sniper, 42 m"), and real trickshots flash a TRICKSHOT banner.
+- A **killcam** when you die: the last 5 seconds before your death replay from your killer's eyes (their scope and gun included) while the match keeps going. Press **F** (or Y) to skip it; you respawn when it ends or is skipped. Works offline and on LAN.
 
 ### LAN multiplayer (early preview)
 - Host, find and join matches on the same local network using Unreal's built-in local session system (no internet or online service). Joined players fight fully: their shots, reloads, weapon switches and lethals run on the host, which decides hits and damage, and each player keeps their own weapon class.
 - A LAN setup screen: your username, game mode, map, bots on or off, bot difficulty and count, score and time limits, and max players. Everyone appears under their own username.
 - A **LAN lobby**: hosted matches wait until everyone has joined. The lobby lists every player, lets each player choose Alpha or Bravo in Team Deathmatch and Kill Confirmed, and only the host can start the match.
+- After a LAN match, everyone returns to the **same lobby** to change classes and play again. The host can change the mode, map, bots and limits there from **Match settings**.
 
 ### Everything else
 - Main menu and pause menu designed for mouse, keyboard and controller, with custom weapon classes and weapon camos (including Red Tiger and Arctic).

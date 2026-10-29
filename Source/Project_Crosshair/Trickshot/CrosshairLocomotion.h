@@ -126,6 +126,11 @@ public:
  UPROPERTY(Transient,BlueprintReadOnly) float FallAlpha=0;
  /** Practice targets carry no weapon: use the unarmed idle instead of the rifle stance. */
  UPROPERTY(Transient,BlueprintReadWrite) bool bUnarmed=false;
+ /** Killcam stand-ins have no pawn: they set these recorded values each frame instead. */
+ bool bDriven=false,bDrivenFalling=false;
+ FVector DrivenVelocity=FVector::ZeroVector;
+ FRotator DrivenFacing=FRotator::ZeroRotator;
+ float DrivenPitch=0;
  bool bLoadedUnarmed=false;
  /** Fraction of the pose coming from walk/jog cycles (0 = standing idle). */
  float GetMovingWeight() const { return 1.f-Weights.Idle; }

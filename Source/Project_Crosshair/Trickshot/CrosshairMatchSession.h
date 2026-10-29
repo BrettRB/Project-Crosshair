@@ -26,6 +26,13 @@ public:
  bool JoinLanMatch(int32 Index);
  /** Ends any LAN session and returns to the practice map's Home screen. */
  void LeaveMatch();
+ /**
+  * LAN host: reloads the match map as a fresh lobby and brings every joined player along (the session stays open).
+  * The map is re-rolled only when the host's saved map choice changed since it was last rolled.
+  */
+ bool ReturnToLobby();
+ /** LAN host back on the lobby screen: applies the saved LAN setup (a new map reloads the lobby). */
+ void ApplyLobbySettings();
  static FString TravelOptions(const FCrosshairBotMatchOptions& Options,bool bListen);
  bool HasLanSession() const;
  TArray<FString> LanResults;
@@ -44,5 +51,9 @@ private:
  TSharedPtr<FOnlineSessionSearch> Search;
  /** LAN host: the map rolled when the session was advertised. */
  ECrosshairMatchMap HostedMap=ECrosshairMatchMap::Nuketown;
+ /** The saved map choice HostedMap was rolled from (Random stays the same map until the choice changes). */
+ ECrosshairMatchMap HostedChoice=ECrosshairMatchMap::Nuketown;
+ /** Refreshes the LAN listing (map, mode, bots, player limit) after the host changes the setup. */
+ void UpdateAdvertisement();
  FDelegateHandle CreateHandle,FindHandle,JoinHandle;
 };

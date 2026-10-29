@@ -33,6 +33,10 @@ private:
  double Started=0,StepStarted=0;
  bool bDone=false,bSawInvalid=false;
  TWeakObjectPtr<AController> Victim;
+ /** Killcam test: the soldier that was killed (the respawn must replace it only after the killcam). */
+ TWeakObjectPtr<class ACrosshairCharacter> KillcamVictim;
+ TWeakObjectPtr<class ACrosshairCharacter> KillcamShooter;
+ double KillcamStagedAt=0;
  bool bSawBotKillsBot=false,bSawBotHitsPlayer=false;
  int32 ReplaysBefore=0;
  int32 DamageShots=0;
@@ -42,6 +46,7 @@ private:
  int32 AmmoBefore=0;
  float PitchBefore=0;
  bool bSawLookUpTarget=false;
+ bool bSawKillcam=false;
  FVector LookUpBotAt=FVector::ZeroVector;
  TMap<TWeakObjectPtr<class ACrosshairCharacter>,FVector> ParkedBots;
  double WorldMark=0;
