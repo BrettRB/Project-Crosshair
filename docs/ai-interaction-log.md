@@ -3611,3 +3611,35 @@ Remove the box drawn at the bottom of the LAN menu tab, which hides some LAN opt
 ### Response Summary
 Removed the NETWORK box that covered the LAN options. Its status message now appears under the LAN title. Verified with a rendered capture of the LAN tab.
 ---
+
+---
+## Interaction 79
+
+### User Prompt
+write the release notes for version 1.2.1, make it the markdown stuff again and place the new file inside my downloads folder for easy access
+
+### Interpretation
+Write v1.2.1 release notes as Markdown, like the v1.2.0 notes, and save them in the user's Downloads folder.
+
+### Requirements / Acceptance Criteria
+- A Markdown file for v1.2.1 is in the Downloads folder.
+- It accurately covers the changes since v1.2.0.
+
+### Actions Taken
+- Took the changes from the two commits since v1.2.0 (ec91700 LAN controls/scoping/weapon switching, 7fb4c14 LAN tab status box) and from Interactions 77-78.
+- The v1.2.0 notes and zip are no longer in Downloads, so I followed the v1.2.0 layout recorded in Interaction 76: download steps, changes, testing, known limitations and credits.
+- Wrote the notes in plain player-facing language, with a before/now for each fix.
+
+### Files Changed
+- ~/Downloads/Project Crosshair v1.2.1 Release Notes.md (outside the repo)
+- docs/ai-interaction-log.md
+
+### Verification
+- `git log 92bbcf2..HEAD`, `git tag`, and a listing of Downloads. Documentation only, so no build was run.
+
+### Notes / Follow-up
+- `Downloads/Windows` holds a packaged build from 2026-10-28, which is before the v1.2.1 fixes. A new Windows package is needed before attaching `Project Crosshair v1.2.1.zip`, the file name the notes refer to.
+
+### Response Summary
+Wrote the v1.2.1 release notes to Downloads and pointed out that the existing packaged build predates the fixes.
+---
