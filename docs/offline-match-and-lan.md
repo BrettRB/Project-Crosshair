@@ -352,3 +352,9 @@ The two-process LAN test now presses real keys through each player's own control
   - The existing sprint, locomotion, damage and kill checks still pass (HOST_OK and CLIENT_OK).
 
 Not verified: two separate PCs, and a joined player's controls after their own respawn. Before the fix their respawn already worked, and it runs the same path.
+
+### LAN tab: status box removed (2026-10-29)
+
+The LAN tab drew a "NETWORK" status box at a fixed spot over the option list. With bots on, it covered the bottom rows (Max players, Host and Find). The box is gone. Its status message ("Searching this network...", "No LAN matches found on this network.", "Hosting LAN match", and so on) now follows the tab description under the LAN title, above the rows.
+
+**Verified:** the rendered match smoke (`-CrosshairMatchVisual -RenderOffscreen`) now opens the LAN tab with bots on, a search status and the last row selected, and captures it. The capture shows all rows down to "Find LAN matches" uncovered, and the status on the description line. CROSSHAIR_MATCH_OK. (The smoke's screenshot files are written one request late, so that image landed in `MenuMatchSetup.png`.)

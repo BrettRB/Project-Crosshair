@@ -1161,7 +1161,10 @@ void ACrosshairHUD::DrawMenu(ACrosshairPlayerController* PC,ACrosshairMatchState
 		TEXT("Free-for-all, Team Deathmatch or Kill Confirmed against bots on Nuketown, Grid and Space Station."),TEXT("Play with others on the same network.")};
 	const float ContentX=260,ContentRight=W-32;
 	Text(FString(Tabs[PC->MenuTab]).ToUpper(),Ink,ContentX,104,1.4f);
-	Text(PC->IsTabLockedInMatch(PC->MenuTab) ? FString(TEXT("Unavailable during a match. Leave the match to use practice tools.")) : FString(Descriptions[PC->MenuTab]),Muted,ContentX,140,.78f);
+	// The LAN tab shows its host / search status here, above the rows, so it never covers an option.
+	const FString Description=PC->IsTabLockedInMatch(PC->MenuTab) ? FString(TEXT("Unavailable during a match. Leave the match to use practice tools."))
+		: PC->MenuTab==9 && !Session->LanStatus.IsEmpty() ? FString(Descriptions[PC->MenuTab])+TEXT("  /  ")+Session->LanStatus : FString(Descriptions[PC->MenuTab]);
+	Text(Description,Muted,ContentX,140,.78f);
 
 	const TArray<int32> Visible=PC->GetVisibleMenuRows();
 	int32 Index=Visible.IndexOfByKey(PC->MenuSelection);
@@ -1230,12 +1233,6 @@ void ACrosshairHUD::DrawMenu(ACrosshairPlayerController* PC,ACrosshairMatchState
 		for (int32 i=0;i<4;++i) { Rect(Line,CX+20,CY+112+i*36,CW-40,1); Text(Lines[i],Ink,CX+20,CY+121+i*36,.8f); }
 		Text(PC->GetRowHelp(B),Muted,CX+20,CY+CH-62,.62f);
 		Text(Match ? TEXT("Restarting applies these settings.") : TEXT("Every kill you land is saved to Replays."),Muted,CX+20,CY+CH-36,.62f);
-	}
-	if (PC->MenuTab==9)
-	{
-		Rect(PanelColor,ContentX,470,ContentRight-ContentX,64); Frame(Line,ContentX,470,ContentRight-ContentX,64);
-		Text(TEXT("NETWORK"),Amber,ContentX+20,479,.66f);
-		Text(Session->LanStatus.IsEmpty() ? FString(TEXT("Local network only. Every player can fight; the host decides hits and damage.")) : Session->LanStatus,Ink,ContentX+20,502,.78f);
 	}
 	if (PC->MenuTab==7 && !PC->IsTabLockedInMatch(7))
 	{

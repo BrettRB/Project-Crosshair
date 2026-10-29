@@ -884,6 +884,17 @@ void UCrosshairMatchTest::Tick(float Delta)
   if (Elapsed<.6) return;
   Capture(TEXT("MenuMatchSetup.png"));
   if (Elapsed<1.2) return;
+  // LAN tab with every setup row (bots on) and a search status: nothing may be drawn over the bottom rows.
+  GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().Lan.Match.bBots=true;
+  Session->LanStatus=TEXT("No LAN matches found on this network.");
+  PC->SetMenuTab(9); PC->MenuSelection=PC->GetVisibleMenuRows().Last();
+  Next(52); return;
+ case 52:
+  if (Elapsed<.6) return;
+  Capture(TEXT("MenuLan.png"));
+  if (Elapsed<3) return; // rendered screenshots complete a few frames later
+  Session->LanStatus.Reset();
+  PC->SetMenuTab(8);
   PC->ActivateMenuRow(PC->GetBotMatchRow()+6);
   Next(2); return;
  case 2:

@@ -3571,3 +3571,43 @@ Fix four problems from a two-PC LAN playtest:
 ### Response Summary
 Explained the two root causes behind the four reported problems, the fixes, and the new real-input LAN checks that failed before the fixes and pass after. Reported the regression results, including the known core-smoke failure and the intermittent match-smoke limb hit.
 ---
+
+---
+## Interaction 78
+
+### User Prompt
+Also, can you please remove the the little pop up that covers the bottom of the LAN screen since it blocks some of the options visability
+
+### Interpretation
+Remove the box drawn at the bottom of the LAN menu tab, which hides some LAN options.
+
+### Requirements / Acceptance Criteria
+- No box covers the LAN tab's options. All rows are readable.
+- The LAN search and host status stays visible, without covering anything.
+
+### Actions Taken
+- Found the box: `ACrosshairHUD::DrawMenu` drew a "NETWORK" panel at y 470-534 on the LAN tab, over the option list. Rows are 46 px apart from y 174, so with bots on it covered the last rows.
+- Removed the panel. Moved `LanStatus` onto the tab's description line under the title.
+- Added a LAN-tab capture to the rendered match smoke: bots on, a status message, and the last row selected.
+- Documented the change in docs/offline-match-and-lan.md.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.cpp
+- docs/offline-match-and-lan.md
+- docs/ai-interaction-log.md
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development`: Succeeded.
+- `-CrosshairSmoke -CrosshairMatchSmoke -CrosshairMatchVisual -RenderOffscreen -ResX=1280 -ResY=720`: CROSSHAIR_MATCH_OK in 2 runs.
+  - I inspected the LAN tab capture. All 8 visible rows down to "Find LAN matches" are uncovered, and the status appears on the description line.
+  - The first run's capture missed the tab because the step switched back too early. I lengthened the wait to 3 s.
+- The smoke's screenshot files are written one request late, so the LAN image was saved as `MenuMatchSetup.png`. This naming lag already existed and was not changed.
+- A first attempt to cut the visual run short with `taskkill` on all UnrealEditor processes was refused by the permission check. I let the run finish on its own instead.
+
+### Notes / Follow-up
+- The screenshot naming lag in the match smoke could be fixed by requesting each capture only once and waiting for the file.
+
+### Response Summary
+Removed the NETWORK box that covered the LAN options. Its status message now appears under the LAN title. Verified with a rendered capture of the LAN tab.
+---
