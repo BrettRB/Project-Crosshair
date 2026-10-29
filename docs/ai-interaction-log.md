@@ -3500,3 +3500,74 @@ Write v1.2.0 release notes as a Markdown file in the user's Downloads folder, re
 ### Response Summary
 Wrote v1.2.0 release notes to the Downloads folder and described what they cover.
 ---
+
+---
+## Interaction 77
+
+### User Prompt
+i tested the multiplayer last night and while a second user can join the lobby, there was a couple issues I found while doing this, First one was that none of the users could move at the start of the game. Second, the host player could never move even after being killed which was a difference since the other player that joined could move after they were killed once. Third, neither of the user players could scope in with their weapons during the game. Finally, the ammo was getting confused during the online LAN match, sometimes confusing which gun used which ammo type.
+
+### Interpretation
+Fix four problems from a two-PC LAN playtest:
+1. Nobody could move at the start.
+2. The host could never move, even after respawning, while the joined player could after a respawn.
+3. Nobody could scope in.
+4. Ammo seemed mixed up between guns.
+
+### Requirements / Acceptance Criteria
+- The host and joined players can move with their real controls when the match starts, and the host can again after a respawn.
+- Both can aim down sights and scope.
+- After a weapon switch, each player holds the gun whose ammo the HUD shows and which actually fires.
+- Offline play and the existing LAN behaviour are unchanged.
+
+### Actions Taken
+- **Found the cause of the existing test's blind spot.** The LAN test moved soldiers with `AddMovementInput` and aimed with `SetBotInput`, which bypass the player's controls. Added `TickRealInput` to the two-process LAN test, which presses real keys through each player's own controls: hold W, hold right mouse, press 2, then 1. It runs for the host and the joined player right after the match starts, and for the host again after it is killed and respawns. The host also checks that the joined player's put-away weapon finishes being put away.
+- **Reproduced both bugs before fixing them:**
+  - Unfixed build: the host moved 0 cm holding W.
+  - With only the controls fix: the joined player could not aim ("aim 0.00, switching 1").
+  - An older LAN log already showed the joined player waiting about 15 s of a 20 s timeout for its sights.
+- **Fix 1, controls (issues 1 and 2):**
+  - Cause: the soldier added its Enhanced Input mapping in `BeginPlay`, and only if a player already controlled it. LAN lobby spawns and respawns happen after the level starts, so `BeginPlay` runs before possession and the host never got controls. Offline respawns only worked because the first soldier's mapping was never removed. The joined player's machine receives its soldier already possessed, which is why their respawn worked.
+  - Fix: the mapping is now added in `ACrosshairCharacter::PawnClientRestart`, which runs on the player's own machine every time they take a soldier.
+- **Fix 2, aim and weapon switching (issues 3 and 4):**
+  - Cause: draw, put-away and reload start times are stamped with the host's clock. The joined player's machine compared them with its own clock, which is behind by however long the host's level had run before they joined, lobby included. Their weapon therefore looked "still drawing", which blocks aiming. After a switch, the old gun stayed in their hands while the HUD showed the new gun's ammo.
+  - Also, the host never finished putting away a joined player's weapon, because that code sat after the third-person early return. Clients tried to finish it themselves with slot indices that aren't replicated.
+  - Fix: added `ACrosshairWeapon::GetSharedTime` (the game state's server time; replays keep their own clock) and used it wherever those times are set or compared. Only the host now finishes putting a weapon away, for every soldier.
+- Documented the bugs, fixes and verification in docs/offline-match-and-lan.md.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairWeapon.h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.h
+- docs/offline-match-and-lan.md
+- docs/ai-interaction-log.md
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development`: Succeeded (four builds).
+- Two-process LAN test (`-CrosshairSmoke -CrosshairLanHost` / `-CrosshairLanClient -NullRHI`):
+  - Before the fixes: the host failed with 0 cm moved.
+  - With only the controls fix: the joined player failed to aim.
+  - With both fixes: HOST_OK and CLIENT_OK.
+    - Host: 634 cm walked; aimed in 0.19 s with the Bolt-Action Sniper; switched to the AR (30/30) and back to the sniper (5/5) in 0.40 s each.
+    - After the host's respawn: 635 cm, 0.19 s, and the same switches.
+    - Joined player: 521 cm walked; aimed in 0.15 s with the SMG; switched to the AR (30/30) and back to the SMG (30/30) in 0.38 s each.
+    - The existing sprint (680 cm/s), locomotion, 35-damage SMG hit and kill-credit checks still pass.
+- `UnrealEditor-Cmd ... Automation RunTests Crosshair`: 15 Success, 0 Fail.
+- Frontend, lethal and expansion smokes: OK.
+- Match smoke:
+  - The first run failed at step 81: the AR did 30 instead of 40 because the shot hit the bot's arm (the limb multiplier).
+  - Two re-runs: CROSSHAIR_MATCH_OK, with 40, 35 and 49 exactly.
+  - Offline, the new clock helper returns the same world time as before, because the server time delta is only set on clients.
+- Core `-CrosshairSmoke`: fails at step 15, "Movement follows camera yaw". This is the known pre-existing failure recorded in Interaction 72, which also fails on the baseline build.
+
+### Notes / Follow-up
+- Not verified on two separate PCs. Not separately tested: a joined player's controls after their own respawn, which uses the same `PawnClientRestart` path.
+- Match smoke step 81 aims at the `spine_03` bone of an animated bot and can hit an arm now and then. It could aim at a point that the arms never cover.
+- `Build/Windows/FileOpenOrder/EditorOpenOrder.log` was already modified before this task (generated by the editor) and was left out of the commit.
+
+### Response Summary
+Explained the two root causes behind the four reported problems, the fixes, and the new real-input LAN checks that failed before the fixes and pass after. Reported the regression results, including the known core-smoke failure and the intermittent match-smoke limb hit.
+---

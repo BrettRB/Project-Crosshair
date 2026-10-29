@@ -15,6 +15,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Engine/DemoNetDriver.h"
+#include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "DrawDebugHelpers.h"
@@ -154,14 +155,26 @@ void ACrosshairWeapon::SetEquipped(bool Equipped)
 	SetActorHiddenInGame(!Equipped);
 }
 void ACrosshairWeapon::BeginStow()
-{ bStowing=true; bHolstered=false; StowStartedAt=GetWorld()->GetTimeSeconds(); }
+{ bStowing=true; bHolstered=false; StowStartedAt=GetSharedTime(); }
 void ACrosshairWeapon::BeginDraw(float Delay)
-{ DrawStartedAt=GetWorld()->GetTimeSeconds()+Delay; NextShotAt=FMath::Max(NextShotAt,double(DrawStartedAt+FMath::Max(.05f,Definition->DrawSeconds))); }
+{ DrawStartedAt=GetSharedTime()+Delay; NextShotAt=FMath::Max(NextShotAt,double(DrawStartedAt+FMath::Max(.05f,Definition->DrawSeconds))); }
+float ACrosshairWeapon::GetSharedTime() const
+{
+ // Replay playback keeps the world's own clock, as recorded.
+ const AGameStateBase* State=GetWorld()->GetGameState();
+ const bool Playback=GetWorld()->GetDemoNetDriver() && GetWorld()->GetDemoNetDriver()->IsPlaying();
+ return State && !Playback ? float(State->GetServerWorldTimeSeconds()) : GetWorld()->GetTimeSeconds();
+}
 bool ACrosshairWeapon::IsSwitching() const
-{ return Definition && (bStowing || (bEquipped && GetWorld()->GetTimeSeconds()<DrawStartedAt+FMath::Max(.05f,Definition->DrawSeconds))); }
+{ return Definition && (bStowing || (bEquipped && GetSharedTime()<DrawStartedAt+FMath::Max(.05f,Definition->DrawSeconds))); }
 void ACrosshairWeapon::UpdateCarry()
 {
  auto* P=Cast<ACrosshairCharacter>(GetOwner()); if (!P || !Definition) return;
+ const float Now=GetSharedTime();
+ // Finishing a stow is the host's decision for every soldier (joined players' included); clients receive it.
+ // A client cannot work it out: it does not know which inventory slots the class uses.
+ if (HasAuthority() && bStowing && Now>=StowStartedAt+FMath::Max(.05f,Definition->StowSeconds) && !P->IsReplayPlayback())
+ { bStowing=false; bHolstered=(P->Inventory->Weapons.IsValidIndex(P->Inventory->PrimaryIndex) && P->Inventory->Weapons[P->Inventory->PrimaryIndex]==this) || (P->Inventory->Weapons.IsValidIndex(P->Inventory->SecondaryIndex) && P->Inventory->Weapons[P->Inventory->SecondaryIndex]==this); }
  if (P->UsesWorldPresentation())
  {
   // Third-person carry for bots and other players: the equipped weapon sits in the soldier's right hand.
@@ -176,10 +189,6 @@ void ACrosshairWeapon::UpdateCarry()
   SetActorHiddenInGame(!bEquipped || P->Health->bDead);
   return;
  }
- const float Now=GetWorld()->GetTimeSeconds();
- const bool Playback=P->IsReplayPlayback();
- if (bStowing && Now>=StowStartedAt+FMath::Max(.05f,Definition->StowSeconds) && !Playback)
- { bStowing=false; bHolstered=(P->Inventory->Weapons.IsValidIndex(P->Inventory->PrimaryIndex) && P->Inventory->Weapons[P->Inventory->PrimaryIndex]==this) || (P->Inventory->Weapons.IsValidIndex(P->Inventory->SecondaryIndex) && P->Inventory->Weapons[P->Inventory->SecondaryIndex]==this); }
  if (bHolstered)
  {
   if (Mesh->GetAttachParent()!=P->GetCapsuleComponent()) AttachToComponent(P->GetCapsuleComponent(),FAttachmentTransformRules::SnapToTargetNotIncludingScale);
@@ -214,7 +223,7 @@ void ACrosshairWeapon::Reload()
 	if (!Definition || bReloading || !bEquipped || Ammo >= Definition->MagazineSize) return;
 	StopFire();
 	bReloading = true;
-	ReloadStartedAt = GetWorld()->GetTimeSeconds();
+	ReloadStartedAt = GetSharedTime();
 	ReloadEndsAt = ReloadStartedAt + FMath::Max(0.1f, Definition->ReloadSeconds);
 }
 void ACrosshairWeapon::Tick(float DeltaSeconds)
@@ -308,11 +317,11 @@ void ACrosshairWeapon::UpdatePresentation(float AimAlpha)
 	FRotator Rotation = Definition->MeshRotation;
 	if (bReloading)
 	{
-		const float Phase = FMath::Clamp((GetWorld()->GetTimeSeconds() - ReloadStartedAt) / FMath::Max(0.1f, Definition->ReloadSeconds), 0.f, 1.f);
+		const float Phase = FMath::Clamp((GetSharedTime() - ReloadStartedAt) / FMath::Max(0.1f, Definition->ReloadSeconds), 0.f, 1.f);
 		Offset.Z -= FMath::Sin(Phase * PI) * 20;
 		Rotation.Roll += FMath::Sin(Phase * PI) * 30;
 	}
-	const float Now=GetWorld()->GetTimeSeconds();
+	const float Now=GetSharedTime();
  if (bStowing)
  {
   const float T=FMath::Clamp((Now-StowStartedAt)/FMath::Max(.05f,Definition->StowSeconds),0.f,1.f); const float Smooth=T*T*(3-2*T);
@@ -391,7 +400,7 @@ void UCrosshairInventoryComponent::BeginPlay()
 }
 ACrosshairWeapon* UCrosshairInventoryComponent::GetCurrent() const { return Weapons.IsValidIndex(ActiveIndex) ? Weapons[ActiveIndex].Get() : nullptr; }
 ACrosshairWeapon* UCrosshairInventoryComponent::GetPresentationWeapon() const
-{ for (ACrosshairWeapon* W:Weapons) if (W && W->bStowing && W->Definition && GetWorld()->GetTimeSeconds()<W->StowStartedAt+FMath::Max(.05f,W->Definition->StowSeconds)) return W; return GetCurrent(); }
+{ for (ACrosshairWeapon* W:Weapons) if (W && W->bStowing && W->Definition && W->GetSharedTime()<W->StowStartedAt+FMath::Max(.05f,W->Definition->StowSeconds)) return W; return GetCurrent(); }
 void UCrosshairInventoryComponent::Equip(int32 Index)
 {
  if (!Weapons.IsValidIndex(Index) || (Index==ActiveIndex && GetCurrent() && GetCurrent()->bEquipped)) return;

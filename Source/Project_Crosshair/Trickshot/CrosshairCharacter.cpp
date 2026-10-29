@@ -103,11 +103,6 @@ void ACrosshairCharacter::BeginPlay()
 			FOnBoneTransformsFinalizedMultiCast::FDelegate::CreateUObject(this, &ACrosshairCharacter::UpdateArmsPresentation));
 	}
 	if (IsReplayPlayback()) return;
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		if (ULocalPlayer* Local = PC->GetLocalPlayer())
-			if (auto* Input = Local->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>()) if (Inputs && Inputs->Mapping) Input->AddMappingContext(Inputs->Mapping, 10);
-	}
 	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
 	{
 		if (!IsInMatch()) { Inventory->ApplyClass(); GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->PracticeReady(this); return; }
@@ -127,6 +122,11 @@ void ACrosshairCharacter::BeginPlay()
 void ACrosshairCharacter::PawnClientRestart()
 {
 	Super::PawnClientRestart();
+	// Controls are added when a local player takes this soldier, not at BeginPlay: a LAN host's lobby and
+	// respawn soldiers begin play before they are possessed, so BeginPlay would leave them without controls.
+	if (const APlayerController* PC = Cast<APlayerController>(GetController()); PC && !IsReplayPlayback())
+		if (ULocalPlayer* Local = PC->GetLocalPlayer())
+			if (auto* Input = Local->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>()) if (Inputs && Inputs->Mapping) Input->AddMappingContext(Inputs->Mapping, 10);
 	if (HasAuthority() || IsReplayPlayback() || !IsLocallyControlled()) return;
 	const FCrosshairSettings& S = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
 	if (S.Classes.IsValidIndex(S.ActiveClass)) ServerApplyLoadout(S.Classes[S.ActiveClass].Primary, S.Classes[S.ActiveClass].Secondary, S.Classes[S.ActiveClass].Lethal);

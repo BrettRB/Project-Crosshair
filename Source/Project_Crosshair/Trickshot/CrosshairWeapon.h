@@ -23,6 +23,8 @@ public:
  void BeginStow();
  void BeginDraw(float Delay);
  bool IsSwitching() const;
+ /** The host's clock. Draw, stow and reload start times are stamped on the host, and a LAN client's own clock started later. */
+ float GetSharedTime() const;
  void UpdateCarry();
 	void StartFire();
 	void StopFire();

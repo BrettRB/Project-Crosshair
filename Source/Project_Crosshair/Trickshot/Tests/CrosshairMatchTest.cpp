@@ -378,6 +378,55 @@ void UCrosshairMatchTest::TickGraphics()
  default: return;
  }
 }
+bool UCrosshairMatchTest::TickRealInput(const TCHAR* Who)
+{
+ // Real keys through the controller, as a player presses them: the input mapping, not test shortcuts, must move and aim the soldier.
+ auto* Menu=Cast<ACrosshairPlayerController>(GetWorld()->GetFirstPlayerController());
+ auto* Mine=Menu ? Cast<ACrosshairCharacter>(Menu->GetPawn()) : nullptr;
+ if (InputPhaseAt==0) InputPhaseAt=FPlatformTime::Seconds();
+ const double Now=FPlatformTime::Seconds(),Waited=Now-InputPhaseAt;
+ auto Key=[&](FKey K,EInputEvent Event){ Menu->InputKey(FInputKeyEventArgs::CreateSimulated(K,Event,Event==IE_Released ? 0.f : 1.f)); };
+ auto Phase=[&](int32 NewPhase){ InputPhase=NewPhase; InputPhaseAt=Now; };
+ auto Fail=[&](const FString& What){ UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO %s: %s"),Who,*What); Check(false,*What); return false; };
+ if (!Mine || Mine->Health->bDead || Menu->bMenuOpen) { if (Waited>20) return Fail(TEXT("Soldier ready for the real input check")); return false; }
+ ACrosshairWeapon* Weapon=Mine->Inventory->GetCurrent();
+ // A switched-to weapon is ready once this machine sees the draw finished and shows that weapon in hand.
+ auto Ready=[&](const ACrosshairWeapon* W){ return W && W==Weapon && !W->IsSwitching() && Mine->Inventory->GetPresentationWeapon()==W; };
+ switch (InputPhase)
+ {
+ case 0: InputFrom=Mine->GetActorLocation(); Key(EKeys::W,IE_Pressed); Phase(1); return false;
+ case 1:
+ {
+  if (Waited<1.5) return false;
+  Key(EKeys::W,IE_Released);
+  const float Moved=FVector::Dist2D(InputFrom,Mine->GetActorLocation());
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO %s: holding W moved the soldier %.0f cm"),Who,Moved);
+  if (Moved<100.f) return Fail(FString(Who)+TEXT(" walks forward with the W key at the start of the match"));
+  Key(EKeys::RightMouseButton,IE_Pressed); Phase(2); return false;
+ }
+ case 2:
+  if (Mine->GetAimAlpha()<.95f) { if (Waited>4) { Key(EKeys::RightMouseButton,IE_Released); return Fail(FString::Printf(TEXT("%s aims down sights with the right mouse button (aim %.2f, switching %d)"),Who,Mine->GetAimAlpha(),Weapon && Weapon->IsSwitching())); } return false; }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS %s aims down sights with the right mouse button after %.2fs (%s)"),Who,Waited,Weapon && Weapon->Definition ? *Weapon->Definition->DisplayName.ToString() : TEXT("-"));
+  Key(EKeys::RightMouseButton,IE_Released); InputWeapon=Weapon; Phase(3); return false;
+ case 3: if (Waited>.5) { Key(EKeys::Two,IE_Pressed); Key(EKeys::Two,IE_Released); Phase(4); } return false;
+ case 4: case 5:
+ {
+  // 4: switched to the secondary; 5: back to the primary (the weapon the match continues with).
+  const bool bBack=InputPhase==5;
+  if ((Weapon==InputWeapon.Get())!=bBack || !Ready(Weapon))
+  {
+   if (Waited>4) return Fail(FString::Printf(TEXT("%s switches weapons and holds the new one (current %s, in hand %s, switching %d)"),Who,
+    Weapon && Weapon->Definition ? *Weapon->Definition->DisplayName.ToString() : TEXT("-"),
+    Mine->Inventory->GetPresentationWeapon() && Mine->Inventory->GetPresentationWeapon()->Definition ? *Mine->Inventory->GetPresentationWeapon()->Definition->DisplayName.ToString() : TEXT("-"),Weapon && Weapon->IsSwitching()));
+   return false;
+  }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS %s switched to %s in %.2fs; that weapon is in hand with its own ammo %d/%d"),Who,*Weapon->Definition->DisplayName.ToString(),Waited,Weapon->Ammo,Weapon->Definition->MagazineSize);
+  if (bBack) { InputPhase=0; return true; }
+  Key(EKeys::One,IE_Pressed); Key(EKeys::One,IE_Released); Phase(5); return false;
+ }
+ default: return true;
+ }
+}
 void UCrosshairMatchTest::TickLan()
 {
  UWorld* World=GetWorld();
@@ -454,6 +503,9 @@ void UCrosshairMatchTest::TickLan()
    {
     if (!HostPawn || !Joined) { if (Elapsed>20) Check(false,TEXT("Both soldiers alive for the combat check")); return; }
     if (!Check(Joined->Inventory->PrimaryIndex==2 && Joined->Inventory->SecondaryIndex==1,TEXT("The joined player's own class (SMG + AR) is applied on the host"))) return;
+    // The joined player switched weapons with real keys earlier; the put-away weapon must finish stowing here too.
+    bool bStuck=false; for (const ACrosshairWeapon* W:Joined->Inventory->Weapons) bStuck|=W && W->bStowing;
+    if (!Check(!bStuck,TEXT("The joined player's put-away weapon finishes stowing on the host"))) return;
     // Stand both on the street, 8 m apart and facing each other, where nothing (cars, barriers) is between them.
     FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairLanCombat),false); Params.AddIgnoredActor(HostPawn); Params.AddIgnoredActor(Joined);
     FVector HostSpot=FVector::ZeroVector,JoinedSpot=FVector::ZeroVector;
@@ -505,14 +557,27 @@ void UCrosshairMatchTest::TickLan()
     if (!Check(bTag,TEXT("The joined player's kill drops the host's dog tag"))) return;
     UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_HOST_OK")); Next(43); return;
    }
-   // Stay up briefly so the joined player can confirm the kill on their side.
-   if (Elapsed>10) { bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); }
+   // After the respawn the host's new soldier must have controls too (the playtest's host never moved again).
+   // This also keeps the host up while the joined player confirms the kill on their side.
+   if (Step==43)
+   {
+    if (!HostPawn || HostPawn->Health->bDead) { if (Elapsed>20) Check(false,TEXT("Host respawns after being killed")); return; }
+    if (TickRealInput(TEXT("Host after respawn"))) Next(44);
+    return;
+   }
+   if (Elapsed>5) { bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); }
    return;
   }
   if (Step==32)
   {
    if (Match->bInLobby || !PC->GetPawn()) { if (Elapsed>20) Check(false,TEXT("Host starts the match from the lobby")); return; }
-   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Host started the match from the lobby")); Next(3); return;
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Host started the match from the lobby")); Next(34); return;
+  }
+  if (Step==34)
+  {
+   // The host is a listen server: its soldier spawns after play began, so its controls must still arrive.
+   if (TickRealInput(TEXT("Host"))) Next(3);
+   return;
   }
   if (Step==30)
   {
@@ -574,7 +639,11 @@ void UCrosshairMatchTest::TickLan()
  case 5:
   if (const auto* Menu=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController()); !Match || Match->bInLobby || !Menu || !Menu->GetPawn() || Menu->bMenuOpen) { if (Elapsed>60) Check(false,TEXT("Client spawns when the host starts")); return; }
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Client's lobby closes and the soldier spawns when the host starts"));
-  Next(3); return;
+  Next(6); return;
+ case 6:
+  // The client's clock started later than the host's (it waited in the lobby): draw and reload times must still line up.
+  if (TickRealInput(TEXT("Client"))) Next(3);
+  return;
  case 3:
  {
   // The host's soldier as seen on this client: it should move and step through walk/jog cycles, not slide.

@@ -319,3 +319,36 @@ The roll is `UCrosshairBotMatch::ResolveMap`, used in `UCrosshairMatchSession::H
 **Verified:**
 - `Crosshair.Match.RandomMap` (automation): checks cycling, saving, that Random always resolves to a real map, and that 200 rolls reach all three maps.
 - Match smoke: the hosted LAN match uses Random. One run rolled Grid, loaded `L_Grid`, and the lobby named Grid.
+
+## LAN playtest fixes: controls, aiming and weapon switching (2026-10-29)
+
+A two-PC playtest found four problems. They came from two bugs.
+
+### The host had no controls (players couldn't move; the host never could)
+
+- **The bug:** a soldier added its controls (the Enhanced Input mapping) in `BeginPlay`, and only if a player already controlled it. Offline, the first soldier spawns before the level starts, so it is already controlled at `BeginPlay`. A LAN match spawns everyone when the host leaves the lobby, after the level has started. The host's soldier then runs `BeginPlay` before the host takes control of it, so it never got controls: no walking, jumping, aiming or firing with the keyboard and mouse. Respawning didn't help, because a respawned soldier also begins play before it is controlled. (Offline respawns only worked because the first soldier's controls were never removed.)
+- **The fix:** `ACrosshairCharacter::PawnClientRestart` adds the controls. The engine calls it on the player's own machine each time they take control of a soldier: host or joined player, first spawn or respawn.
+
+### Joined players couldn't aim, and saw the wrong gun
+
+- **The bug:** the host stamps the times when a weapon starts being drawn, put away or reloaded, using its own clock. A joined player's machine compared those times with *its* own clock, which started later: it is behind by however long the host's level had been running when they joined, lobby wait included. So on the joined player's machine:
+  - The weapon looked like it was still being drawn for minutes after every spawn or switch, and aiming down sights is blocked while drawing. No scope.
+  - After a switch, the put-away gun stayed in their hands while the HUD showed the new gun's ammo, and shots came from the new gun. The guns seemed to share ammo.
+  - The put-away gun also never finished being put away on the host for joined players. Joined players' machines tried to finish it themselves without knowing which slots their class uses.
+- **The fix:** weapon draw, put-away and reload times use the host's clock everywhere (`ACrosshairWeapon::GetSharedTime`, the game state's server time). Replays keep their recorded clock. Only the host finishes putting a weapon away, for every soldier, and joined players receive the result.
+
+### Verification
+
+The two-process LAN test now presses real keys through each player's own controls, not test shortcuts, right after the host starts the match: hold W, hold right mouse to aim, press 2, then press 1. Each new weapon has to be ready and in hand within 4 seconds.
+
+- **Before the fixes:**
+  - The host moved 0 cm holding W.
+  - With only the controls fix, the host passed, but the joined player could not aim: the weapon was still "switching" after 4 seconds.
+- **After both fixes:**
+  - Host: walked 633 cm, aimed in 0.19 s (Bolt-Action Sniper), switched to the Assault Rifle (30/30) and back to the sniper (5/5) in 0.40 s each.
+  - Joined player: walked 520 cm, aimed in 0.15 s (SMG), switched to the Assault Rifle (30/30) and back to the SMG (30/30) in 0.39 s each.
+  - On the host, the joined player's put-away weapon finished being put away.
+  - Host after being killed and respawning: walked 635 cm, aimed in 0.19 s, and switched both ways in 0.40 s.
+  - The existing sprint, locomotion, damage and kill checks still pass (HOST_OK and CLIENT_OK).
+
+Not verified: two separate PCs, and a joined player's controls after their own respawn. Before the fix their respawn already worked, and it runs the same path.

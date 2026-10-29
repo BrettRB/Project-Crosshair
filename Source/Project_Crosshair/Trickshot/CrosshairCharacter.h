@@ -72,7 +72,7 @@ public:
 	void TargetHit(ACrosshairDummy* Target, bool bHeadshot = false, bool bWallbang = false);
 	void StopActions();
 	virtual void PossessedBy(AController* NewController) override;
-	/** Owning LAN client at each spawn: sends its saved class to the host. */
+	/** Local player at each spawn: adds this soldier's controls; a LAN client also sends its saved class to the host. */
 	virtual void PawnClientRestart() override;
 	bool IsBot() const;
 	bool IsInMatch() const;

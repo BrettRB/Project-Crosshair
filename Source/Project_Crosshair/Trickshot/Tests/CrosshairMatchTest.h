@@ -25,6 +25,8 @@ private:
  void Probe(const TCHAR* Map,FVector2D Center,float HalfSize,float Cell);
  void TickProbe();
  void TickLan();
+ /** LAN: walk, aim and switch weapons with real key presses through this player's own input mapping. True when done. */
+ bool TickRealInput(const TCHAR* Who);
  void TickGraphics();
  void ProbeSoldier();
  int32 Step=0;
@@ -46,6 +48,10 @@ private:
  bool bCapturedHome=false;
  float RemoteSpeedMax=0,HostSpeedMax=0,HostSteppingMax=0;
  FVector RunGoal=FVector::ZeroVector;
+ int32 InputPhase=0;
+ double InputPhaseAt=0;
+ FVector InputFrom=FVector::ZeroVector;
+ TWeakObjectPtr<class ACrosshairWeapon> InputWeapon;
  bool bSawBotStepping=false;
  // Difficulty duel (Easy vs Veteran) on Grid's open snow plane.
  TWeakObjectPtr<class ACrosshairBotController> DuelShooter;
