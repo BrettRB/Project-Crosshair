@@ -49,9 +49,10 @@ public:
  int32 GetBotMatchRow() const { return GetImportRow()+1; }
  /** Match rows from GetBotMatchRow(): difficulty, players, score, time, mode, map, start, host, find, then joinable LAN results. */
  static constexpr int32 MatchRowCount = 13;
- /** Graphics rows from GetGraphicsRow(): preset, ray tracing, resolution scale, detect for this PC. */
+ /** Graphics rows from GetGraphicsRow(): preset, ray tracing, resolution scale, detect for this PC, then the individual options (CrosshairGraphics::EOption). */
  int32 GetGraphicsRow() const { return GetBotMatchRow()+MatchRowCount; }
- static constexpr int32 GraphicsRowCount = 4;
+ static constexpr int32 GraphicsOptionRow = 4;
+ static constexpr int32 GraphicsRowCount = GraphicsOptionRow+18;
  /** LAN setup rows from GetLanRow(): username, mode, map, bots, bot difficulty, bot count or team size, score, time, max players. */
  int32 GetLanRow() const { return GetGraphicsRow()+GraphicsRowCount; }
  static constexpr int32 LanRowCount = 9;

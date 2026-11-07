@@ -60,6 +60,10 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
   Light->SetLightSourceAngle(.53f);            // the real sun's angular size: soft, realistic shadow edges
   Light->ContactShadowLength=.025f;            // grounds small details and feet
   Light->bCastCloudShadows=true;
+  Light->CloudShadowStrength=.85f;              // clouds dim the ground under them without turning it black
+  Light->bCastShadowsOnClouds=true;             // terrain and buildings self-shadow the cloud layer at low sun
+  Light->bCastShadowsOnAtmosphere=true;         // atmospheric light shafts through gaps
+  Light->SetVolumetricScatteringIntensity(1.15f); // slightly stronger sun shafts in the volumetric fog
   Light->SetCastShadows(true);
   Light->MarkRenderStateDirty();
  }
@@ -78,9 +82,14 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
   }
 
  // Sky light captures the atmosphere and clouds every frame so ambient light matches the sky.
- if (ASkyLight* Sky=FindOrSpawn<ASkyLight>(World,FVector(0,0,Ground+3000.f)))
+ SkyLight=FindOrSpawn<ASkyLight>(World,FVector(0,0,Ground+3000.f));
+ if (ASkyLight* Sky=SkyLight)
   if (USkyLightComponent* Ambient=Sky->GetLightComponent())
   {
+   // Clouds occlude the sky's ambient light too, so ground under heavy cloud is softly darker.
+   Ambient->bCloudAmbientOcclusion=true;
+   Ambient->CloudAmbientOcclusionStrength=.6f;
+   Ambient->CloudAmbientOcclusionExtent=150.f;
    Ambient->SetMobility(EComponentMobility::Movable);
    Ambient->SourceType=SLS_CapturedScene;
    Ambient->bRealTimeCapture=true;
@@ -102,6 +111,14 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
    Haze->SetVolumetricFogScatteringDistribution(.65f);
    Haze->SetVolumetricFogExtinctionScale(.6f);
    Haze->SetFogInscatteringColor(P.FogColor);
+   // A thin, dense second layer hugging the ground: real air is hazier low down.
+   Haze->SetSecondFogDensity(P.FogDensity*.5f);
+   Haze->SetSecondFogHeightFalloff(.6f);
+   Haze->SetSecondFogHeightOffset(0.f);
+   // A soft glow in the haze toward the sun, tinted by the sun's colour temperature.
+   Haze->SetDirectionalInscatteringExponent(10.f);
+   Haze->SetDirectionalInscatteringStartDistance(4000.f);
+   Haze->SetDirectionalInscatteringColor(FLinearColor::MakeFromColorTemperature(P.SunKelvin)*.25f);
   }
 
  // Volumetric clouds lit by the sun, casting soft cloud shadows; coverage, density and tint follow the
@@ -145,27 +162,59 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
   S.bOverride_FilmGrainIntensity=true; S.FilmGrainIntensity=.06f;
   S.bOverride_SceneFringeIntensity=true; S.SceneFringeIntensity=0.f;
   S.bOverride_MotionBlurAmount=true; S.MotionBlurAmount=.2f;           // readable trickshot spins
+  // Filmic response: slightly cooler shadows and warmer, less saturated highlights, like a camera
+  // negative; local exposure keeps detail in bright sky and dark interiors at the same time.
+  S.bOverride_ColorGainShadows=true; S.ColorGainShadows=FVector4(.98f,1.f,1.03f,1.f);
+  S.bOverride_ColorGainHighlights=true; S.ColorGainHighlights=FVector4(1.02f,1.f,.97f,1.f);
+  S.bOverride_ColorSaturationHighlights=true; S.ColorSaturationHighlights=FVector4(.9f,.9f,.9f,1.f);
+  S.bOverride_LocalExposureDetailStrength=true; S.LocalExposureDetailStrength=1.1f;
+  // Lumen: a touch of sky leaking so rooms are dark but readable; longer traces for distant bounce light.
+  S.bOverride_LumenSkylightLeaking=true; S.LumenSkylightLeaking=.04f;
+  S.bOverride_LumenMaxTraceDistance=true; S.LumenMaxTraceDistance=40000.f;
  }
  bApplied=true;
  // Until the player picks a graphics preset, keep the full-quality look.
  const FCrosshairSettings& Settings=World.GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
- ApplyQuality(Settings.bGraphicsConfigured ? Settings.GraphicsPreset : 3,Settings.bGraphicsConfigured ? CrosshairGraphics::IsRayTracingActive() : true);
+ ApplyQuality(Settings.bGraphicsConfigured ? Settings.GraphicsOptions : FCrosshairGraphicsOptions(),Settings.bGraphicsConfigured ? CrosshairGraphics::IsRayTracingActive() : true);
  UE_LOG(LogTemp,Display,TEXT("Crosshair environment applied to %s"),*World.GetMapName());
 }
 
-void UCrosshairEnvironmentSubsystem::ApplyQuality(int32 Preset,bool bRayTracing)
+void UCrosshairEnvironmentSubsystem::ApplyQuality(const FCrosshairGraphicsOptions& O,bool bRayTracing)
 {
- if (Clouds) Clouds->SetActorHiddenInGame(Preset<=0);   // volumetric clouds are the costliest sky feature on integrated GPUs
+ // Volumetric clouds are the costliest sky feature on integrated GPUs; their ray-march detail follows Effects.
+ if (Clouds)
+ {
+  Clouds->SetActorHiddenInGame(!O.bVolumetricClouds);
+  if (UVolumetricCloudComponent* Cloud=Clouds->FindComponentByClass<UVolumetricCloudComponent>())
+  {
+   const float Samples[]={.5f,.6f,.8f,1.f};
+   Cloud->SetViewSampleCountScale(Samples[FMath::Clamp(O.Effects,0,3)]);
+   Cloud->SetShadowViewSampleCountScale(Samples[FMath::Clamp(O.Effects,0,3)]);
+  }
+ }
+ // Hidden clouds must not keep darkening the sky light.
+ if (SkyLight) if (USkyLightComponent* Ambient=SkyLight->GetLightComponent())
+  if (Ambient->bCloudAmbientOcclusion!=O.bVolumetricClouds) { Ambient->bCloudAmbientOcclusion=O.bVolumetricClouds; Ambient->MarkRenderStateDirty(); }
  if (!Grade) return;
  FPostProcessSettings& S=Grade->Settings;
- const float Quality=Preset>=3 ? 1.5f : 1.f;
- S.bOverride_LumenSceneLightingQuality=true; S.LumenSceneLightingQuality=Quality;
- S.bOverride_LumenFinalGatherQuality=true; S.LumenFinalGatherQuality=Preset>=3 ? 2.f : 1.f;
- S.bOverride_LumenReflectionQuality=true; S.LumenReflectionQuality=Quality;
+ const int32 GI=FMath::Clamp(O.GlobalIllumination,0,3), Reflect=FMath::Clamp(O.Reflections,0,3);
+ S.bOverride_LumenSceneLightingQuality=true; S.LumenSceneLightingQuality=GI>=3 ? 1.5f : 1.f;
+ S.bOverride_LumenFinalGatherQuality=true; S.LumenFinalGatherQuality=GI>=3 ? 2.f : 1.f;
+ S.bOverride_LumenSceneDetail=true; S.LumenSceneDetail=GI>=3 ? 1.5f : 1.f;     // small props stay in the GI scene on Epic
+ S.bOverride_LumenReflectionQuality=true; S.LumenReflectionQuality=Reflect>=3 ? 1.5f : 1.f;
+ S.bOverride_LumenMaxReflectionBounces=true; S.LumenMaxReflectionBounces=Reflect>=3 ? 2 : 1;
+ S.bOverride_LumenMaxRoughnessToTraceReflections=true; S.LumenMaxRoughnessToTraceReflections=Reflect>=3 ? .55f : .4f;
  // Hit-lit reflections need hardware ray tracing; otherwise use the default (surface cache) lighting.
- S.bOverride_LumenRayLightingMode=bRayTracing && Preset>=2;
+ S.bOverride_LumenRayLightingMode=bRayTracing && Reflect>=2;
  S.LumenRayLightingMode=ELumenRayLightingModeOverride::HitLightingForReflections;
- S.bOverride_AmbientOcclusionIntensity=true; S.AmbientOcclusionIntensity=Preset<=0 ? .4f : .6f;
+ S.bOverride_AmbientOcclusionIntensity=true; S.AmbientOcclusionIntensity=GI<=0 ? .4f : .6f;
+ // Player choices.
+ const float Blur[]={0.f,.2f,.45f};
+ S.bOverride_MotionBlurAmount=true; S.MotionBlurAmount=Blur[FMath::Clamp(O.MotionBlur,0,2)];
+ S.bOverride_FilmGrainIntensity=true; S.FilmGrainIntensity=O.bFilmEffects ? .06f : 0.f;
+ S.bOverride_VignetteIntensity=true; S.VignetteIntensity=O.bFilmEffects ? .28f : 0.f;
+ S.bOverride_LensFlareIntensity=true; S.LensFlareIntensity=O.bFilmEffects ? .12f : 0.f;
+ S.bOverride_AutoExposureBias=true; S.AutoExposureBias=-.35f+FMath::Clamp(O.Brightness,-5,5)*.1f;
 }
 
 FCrosshairSkyProfile UCrosshairEnvironmentSubsystem::SkyProfileFor(const FString& MapName)

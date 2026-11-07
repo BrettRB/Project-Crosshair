@@ -3765,3 +3765,66 @@ Two features:
 ### Response Summary
 Explained both features, the clarified behaviour, the three bugs the tests caught, and the test results.
 ---
+
+---
+## Interaction 82
+
+### User Prompt
+start to make the graphics look more realistic with better lighting and everything, ensure that the graphical settings are still implemented to ensure laptops of all levels can play, make more graphics settings so users can customize the settings to how they want
+
+(Follow-up after the user paused the run to test multiplayer: "continue with prompt, needed to stop to test last version of multiplayer and it works as intended now")
+
+### Interpretation
+Make the shared lighting rig more realistic. Keep the four laptop presets working, and make sure weak laptops start on a light preset. Add individual graphics options under the presets so players can customize them.
+
+### Requirements / Acceptance Criteria
+- More realistic lighting on every map the rig manages, without new assets or project-setting changes.
+- Laptop presets still work and still decide the defaults. Low-end laptops are not stuck on Epic on first launch.
+- New individual options in the Graphics tab that apply at once, are saved, and mark the preset as Custom.
+- Existing saves keep their choice.
+- Tests cover the new options. The build and the regression smokes pass.
+
+### Actions Taken
+- **Lighting rig** (`CrosshairEnvironment`):
+  - Sun: cloud shadow strength 0.85, shadows cast onto the clouds and into the atmosphere (light shafts), and stronger volumetric scattering.
+  - Sky light: cloud ambient occlusion.
+  - Height fog: a second, denser ground-haze layer and a sun-tinted glow in the haze toward the sun.
+  - Grade: cooler shadows, warmer and less saturated highlights, more local-exposure detail, slight Lumen sky leaking and longer Lumen traces.
+  - `ApplyQuality` now takes the options: Lumen scene detail, reflection bounces and roughness follow the GI and Reflections options; cloud sample counts follow Effects; it also sets clouds, motion blur, film effects (grain, vignette, lens flare) and brightness.
+- **Settings data:** new `FCrosshairGraphicsOptions` in `FCrosshairSettings`, plus `GraphicsVersion`. Older configured saves get their preset's options on load (`CrosshairGraphics::Upgrade`).
+- **CrosshairGraphics:**
+  - `PresetOptions`, `IsCustom`, `CurrentOptions`, and option names, values, help and stepping.
+  - `Apply` sets the nine scalability groups separately, then `r.AntiAliasingMethod`, `t.MaxFPS`, `r.VSync`, `r.VolumetricFog`, `r.MotionBlurQuality` and `r.Tonemapper.Sharpen`.
+  - Battery saver now also uses TAA, a 60 FPS cap, and no volumetric fog, clouds or motion blur.
+- **First launch:** with no saved choice, the benchmark runs once and its preset is saved. Automated (`-...Smoke`) and headless runs skip this.
+- **Menu:** the Graphics tab has 18 new option rows (22 graphics rows in total). Order: preset, detect, resolution, ray tracing, FOV, then the options. Options use < > chips. The preset row shows "Custom, based on ..." when changed.
+- **Tests:** the graphics check now covers preset options, custom overrides reaching the scalability groups, cvars and the grade, preset restore, old-save upgrade, no auto-detect in tests, and the menu option rows.
+- **Docs:** updated README and docs/graphics.md.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairData.h
+- Source/Project_Crosshair/Trickshot/CrosshairGraphics.h, CrosshairGraphics.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairEnvironment.h, CrosshairEnvironment.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h, CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairReplaySubsystem.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.cpp
+- README.md, docs/graphics.md, docs/ai-interaction-log.md
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development`: Succeeded. The first try failed on `FLinearColor::GetBlackBodyColor`; it now uses `MakeFromColorTemperature`.
+- Rendered `-CrosshairSmoke -CrosshairGraphicsCheck`: CROSSHAIR_GRAPHICS_OK, 31 checks passed.
+  - The first run failed only on a float tolerance in the test's brightness compare (the value was -0.05 as expected). The tolerance was fixed.
+  - Custom run: shadows 0, textures 1, GI 3, AA 1 (FXAA), 90 FPS, volumetric fog 0, motion blur 0, sharpen 0, clouds hidden, grade bias -0.05.
+  - Menu: 18 option rows, and the Shadows row changes quality.
+  - `GfxNuketownRayTracingOn.png` inspected: clean lighting, no artifacts.
+- `-NullRHI` smokes: Frontend, Lethal (checks the menu row layout) and Expansion: OK.
+- `-CrosshairMatchSmoke -NullRHI`: CROSSHAIR_MATCH_OK, exit 0.
+
+### Notes / Follow-up
+- Space Station keeps its own lighting. On it, brightness, film effects and the grade's motion-blur amount don't apply; motion blur on/off still does, through the cvar.
+- First-launch auto-detect is new behavior: before, nothing was applied until the player chose. Not tested on real integrated-graphics hardware.
+- The preset and ray-tracing rows show their value as text rather than a chip, because the names are long.
+
+### Response Summary
+Described the lighting changes, the new options and presets, first-launch detection, and the test results.
+---

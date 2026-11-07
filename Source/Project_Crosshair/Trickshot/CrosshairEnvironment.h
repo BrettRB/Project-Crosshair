@@ -4,7 +4,9 @@
 #include "CrosshairEnvironment.generated.h"
 
 class ADirectionalLight;
+class ASkyLight;
 class UMaterialInstanceDynamic;
+struct FCrosshairGraphicsOptions;
 
 /** A map's sky: time of day, atmosphere, haze and cloud weather. */
 struct FCrosshairSkyProfile
@@ -39,11 +41,12 @@ public:
  static FCrosshairSkyProfile SkyProfileFor(const FString& MapName);
  FCrosshairSkyProfile Profile;
  bool IsApplied() const { return bApplied; }
- /** Scales the grade to a graphics preset (0..3): Lumen quality, hit-lit reflections only with ray tracing, clouds off on battery saver. */
- void ApplyQuality(int32 Preset,bool bRayTracing);
+ /** Scales the rig to the graphics options: Lumen quality from GI/reflections, hit-lit reflections only with ray tracing, cloud detail, motion blur, film effects and brightness. */
+ void ApplyQuality(const FCrosshairGraphicsOptions& Options,bool bRayTracing);
  UPROPERTY(Transient) TObjectPtr<ADirectionalLight> Sun;
  UPROPERTY(Transient) TObjectPtr<APostProcessVolume> Grade;
  UPROPERTY(Transient) TObjectPtr<AActor> Clouds;
+ UPROPERTY(Transient) TObjectPtr<ASkyLight> SkyLight;
 private:
  bool bApplied=false;
 };

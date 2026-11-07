@@ -124,6 +124,47 @@ struct FCrosshairClass
  UPROPERTY(EditAnywhere,BlueprintReadWrite) ECrosshairLethalType Lethal=ECrosshairLethalType::Frag;
 };
 
+/**
+ * Individual graphics options under a preset (CrosshairGraphics). Choosing a preset fills these in;
+ * changing any of them afterwards shows the preset as "Custom". Quality levels are 0 Low .. 3 Epic.
+ */
+USTRUCT(BlueprintType)
+struct FCrosshairGraphicsOptions
+{
+ GENERATED_BODY()
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 ViewDistance=3;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Shadows=3;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 GlobalIllumination=3;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Reflections=3;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Textures=3;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Effects=3;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 PostProcess=3;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Foliage=3;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Shading=3;
+ /** 0 off, 1 FXAA, 2 TAA, 3 TSR (temporal super resolution). */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 AntiAliasing=3;
+ /** Frames per second cap; 0 is unlimited. */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 FrameRateLimit=0;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bVSync=false;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bVolumetricFog=true;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bVolumetricClouds=true;
+ /** 0 off, 1 low, 2 high. */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 MotionBlur=1;
+ /** Film grain, vignette and a faint lens flare. */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bFilmEffects=true;
+ /** Exposure offset in tenths of a stop, -5..+5. */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Brightness=0;
+ /** Image sharpening: 0 off, 1 low, 2 medium, 3 high. */
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Sharpening=1;
+ bool operator==(const FCrosshairGraphicsOptions& O) const
+ {
+  return ViewDistance==O.ViewDistance && Shadows==O.Shadows && GlobalIllumination==O.GlobalIllumination && Reflections==O.Reflections && Textures==O.Textures
+   && Effects==O.Effects && PostProcess==O.PostProcess && Foliage==O.Foliage && Shading==O.Shading && AntiAliasing==O.AntiAliasing && FrameRateLimit==O.FrameRateLimit
+   && bVSync==O.bVSync && bVolumetricFog==O.bVolumetricFog && bVolumetricClouds==O.bVolumetricClouds && MotionBlur==O.MotionBlur && bFilmEffects==O.bFilmEffects
+   && Brightness==O.Brightness && Sharpening==O.Sharpening;
+ }
+};
+
 USTRUCT(BlueprintType)
 struct FCrosshairSettings
 {
@@ -155,6 +196,9 @@ struct FCrosshairSettings
  UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 GraphicsPreset=3;
  UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 ResolutionScale=100;
  UPROPERTY(EditAnywhere,BlueprintReadWrite) bool bRayTracing=true;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FCrosshairGraphicsOptions GraphicsOptions;
+ /** 1 once GraphicsOptions exist in the save; older configured saves get their preset's options on load. */
+ UPROPERTY() int32 GraphicsVersion=0;
 };
 
 USTRUCT(BlueprintType)

@@ -36,9 +36,9 @@ This project was made for an **AI-Assisted Software Engineering** course. It was
 - Main menu and pause menu designed for mouse, keyboard and controller, with custom weapon classes and weapon camos (including Red Tiger and Arctic).
 - Controller support with adjustable sensitivity, dead zone, inversion and a direction calibration.
 - Import your own maps as OBJ files or `map.json` packages.
-- Realistic lighting (sun, sky, volumetric clouds and fog, film-style grade) applied automatically to every map, including imported ones, plus muscular soldiers with fitted helmets, armor and camouflage.
+- Realistic lighting (sun with cloud and atmosphere shadows, sky, volumetric clouds, layered ground haze, film-style grade) applied automatically to every map, including imported ones, plus muscular soldiers with fitted helmets, armor and camouflage.
 - Each map has its own sky: a clear midday on the Testing map, a dusty desert late afternoon on Nuketown and a cool broken-cloud morning on Grid.
-- A Graphics menu with presets for laptops from integrated graphics up to gaming laptops and desktops, resolution scale, auto-detect and a ray tracing on/off switch.
+- A Graphics menu with presets for laptops from integrated graphics up to gaming laptops and desktops, resolution scale, auto-detect (also run once on first launch) and a ray tracing on/off switch, plus individual options: anti-aliasing, frame rate limit, VSync, the nine engine quality groups (shadows, global illumination, reflections, textures and more), volumetric fog and clouds, motion blur, film grain, brightness and sharpening. See [graphics settings](docs/graphics.md#graphics-settings-and-ray-tracing).
 - **Space Station**: a copy of Nuketown re-themed as an orbital station with a starfield, a planet in the sky, metal decks, white hull panels and solar arrays.
 - A startup step that preloads maps, weapons and shaders before play.
 

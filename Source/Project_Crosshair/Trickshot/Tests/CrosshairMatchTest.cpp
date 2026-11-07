@@ -18,6 +18,7 @@
 #include "../CrosshairEnvironment.h"
 #include "../CrosshairGraphics.h"
 #include "Scalability.h"
+#include "HAL/IConsoleManager.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/SkyLightComponent.h"
@@ -275,6 +276,32 @@ void UCrosshairMatchTest::TickGraphics()
    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO preset=%s shadows=%d gi=%d resolution=%.0f rt=%d"),CrosshairGraphics::PresetName(Preset),Levels.ShadowQuality,Levels.GlobalIlluminationQuality,Levels.ResolutionQuality,int32(CrosshairGraphics::IsRayTracingActive()));
    if (!Check(Levels.ShadowQuality==Preset && Levels.GlobalIlluminationQuality==Preset && FMath::IsNearlyEqual(Levels.ResolutionQuality,float(CrosshairGraphics::PresetResolution(Preset))),
     *FString::Printf(TEXT("%s preset applies engine quality %d"),CrosshairGraphics::PresetName(Preset),Preset))) return;
+   if (!Check(S.GraphicsOptions==CrosshairGraphics::PresetOptions(Preset) && !CrosshairGraphics::IsCustom(S),*FString::Printf(TEXT("%s preset fills its individual options"),CrosshairGraphics::PresetName(Preset)))) return;
+  }
+  {
+   // Individual options override the preset, mark it Custom and reach the engine and the lighting rig.
+   auto CVar=[](const TCHAR* Name){ const IConsoleVariable* V=IConsoleManager::Get().FindConsoleVariable(Name); return V ? V->GetFloat() : -1.f; };
+   CrosshairGraphics::SelectPreset(S,3);
+   FCrosshairGraphicsOptions& O=S.GraphicsOptions;
+   O.Shadows=0; O.Textures=1; O.AntiAliasing=1; O.FrameRateLimit=90; O.bVolumetricFog=false; O.bVolumetricClouds=false; O.MotionBlur=0; O.bFilmEffects=false; O.Brightness=3; O.Sharpening=0;
+   CrosshairGraphics::Apply(S);
+   const Scalability::FQualityLevels Levels=Scalability::GetQualityLevels();
+   const auto* Environment=World->GetSubsystem<UCrosshairEnvironmentSubsystem>();
+   const FPostProcessSettings* G=Environment && Environment->Grade ? &Environment->Grade->Settings : nullptr;
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO custom shadows=%d textures=%d gi=%d aa=%.0f fps=%.0f vfog=%.0f blur=%.0f sharpen=%.1f cloudsHidden=%d grade blur=%.2f grain=%.2f bias=%.2f"),
+    Levels.ShadowQuality,Levels.TextureQuality,Levels.GlobalIlluminationQuality,CVar(TEXT("r.AntiAliasingMethod")),CVar(TEXT("t.MaxFPS")),CVar(TEXT("r.VolumetricFog")),CVar(TEXT("r.MotionBlurQuality")),
+    CVar(TEXT("r.Tonemapper.Sharpen")),Environment && Environment->Clouds ? int32(Environment->Clouds->IsHidden()) : -1,G ? G->MotionBlurAmount : -1.f,G ? G->FilmGrainIntensity : -1.f,G ? G->AutoExposureBias : -1.f);
+   if (!Check(CrosshairGraphics::IsCustom(S) && Levels.ShadowQuality==0 && Levels.TextureQuality==1 && Levels.GlobalIlluminationQuality==3,TEXT("Individual quality options override the preset and show Custom"))) return;
+   if (!Check(CVar(TEXT("r.AntiAliasingMethod"))==1.f && CVar(TEXT("t.MaxFPS"))==90.f && CVar(TEXT("r.VolumetricFog"))==0.f && CVar(TEXT("r.MotionBlurQuality"))==0.f && CVar(TEXT("r.Tonemapper.Sharpen"))==0.f,
+    TEXT("Anti-aliasing, frame rate, volumetric fog, motion blur and sharpening options reach the renderer"))) return;
+   if (!Check(G && Environment->Clouds && Environment->Clouds->IsHidden() && G->MotionBlurAmount==0.f && G->FilmGrainIntensity==0.f && G->VignetteIntensity==0.f && FMath::IsNearlyEqual(G->AutoExposureBias,-.05f,.001f),
+    TEXT("Clouds, motion blur, film effects and brightness options reach the lighting rig"))) return;
+   // Re-selecting a preset clears the custom options; an old save gets its preset's options.
+   CrosshairGraphics::SelectPreset(S,3); CrosshairGraphics::Apply(S);
+   if (!Check(!CrosshairGraphics::IsCustom(S) && !Environment->Clouds->IsHidden() && CVar(TEXT("r.AntiAliasingMethod"))==4.f && CVar(TEXT("t.MaxFPS"))==0.f,TEXT("Choosing a preset restores its options"))) return;
+   FCrosshairSettings Old; Old.bGraphicsConfigured=true; Old.GraphicsPreset=0; Old.GraphicsVersion=0; CrosshairGraphics::Upgrade(Old);
+   if (!Check(Old.GraphicsVersion==1 && Old.GraphicsOptions==CrosshairGraphics::PresetOptions(0),TEXT("Saves from before individual options get their preset's options"))) return;
+   if (!Check(!CrosshairGraphics::ShouldAutoDetect(S) && !CrosshairGraphics::ShouldAutoDetect(FCrosshairSettings()),TEXT("Automated runs never auto-detect graphics"))) return;
   }
   if (auto* Menu=Cast<ACrosshairPlayerController>(PC))
   {
@@ -283,8 +310,17 @@ void UCrosshairMatchTest::TickGraphics()
    Menu->SetMenuTab(2);
    Menu->AdjustMenuRow(Menu->GetGraphicsRow(),1);
    const bool bListed=Menu->GetVisibleMenuRows().Contains(Menu->GetGraphicsRow()+1);
+   // Every individual option has a row; Left/Right on the Shadows row lowers shadows and marks the preset Custom.
+   const int32 ShadowRow=Menu->GetGraphicsRow()+ACrosshairPlayerController::GraphicsOptionRow+CrosshairGraphics::Shadows;
+   int32 OptionRows=0;
+   for (int32 i=ACrosshairPlayerController::GraphicsOptionRow;i<ACrosshairPlayerController::GraphicsRowCount;++i) OptionRows+=Menu->GetVisibleMenuRows().Contains(Menu->GetGraphicsRow()+i);
+   Menu->AdjustMenuRow(ShadowRow,-1);
+   const bool bShadowRow=S.GraphicsOptions.Shadows==1 && CrosshairGraphics::IsCustom(S) && Scalability::GetQualityLevels().ShadowQuality==1;
+   Menu->AdjustMenuRow(ShadowRow,1);
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_GRAPHICS_INFO menu option rows=%d shadowRow=%d custom after undo=%d"),OptionRows,int32(bShadowRow),int32(CrosshairGraphics::IsCustom(S)));
    Menu->ToggleMenu();
    if (!Check(bListed,TEXT("Graphics tab lists the ray tracing toggle"))) return;
+   if (!Check(OptionRows==CrosshairGraphics::OptionCount && bShadowRow && !CrosshairGraphics::IsCustom(S),TEXT("Graphics tab lists every option and its rows change them"))) return;
    // LAN setup tab: type a username with the keyboard, and bot rows hide when bots are off.
    if (!Menu->bMenuOpen) Menu->ToggleMenu();
    Menu->SetMenuTab(9);

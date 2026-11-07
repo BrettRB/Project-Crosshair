@@ -73,30 +73,48 @@ The face area of the uniform shader is now visible skin, framed by the head cove
 
 ## Graphics settings and ray tracing
 
-Open Escape / Start > **Graphics**. It works in practice and in matches, and changes apply at once without a restart:
+Open Escape / Start > **Graphics**. It works in practice and in matches, and changes apply at once without a restart. The rows come in this order:
 
 | Row | What it does |
 | --- | --- |
-| Graphics quality | Left/Right or Enter cycles the four laptop presets below. |
-| Ray tracing | Turns hardware ray tracing on or off. On a GPU without DirectX 12 ray tracing it shows "not supported". |
-| Resolution scale | 50–100% in 5% steps. Lower is faster. |
+| Graphics quality | Left/Right or Enter cycles the four laptop presets below. Shows "Custom, based on ..." once any individual option differs from the preset. |
 | Detect best settings for this PC | Runs the engine benchmark and picks a preset. Integrated graphics are capped at Balanced. |
+| Resolution scale | 50–100% in 5% steps. Lower is faster. |
+| Ray tracing | Turns hardware ray tracing on or off. On a GPU without DirectX 12 ray tracing it shows "not supported". |
 | Field of view | Unchanged. |
+| Anti-aliasing | Off, FXAA, TAA or TSR (`r.AntiAliasingMethod`). TSR upscales best from a lower resolution scale. |
+| Frame rate limit | Unlimited, 30, 60, 75, 90, 120, 144, 165 or 240 FPS (`t.MaxFPS`). A cap saves battery and heat. |
+| VSync | On or off (`r.VSync`). |
+| View distance, Shadows, Global illumination, Reflections, Textures, Effects, Post-processing, Foliage, Shading | Low, Medium, High or Epic: the engine's own scalability groups, each set on its own. View distance also sets landscape quality. Global illumination Low turns Lumen off. |
+| Volumetric fog | Sun-lit haze and light shafts (`r.VolumetricFog`). |
+| Volumetric clouds | Shows or hides the 3D cloud layer. Hidden clouds also stop darkening the sky light. |
+| Motion blur | Off, Low or High. |
+| Film grain and vignette | Film grain, a light vignette and a faint sun lens flare. |
+| Brightness | -5 to +5, in tenths of a stop of exposure. |
+| Sharpening | Off, Low, Medium or High (`r.Tonemapper.Sharpen`). Useful at a lower resolution scale. |
 
-| Preset | Engine quality | Resolution | Ray tracing | Meant for |
-| --- | --- | --- | --- | --- |
-| Battery saver (integrated graphics) | Low | 67% | Off | Integrated graphics, battery power. Volumetric clouds are also hidden. |
-| Balanced laptop | Medium | 80% | Off | Thin laptops, Radeon 780M / Intel Arc class graphics |
-| Gaming laptop | High | 100% | On | Laptops with a dedicated GPU |
-| High-end laptop / desktop | Epic | 100% | On | High-end laptops and desktops |
+Individual options use chips: Left/Right (or the < and > arrows) change them, and quality levels and lists wrap around. The preset and ray tracing rows have long values, so they show the value on the right instead.
 
-Choosing a preset sets its default ray tracing and resolution, and you can change either afterwards. The choice is saved with the other Crosshair settings and applied at every launch. Until a choice is made, the engine's own defaults are left alone.
+| Preset | Engine quality | Resolution | Ray tracing | Other defaults | Meant for |
+| --- | --- | --- | --- | --- | --- |
+| Battery saver (integrated graphics) | Low | 67% | Off | TAA, 60 FPS cap, no volumetric fog, clouds or motion blur | Integrated graphics, battery power |
+| Balanced laptop | Medium | 80% | Off | TSR, unlimited FPS | Thin laptops, Radeon 780M / Intel Arc class graphics |
+| Gaming laptop | High | 100% | On | TSR, unlimited FPS | Laptops with a dedicated GPU |
+| High-end laptop / desktop | Epic | 100% | On | TSR, unlimited FPS | High-end laptops and desktops |
 
-The lighting rig follows the preset:
+All presets start with VSync off, low motion blur (except Battery saver), film effects on, default brightness and low sharpening.
 
-- **Lumen quality:** the rig's Lumen scene, final-gather and reflection quality are raised only on High-end/desktop.
-- **Reflections:** hit-lit ray-traced reflections are used only when ray tracing is on (Gaming laptop and up).
-- **Ambient occlusion:** lighter on Battery saver.
+Choosing a preset sets its resolution, ray tracing and every individual option; you can change any of them afterwards. The choice is saved with the other Crosshair settings (`FCrosshairSettings::GraphicsOptions`) and applied at every launch. Saves made before the individual options existed get their preset's options on load.
+
+**First launch:** if no graphics choice has been saved yet, Crosshair runs the same benchmark as "Detect best settings" once at startup and saves the preset it picks, so a laptop with integrated graphics starts on Battery saver or Balanced instead of Epic. Automated test runs (any `-...Smoke` flag) and headless runs skip this and keep the engine's defaults.
+
+The lighting rig follows the options:
+
+- **Lumen quality:** Global illumination Epic raises the rig's Lumen scene lighting, final-gather and scene detail. Reflections Epic raises reflection quality, allows two reflection bounces and traces rougher surfaces.
+- **Reflections:** hit-lit ray-traced reflections are used only when ray tracing is on and Reflections is High or Epic.
+- **Clouds:** cloud ray-march sample counts follow Effects (50% on Low up to 100% on Epic).
+- **Ambient occlusion:** lighter when Global illumination is Low.
+- Motion blur, film effects and brightness are set on the rig's grade volume. Space Station keeps its own vacuum lighting, so there only motion blur (through `r.MotionBlurQuality`) and the engine options apply.
 
 **How ray tracing switches:** the project already enables ray tracing (`r.RayTracing=True` on DirectX 12), and UE 5.8 lets it be toggled at runtime (`r.RayTracing.EnableOnDemand`). The toggle sets two console variables, `r.RayTracing.Enable` and `r.Lumen.HardwareRayTracing`:
 
@@ -105,7 +123,16 @@ The lighting rig follows the preset:
 
 No project settings were changed. The code is in `Trickshot/CrosshairGraphics.h/.cpp`.
 
-The graphics check verifies each preset's engine quality and resolution, the menu row, and ray tracing turning off and back on. It also saves `GfxNuketownRayTracingOff.png` and `GfxNuketownRayTracingOn.png` for comparison.
+The graphics check verifies each preset's engine quality, resolution and options; that individual options override the preset, show Custom and reach the renderer and lighting rig; that re-choosing a preset restores them; old-save upgrade; the menu rows; and ray tracing turning off and back on. It also saves `GfxNuketownRayTracingOff.png` and `GfxNuketownRayTracingOn.png` for comparison.
+
+## More realistic lighting (2026-11-06)
+
+The shared lighting rig gained these, on every map it manages:
+
+- **Sun:** cloud shadows at 85% strength (ground under cloud dims without going black), shadows cast onto the cloud layer and into the atmosphere (light shafts through gaps), and slightly stronger volumetric scattering for sun shafts in the fog.
+- **Sky light:** cloud ambient occlusion, so the sky's ambient light is also softer under heavy cloud.
+- **Height fog:** a thin, denser second fog layer near the ground (real air is hazier low down), and a soft glow in the haze toward the sun, tinted by the sun's colour temperature.
+- **Grade:** a filmic response with slightly cooler shadows and warmer, less saturated highlights; a little more local-exposure detail; a small amount of sky light leaking so interiors are dark but readable; and longer Lumen traces for distant bounce light.
 
 ## Verification
 

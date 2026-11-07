@@ -23,6 +23,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "CrosshairGraphics.h"
 #include "Scalability.h"
+static_assert(ACrosshairPlayerController::GraphicsRowCount==ACrosshairPlayerController::GraphicsOptionRow+CrosshairGraphics::OptionCount,"One menu row per graphics option");
 #include "Kismet/KismetSystemLibrary.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -139,6 +140,7 @@ FString ACrosshairPlayerController::GetRowHelp(int32 Row) const
  if (Row==G+1) return CrosshairGraphics::IsRayTracingSupported() ? TEXT("Hardware ray-traced lighting and reflections (Lumen). Costly on integrated graphics.") : TEXT("Needs a DirectX 12 GPU with ray tracing support.");
  if (Row==G+2) return TEXT("Render below native resolution for more frames per second; 100% is sharpest.");
  if (Row==G+3) return TEXT("Benchmark this PC and pick the preset that suits it.");
+ if (Row>=G+GraphicsOptionRow && Row<G+GraphicsRowCount) return CrosshairGraphics::OptionHelp(Row-G-GraphicsOptionRow);
  const int32 Lan=GetLanRow();
  if (Row==Lan) return bEditingName ? TEXT("Type your username (letters, numbers, space, - _ .). Backspace deletes; Enter saves.") : TEXT("Your name in matches. Enter to type it; Left / Right picks a callsign.");
  if (Row==Lan+1) return ModeHelp(GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().Lan.Match.Mode);
@@ -441,10 +443,14 @@ TArray<FString> ACrosshairPlayerController::GetMenuRows() const
  Rows.Add(Session->bSearching ? TEXT("Searching this network...") : TEXT("Find LAN matches"));
  for (int32 i=0;i<UCrosshairMatchSession::MaxLanResults;++i) Rows.Add(Session->LanResults.IsValidIndex(i) ? TEXT("Join: ")+Session->LanResults[i] : FString(TEXT("No LAN match")));
  const int32 Preset=CrosshairGraphics::CurrentPreset(S);
- Rows.Add(TEXT("Graphics quality: ")+FString(CrosshairGraphics::PresetName(Preset))+(S.bGraphicsConfigured ? TEXT("") : TEXT(" (default)")));
+ Rows.Add(TEXT("Graphics quality: ")+(CrosshairGraphics::IsCustom(S) ? TEXT("Custom, based on ")+FString(CrosshairGraphics::PresetName(Preset)) : FString(CrosshairGraphics::PresetName(Preset)))+(S.bGraphicsConfigured ? TEXT("") : TEXT(" (default)")));
  Rows.Add(!CrosshairGraphics::IsRayTracingSupported() ? FString(TEXT("Ray tracing: not supported on this GPU")) : FString::Printf(TEXT("Ray tracing: %s"),CrosshairGraphics::IsRayTracingActive() ? TEXT("On") : TEXT("Off")));
  Rows.Add(FString::Printf(TEXT("Resolution scale: %d%%"),S.bGraphicsConfigured ? S.ResolutionScale : FMath::RoundToInt(Scalability::GetQualityLevels().ResolutionQuality)));
  Rows.Add(TEXT("Detect best settings for this PC"));
+ {
+  const FCrosshairGraphicsOptions Options=CrosshairGraphics::CurrentOptions(S);
+  for (int32 i=0;i<CrosshairGraphics::OptionCount;++i) Rows.Add(FString(CrosshairGraphics::OptionName(i))+TEXT(": ")+CrosshairGraphics::OptionValue(Options,i));
+ }
  {
   const auto& L=S.Lan; const auto& M=L.Match; const bool bLanTeams=UCrosshairBotMatch::IsTeamMode(M.Mode);
   Rows.Add(bEditingName ? TEXT("Username: ")+S.PlayerName+TEXT("_   (type, Enter to finish)") : TEXT("Username: ")+UCrosshairBotMatch::CleanPlayerName(S.PlayerName));
@@ -527,7 +533,13 @@ TArray<int32> ACrosshairPlayerController::GetVisibleMenuRows() const
  switch (MenuTab)
  {
 	case 1: return {1, 2, InvertHorizontalRow, InvertVerticalRow, CalibrationRow, 3, 4, 5, 6, GetSandboxRow()};
-	case 2: { const int32 G=GetGraphicsRow(); return {G,G+1,G+2,G+3,7}; }
+	case 2:
+	{
+		// Preset, detect, resolution, ray tracing and field of view first, then the individual options.
+		const int32 G=GetGraphicsRow(); TArray<int32> Rows={G,G+3,G+2,G+1,7};
+		for (int32 i=GraphicsOptionRow;i<GraphicsRowCount;++i) Rows.Add(G+i);
+		return Rows;
+	}
 	case 3: return {GetSandboxRow(),11,12};
  case 6: return {GetClassRow(),GetClassRow()+1,GetClassRow()+2,GetClassRow()+3,GetClassRow()+4};
  case 7: return {MapRow,GetImportRow(),GetHomeRow()};
@@ -1203,7 +1215,7 @@ void ACrosshairHUD::DrawMenu(ACrosshairPlayerController* PC,ACrosshairMatchState
 		Text(Tabs[Tab],Sel ? Amber : Locked ? Dim : Ink,38,TY+10,.92f);
 		HitBox(FString::Printf(TEXT("Tab_%d"),Tab),20,TY,212,40);
 	}
-	const TCHAR* Descriptions[]={TEXT("Set up your next trickshot attempt."),TEXT("Tune your mouse and controller."),TEXT("Quality presets for your laptop or PC, ray tracing and field of view."),TEXT("Manage your practice targets."),
+	const TCHAR* Descriptions[]={TEXT("Set up your next trickshot attempt."),TEXT("Tune your mouse and controller."),TEXT("Presets for your laptop or PC, then fine-tune shadows, lighting, effects, frame rate and more."),TEXT("Manage your practice targets."),
 		TEXT("Watch saved trickshots and match kills."),TEXT("Choose a finish for your weapon."),TEXT("Build and equip your weapon class."),TEXT("Play and import practice maps."),
 		TEXT("Free-for-all, Team Deathmatch or Kill Confirmed against bots on Nuketown, Grid and Space Station."),TEXT("Play with others on the same network.")};
 	const float ContentX=260,ContentRight=W-32;
@@ -1245,7 +1257,8 @@ void ACrosshairHUD::DrawMenu(ACrosshairPlayerController* PC,ACrosshairMatchState
 		const float TextY=RY+(RowHeight-22)*.5f;
 		Text(RowLabel,Sel ? Ink : FLinearColor(.80f,.84f,.88f),ContentX+20,TextY,.92f);
 		const bool bAdjustable=(Row>=1 && Row<=8) || Row==PC->WeaponRow || Row==PC->GetLethalRow() || (Row>=PC->GetClassRow() && Row<PC->GetClassRow()+4) || Row==PC->GetSandboxRow()
-			|| (Row>=B && Row<B+6) || Row==PC->MapRow || Row==PC->InvertHorizontalRow || Row==PC->InvertVerticalRow;
+			|| (Row>=B && Row<B+6) || Row==PC->MapRow || Row==PC->InvertHorizontalRow || Row==PC->InvertVerticalRow
+			|| Row==PC->GetGraphicsRow()+2 || (Row>=PC->GetGraphicsRow()+PC->GraphicsOptionRow && Row<PC->GetGraphicsRow()+PC->GraphicsRowCount);   // preset and ray tracing names are too long for a chip
 		if (bAdjustable)
 		{
 			const float ChipWidth=FMath::Min(250.f,RW*.46f), ChipX=RowRight-ChipWidth-8;
@@ -1342,7 +1355,10 @@ void ACrosshairPlayerController::AdjustGraphics(int32 Offset,int32 Direction)
   if (PracticePawn) PracticePawn->Notify(FString(TEXT("Detected: "))+CrosshairGraphics::PresetName(Preset));
   break;
  }
- default: return;
+ default:
+  if (Offset<GraphicsOptionRow || Offset>=GraphicsRowCount) return;
+  CrosshairGraphics::StepOption(S.GraphicsOptions,Offset-GraphicsOptionRow,Direction);
+  break;
  }
  CrosshairGraphics::Apply(S);
  Replay->SaveSettings();
