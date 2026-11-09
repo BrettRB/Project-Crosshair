@@ -7,6 +7,7 @@ class UCrosshairCombatAppearance;
 class UCrosshairInventoryComponent;
 class UCrosshairLethalComponent;
 class UCrosshairTraversalComponent;
+class UCrosshairStanceComponent;
 class UCrosshairPlacementComponent;
 class UCrosshairAttemptComponent;
 class UCrosshairHealthComponent;
@@ -40,6 +41,8 @@ public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual bool CanJumpWhileFalling() const override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void EndPlay(EEndPlayReason::Type Reason) override;
@@ -47,6 +50,7 @@ public:
  UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<UCrosshairCombatAppearance> CombatAppearance;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairLethalComponent> Lethals;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairTraversalComponent> Traversal;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairStanceComponent> Stance;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairPlacementComponent> Placement;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UCrosshairAttemptComponent> Attempt;
 	/** Match-only health; practice never damages players. */
@@ -57,6 +61,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float WalkSpeed = 450;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float SprintSpeed = 680;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float CrouchSpeed = 220;
+	/** Seconds to build from run speed to full sprint speed. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float SprintBuildSeconds = .25f;
+	/** Largest angle (degrees) off the view direction that still counts as sprinting. Bots are exempt. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float SprintMaxAngle = 60;
+	/** Extra field of view at full sprint. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement") float SprintFOVKick = 6;
 	/** Prototype tuning. Speeds use cm/s; jump and gravity remain in CharacterMovement. */
 	UPROPERTY(EditDefaultsOnly, Category="Loadout") TArray<TObjectPtr<UCrosshairWeaponDefinition>> DefaultLoadout;
 	UPROPERTY(EditDefaultsOnly, Category="Targets") TSubclassOf<ACrosshairDummy> TargetClass;
@@ -91,6 +101,12 @@ public:
 	float TrickshotUntil = 0;
 	void SetBotInput(bool bAim, bool bSprint) { bAimHeld = bAim; bSprintHeld = bSprint; }
 	bool IsAimHeld() const { return bAimHeld; }
+	/** True while actually sprinting: the only state that can start a slide or a dive. */
+	bool IsSprinting() const;
+	/** 0 to 1 sprint build-up, for the speed, view and weapon. */
+	float GetSprintAlpha() const { return SprintAlpha; }
+	/** Left Ctrl / right stick click: lie down, get up, or dive while sprinting. */
+	void PronePressed();
 	/** LAN client -> host: sprint and aim change movement speed, so the host must simulate the same intent. */
 	UFUNCTION(Server, Reliable) void ServerSetMoveIntent(bool bSprint, bool bAim);
 	/** LAN client -> host: weapons and lethals run on the host, which decides hits and damage. */
@@ -152,5 +168,8 @@ private:
 	bool bHasLastYaw = false;
 	bool bSentSprint = false, bSentAim = false;
 	float AimAlpha = 0;
+	float SprintAlpha = 0;
+	float EyeHeight = 64;
+	bool WantsToSprint(bool bWantsAim) const;
 	int32 PresentedHit = 0;
 };

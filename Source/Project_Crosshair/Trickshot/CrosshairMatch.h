@@ -241,6 +241,8 @@ public:
  const FCrosshairBotMatchOptions& GetOptions() const { return MatchOptions; }
  uint8 TeamOf(const AController* Controller) const;
  const TArray<TObjectPtr<ACrosshairSpawnPoint>>& GetSpawnPoints() const { return SpawnPoints; }
+ /** Staircase links for this map; null until the navmesh has finished building. */
+ const class ACrosshairStairLinks* GetStairLinks() const { return StairLinks; }
  /** The spawn point most recently chosen for a controller (diagnostics and tests). */
  ACrosshairSpawnPoint* GetLastSpawn(const AController* Controller) const { return LastSpawn.FindRef(Controller).Get(); }
  /** Seconds between death and respawn. */
@@ -253,6 +255,9 @@ private:
  void AddBot(uint8 Team,int32 Number);
  void Respawn(AController* Controller);
  void CollectSpawnPoints();
+ void TryBuildStairLinks();
+ UPROPERTY(Transient) TObjectPtr<class ACrosshairStairLinks> StairLinks;
+ FTimerHandle StairLinkTimer;
  /** Bots, clock and first spawns: at StartPlay offline, or when the host leaves the LAN lobby. */
  void BeginMatch();
  void DropTag(AController* Victim,const FVector& Where);

@@ -48,6 +48,13 @@
 #include "Misc/Paths.h"
 #include "NavigationSystem.h"
 #include "NavigationPath.h"
+#include "NavMesh/NavMeshBoundsVolume.h"
+#include "NavMesh/RecastNavMesh.h"
+#include "../CrosshairStairLinks.h"
+#include "Algo/Reverse.h"
+#include "../CrosshairBot.h"
+#include "../CrosshairStance.h"
+#include "Components/CapsuleComponent.h"
 #include "UnrealClient.h"
 #if WITH_EDITOR
 #include "ShaderCompiler.h"
@@ -60,7 +67,7 @@ bool UCrosshairMatchTest::ShouldCreateSubsystem(UObject* Outer) const
 #if UE_BUILD_SHIPPING
  return false;
 #else
- return Flag(TEXT("CrosshairSmoke")) && (Flag(TEXT("CrosshairMatchSmoke")) || Flag(TEXT("CrosshairMatchLayoutProbe")) || Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient")) || Flag(TEXT("CrosshairSoldierProbe")) || Flag(TEXT("CrosshairGraphicsCheck")));
+ return Flag(TEXT("CrosshairSmoke")) && (Flag(TEXT("CrosshairMatchSmoke")) || Flag(TEXT("CrosshairMatchLayoutProbe")) || Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient")) || Flag(TEXT("CrosshairSoldierProbe")) || Flag(TEXT("CrosshairGraphicsCheck")) || Flag(TEXT("CrosshairNavProbe")) || Flag(TEXT("CrosshairMovementSmoke")));
 #endif
 }
 void UCrosshairMatchTest::Initialize(FSubsystemCollectionBase& Collection)
@@ -132,6 +139,273 @@ void UCrosshairMatchTest::TickProbe()
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_LAYOUT_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
  default: return;
  }
+}
+
+void UCrosshairMatchTest::ProbeNavFloors(const TCHAR* Map)
+{
+ UWorld* World=GetWorld();
+ auto* Navigation=FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+ const auto* Mode=World->GetAuthGameMode<ACrosshairMatchGameMode>();
+ if (!Navigation || !Mode || Mode->GetSpawnPoints().IsEmpty()) { UE_LOG(LogTemp,Warning,TEXT("CROSSHAIR_NAV %s has no navigation or spawns"),Map); return; }
+ FBox Area(ForceInit);
+ for (TActorIterator<ANavMeshBoundsVolume> It(World);It;++It) Area+=It->GetComponentsBoundingBox(true);
+ FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairNavProbe),false);
+ for (TActorIterator<ACrosshairCharacter> It(World);It;++It) Params.AddIgnoredActor(*It);
+ FNavLocation Hub;
+ if (!Navigation->ProjectPointToNavigation(Mode->GetSpawnPoints()[0]->GetActorLocation(),Hub,FVector(120,120,250))) { UE_LOG(LogTemp,Warning,TEXT("CROSSHAIR_NAV %s first spawn is off the navmesh"),Map); return; }
+ struct FBucket { int32 Floors=0,OnNav=0,Reachable=0,Roam=0; FVector MissedNav=FVector::ZeroVector,MissedPath=FVector::ZeroVector,Reached=FVector::ZeroVector; };
+ TMap<int32,FBucket> Buckets;
+ const float Cell=75.f;
+ for (double X=Area.Min.X;X<=Area.Max.X;X+=Cell)
+  for (double Y=Area.Min.Y;Y<=Area.Max.Y;Y+=Cell)
+  {
+   FVector From(X,Y,Area.Max.Z);
+   for (int32 Layer=0;Layer<8;++Layer)
+   {
+    FHitResult Hit;
+    if (!World->LineTraceSingleByChannel(Hit,From,FVector(X,Y,Area.Min.Z),ECC_Visibility,Params)) break;
+    From=Hit.ImpactPoint-FVector(0,0,15);
+    if (Hit.ImpactNormal.Z<.7f) continue;
+    if (World->OverlapBlockingTestByChannel(Hit.ImpactPoint+FVector(0,0,70),FQuat::Identity,ECC_Pawn,FCollisionShape::MakeCapsule(30.f,60.f),Params)) continue;
+    FBucket& B=Buckets.FindOrAdd(FMath::FloorToInt(Hit.ImpactPoint.Z/100.f));
+    ++B.Floors;
+    FNavLocation On;
+    if (!Navigation->ProjectPointToNavigation(Hit.ImpactPoint,On,FVector(45,45,60))) { B.MissedNav=Hit.ImpactPoint; continue; }
+    ++B.OnNav;
+    FPathFindingQuery Query(nullptr,*Navigation->GetDefaultNavDataInstance(),Hub.Location,On.Location);
+    Query.SetAllowPartialPaths(false);
+    if (Navigation->TestPathSync(Query)) { ++B.Reachable; B.Reached=Hit.ImpactPoint; }
+    else B.MissedPath=Hit.ImpactPoint;
+   }
+  }
+ for (int32 i=0;i<4000;++i)
+ {
+  FNavLocation Point;
+  if (Navigation->GetRandomReachablePointInRadius(Hub.Location,3500.f,Point)) ++Buckets.FindOrAdd(FMath::FloorToInt(Point.Location.Z/100.f)).Roam;
+ }
+ Buckets.KeySort([](int32 A,int32 B){ return A<B; });
+ const ARecastNavMesh* Recast=Cast<ARecastNavMesh>(Navigation->GetDefaultNavDataInstance());
+ UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_NAV %s bounds=%s agent r=%.0f h=%.0f step=%.0f slope=%.0f cell=%.0f/%.0f"),Map,*Area.ToString(),Recast ? Recast->AgentRadius : 0.f,Recast ? Recast->AgentHeight : 0.f,Recast ? Recast->GetAgentMaxStepHeight(ENavigationDataResolution::Default) : 0.f,Recast ? Recast->AgentMaxSlope : 0.f,Recast ? Recast->GetCellSize(ENavigationDataResolution::Default) : 0.f,Recast ? Recast->GetCellHeight(ENavigationDataResolution::Default) : 0.f);
+ for (const TPair<int32,FBucket>& Pair:Buckets)
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_NAV %s z=%5d floors=%6d onnav=%6d reachable=%6d roam=%5d nonav@%s nopath@%s reach@%s"),Map,Pair.Key*100,Pair.Value.Floors,Pair.Value.OnNav,Pair.Value.Reachable,Pair.Value.Roam,*Pair.Value.MissedNav.ToCompactString(),*Pair.Value.MissedPath.ToCompactString(),*Pair.Value.Reached.ToCompactString());
+}
+void UCrosshairMatchTest::TickMovement()
+{
+ UWorld* World=GetWorld();
+ auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+ auto* PC=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
+ auto* Pawn=PC ? Cast<ACrosshairCharacter>(PC->GetPawn()) : nullptr;
+ const auto* Mode=World->GetAuthGameMode<ACrosshairMatchGameMode>();
+ const double Elapsed=FPlatformTime::Seconds()-StepStarted;
+ const FString MapName=World->GetMapName();
+ auto Key=[&](FKey K,EInputEvent Event){ PC->InputKey(FInputKeyEventArgs::CreateSimulated(K,Event,Event==IE_Released ? 0.f : 1.f)); };
+ auto Tap=[&](FKey K){ Key(K,IE_Pressed); Key(K,IE_Released); };
+ auto Bot=[&]()->ACrosshairCharacter*{ for (TActorIterator<ACrosshairCharacter> It(World);It;++It) if (It->IsBot()) return *It; return nullptr; };
+ auto Travel=[&](const TCHAR* Map){ FCrosshairBotMatchOptions Options; Options.BotCount=1; Replay->ChangePracticeMap(Map,UCrosshairMatchSession::TravelOptions(Options,false)); };
+ auto Half=[&]{ return Pawn->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(); };
+ auto Current=[&]{ return Pawn->Stance->GetStance(); };
+ // Does a shot along this line, at this height above the floor, strike the soldier's body?
+ auto ShotHits=[&](float Height,const FVector& Axis)
+ {
+  FVector Middle=Pawn->GetActorLocation(); Middle.Z=MoveFloorZ+Height;
+  FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairStanceShot),true);
+  FHitResult Hit;
+  return World->LineTraceSingleByChannel(Hit,Middle-Axis*300.f,Middle+Axis*300.f,ECC_Visibility,Params) && Hit.GetActor()==Pawn;
+ };
+ auto HeadHeight=[&]{ return float(Pawn->GetMesh()->GetBoneLocation(TEXT("head")).Z-MoveFloorZ); };
+ if (Step>=1 && !Pawn) return;
+ switch (Step)
+ {
+ case 0:
+  if (!Pawn || Elapsed<1) return;
+  Travel(TEXT("/Game/Crosshair/Maps/L_Grid")); Next(1); return;
+ case 1:
+ {
+  ACrosshairCharacter* Other=Bot();
+  if (!Mode || !MapName.Contains(TEXT("L_Grid")) || !Other || Elapsed<2) { if (Elapsed>120) Check(false,TEXT("Grid match loads")); return; }
+  // The lone bot waits under the map so it cannot interrupt the movement checks.
+  Other->GetCharacterMovement()->DisableMovement();
+  Other->SetActorLocation(Other->GetActorLocation()-FVector(0,0,1000),false,nullptr,ETeleportType::TeleportPhysics);
+  FHitResult Ground; FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairMoveSpot),false,Pawn);
+  const FVector Spot(5000,-2000,0);
+  if (!Check(World->LineTraceSingleByChannel(Ground,Spot+FVector(0,0,800),Spot-FVector(0,0,800),ECC_Pawn,Params),TEXT("Open ground for movement checks"))) return;
+  MoveFloorZ=Ground.ImpactPoint.Z;
+  Pawn->SetActorLocation(Ground.ImpactPoint+FVector(0,0,98),false,nullptr,ETeleportType::TeleportPhysics);
+  PC->SetControlRotation(FRotator::ZeroRotator);
+  Next(2); return;
+ }
+ case 2:
+  if (Elapsed<.8) return;
+  if (!Check(Half()==96.f && ShotHits(130.f,FVector::YAxisVector),TEXT("Standing soldier is hit at chest height"))) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO standing head height %.0f"),HeadHeight());
+  Tap(EKeys::LeftControl); Next(3); return;
+ case 3:
+  if (Elapsed<.9) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO prone capsule %.0f head height %.0f"),Half(),HeadHeight());
+  if (!Check(Current()==ECrosshairStance::Prone && Half()==CrosshairStanceRules::ProneHalfHeight,TEXT("Left Ctrl while walking lies down with a low capsule"))) return;
+  if (!Check(HeadHeight()<60.f && !ShotHits(130.f,FVector::YAxisVector) && !ShotHits(90.f,FVector::YAxisVector),TEXT("Prone: shots at standing chest and waist height pass over the body"))) return;
+  if (!Check(ShotHits(20.f,FVector::YAxisVector),TEXT("Prone: a shot along the floor still hits the body"))) return;
+  Tap(EKeys::LeftControl); Next(4); return;
+ case 4:
+  if (Elapsed<.9) return;
+  if (!Check(Current()==ECrosshairStance::Normal && !Pawn->bIsCrouched && Half()==96.f && ShotHits(130.f,FVector::YAxisVector),TEXT("Left Ctrl again stands back up with the full hit box"))) return;
+  Key(EKeys::W,IE_Pressed); Key(EKeys::LeftShift,IE_Pressed); Next(5); return;
+ case 5:
+  if (Elapsed<.7) return;
+  if (!Check(Pawn->GetSprintAlpha()==1.f && Pawn->GetCharacterMovement()->MaxWalkSpeed==Pawn->SprintSpeed && Pawn->IsSprinting(),TEXT("Holding sprint builds to full sprint speed"))) return;
+  Tap(EKeys::LeftControl); Next(6); return;
+ case 6:
+  if (Elapsed<.12) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO dive speed %.0f rising %.0f capsule %.0f"),Pawn->GetVelocity().Size2D(),Pawn->GetVelocity().Z,Half());
+  if (!Check(Current()==ECrosshairStance::Dive && Pawn->GetCharacterMovement()->IsFalling() && Pawn->GetVelocity().Size2D()>=700.f && Half()==CrosshairStanceRules::DiveHalfHeight,TEXT("Left Ctrl while sprinting dives forward"))) return;
+  Next(7); return;
+ case 7:
+  if (Current()==ECrosshairStance::Dive) { if (Elapsed>5) Check(false,TEXT("Dive lands")); return; }
+  if (Elapsed<.3) return;
+  if (!Check(Current()==ECrosshairStance::Prone && Half()==CrosshairStanceRules::ProneHalfHeight,TEXT("A dive lands prone"))) return;
+  // Back to the open ground: the run so far has carried the soldier to the far buildings.
+  Pawn->SetActorLocation(FVector(5000,-2000,Pawn->GetActorLocation().Z),false,nullptr,ETeleportType::TeleportPhysics);
+  Pawn->SetActorLocation(FVector(5000,-2000,MoveFloorZ+40),false,nullptr,ETeleportType::TeleportPhysics);
+  Tap(EKeys::LeftControl); Next(8); return;
+ case 8:
+  if (Elapsed<1.0) return;
+  if (!Check(Current()==ECrosshairStance::Normal && Pawn->IsSprinting(),TEXT("Standing from a dive with sprint held runs again"))) return;
+  Tap(EKeys::C); Next(9); return;
+ case 9:
+  if (Elapsed<.1) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO slide speed %.0f capsule %.0f"),Pawn->GetVelocity().Size2D(),Half());
+  if (!Check(Current()==ECrosshairStance::Slide && Half()==CrosshairStanceRules::SlideHalfHeight && Pawn->GetVelocity().Size2D()>=650.f,TEXT("Crouch while sprinting slides forward with a low capsule"))) return;
+  Next(10); return;
+ case 10:
+ {
+  // Mid-slide the body leans back: shots at standing chest height go over it.
+  if (Elapsed>=.3 && Elapsed<.6 && !bSawSlidePose)
+  {
+   bSawSlidePose=true;
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO slide head height %.0f"),HeadHeight());
+   if (!Check(HeadHeight()<115.f && !ShotHits(130.f,FVector::YAxisVector),TEXT("Slide: the body is low enough that chest-height shots pass over"))) return;
+  }
+  if (Current()==ECrosshairStance::Slide) { if (Elapsed>4) Check(false,TEXT("Slide ends")); return; }
+  if (!Check(bSawSlidePose && Current()==ECrosshairStance::Normal && Pawn->bIsCrouched && Half()==CrosshairStanceRules::CrouchHalfHeight,TEXT("A slide ends in a crouch"))) return;
+  Tap(EKeys::C); Key(EKeys::W,IE_Released); Next(11); return;
+ }
+ case 11:
+  if (Elapsed<.5) return;
+  if (!Check(!Pawn->bIsCrouched,TEXT("Crouch stands back up after a slide"))) return;
+  Key(EKeys::S,IE_Pressed); Next(12); return;
+ case 12:
+  if (Elapsed<.5) return;
+  if (!Check(Pawn->GetSprintAlpha()==0.f && Pawn->GetCharacterMovement()->MaxWalkSpeed==Pawn->WalkSpeed,TEXT("Sprint held while backing up does not sprint"))) return;
+  Key(EKeys::S,IE_Released); Key(EKeys::LeftShift,IE_Released); Next(13); return;
+ case 13:
+  if (Elapsed<.4) return;
+  Tap(EKeys::C); Next(14); return;
+ case 14:
+  if (Elapsed<.3) return;
+  if (!Check(Pawn->bIsCrouched && Current()==ECrosshairStance::Normal,TEXT("Crouch without sprinting is a plain crouch, not a slide"))) return;
+  Tap(EKeys::LeftControl); Next(15); return;
+ case 15:
+  if (Elapsed<.4) return;
+  if (!Check(Current()==ECrosshairStance::Prone,TEXT("Left Ctrl from a crouch lies down"))) return;
+  Tap(EKeys::C); Next(16); return;
+ case 16:
+  if (Elapsed<.4) return;
+  if (!Check(Current()==ECrosshairStance::Normal && Pawn->bIsCrouched && Half()==CrosshairStanceRules::CrouchHalfHeight,TEXT("Crouch from prone comes up to a crouch"))) return;
+  Tap(EKeys::C); StairMap=0; Next(17); return;
+ case 17:
+  if (Elapsed<.5) return;
+  Travel(StairMap==0 ? TEXT("/Game/Crosshair/Maps/L_Nuketown") : TEXT("/Game/Crosshair/Maps/L_Grid")); Next(18); return;
+ case 18:
+ {
+  const TCHAR* Wanted=StairMap==0 ? TEXT("L_Nuketown") : TEXT("L_Grid");
+  ACrosshairCharacter* Soldier=Bot();
+  const ACrosshairStairLinks* Stairs=Mode ? Mode->GetStairLinks() : nullptr;
+  if (!MapName.Contains(Wanted) || !Soldier || !Stairs) { if (Elapsed>150) Check(false,TEXT("Match stair links are built")); return; }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO %s stair links %d"),Wanted,Stairs->GetLinks().Num());
+  for (const ACrosshairStairLinks::FLink& Link:Stairs->GetLinks()) UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO %s flight %s to %s"),Wanted,*Link.Lower.ToCompactString(),*Link.Upper.ToCompactString());
+  if (StairMap==0 && !Check(Stairs->GetLinks().Num()>=2,TEXT("Nuketown has staircases for both houses"))) return;
+  if (StairMap==0)
+  {
+   TArray<FVector> Trip;
+   if (!Check(Stairs->PickTrip(Soldier->GetActorLocation(),Trip) && Trip.Num()>=2,TEXT("A bot on the ground can start a staircase trip"))) return;
+  }
+  // The player waits under the map; the bot climbs the tallest flight, whose links have registered by now.
+  Pawn->GetCharacterMovement()->DisableMovement();
+  Pawn->SetActorLocation(FVector(Pawn->GetActorLocation().X,Pawn->GetActorLocation().Y,-1000),false,nullptr,ETeleportType::TeleportPhysics);
+  const ACrosshairStairLinks::FLink* Best=nullptr;
+  for (const ACrosshairStairLinks::FLink& Link:Stairs->GetLinks()) if (!Best || Link.Upper.Z-Link.Lower.Z>Best->Upper.Z-Best->Lower.Z) Best=&Link;
+  if (Best) { StairLower=Best->Lower; StairUpper=Best->Upper; StairRoute=Best->Route; }
+  else
+  {
+   // Where the navmesh already covers the climb, the bot only needs to choose to go up.
+   StairLower=Soldier->GetActorLocation()-FVector(0,0,97);
+   bool bPicked=false;
+   for (int32 Try=0;Try<8 && !bPicked;++Try) bPicked=Stairs->PickUpperGoal(Soldier->GetActorLocation(),StairUpper);
+   if (!Check(bPicked,TEXT("Grid: the navmesh reaches an upper level bots can pick"))) return;
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MOVEMENT_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
+  }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO %s climbing %s to %s"),Wanted,*StairLower.ToCompactString(),*StairUpper.ToCompactString());
+  Next(19); return;
+ }
+ case 19:
+ {
+  if (Elapsed<1) return;
+  ACrosshairCharacter* Soldier=Bot();
+  Soldier->SetActorLocation(StairLower+FVector(0,0,110),false,nullptr,ETeleportType::TeleportPhysics);
+  auto* Brain=Cast<ACrosshairBotController>(Soldier->GetController());
+  Brain->bPassive=true; Brain->Target=nullptr;
+  Brain->StartStairTrip(StairRoute);
+  Next(20); return;
+ }
+ case 20:
+ {
+  ACrosshairCharacter* Soldier=Bot();
+  if (Soldier && Soldier->GetActorLocation().Z>=StairUpper.Z+40.f)
+  {
+   if (!Check(true,TEXT("A bot walks up the staircase"))) return;
+   auto* Brain=Cast<ACrosshairBotController>(Soldier->GetController());
+   Algo::Reverse(StairRoute);
+   Brain->StartStairTrip(StairRoute);
+   Next(21); return;
+  }
+  if (Elapsed>70) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO bot stuck at %s"),Soldier ? *Soldier->GetActorLocation().ToCompactString() : TEXT("none")); Check(false,TEXT("A bot walks up the staircase")); }
+  return;
+ }
+ case 21:
+ {
+  ACrosshairCharacter* Soldier=Bot();
+  if (Soldier && Soldier->GetActorLocation().Z<=StairLower.Z+135.f)
+  {
+   if (!Check(true,TEXT("A bot walks back down the staircase"))) return;
+   ++StairMap; Next(17); return;
+  }
+  if (Elapsed>70) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO bot stuck at %s"),Soldier ? *Soldier->GetActorLocation().ToCompactString() : TEXT("none")); Check(false,TEXT("A bot walks back down the staircase")); }
+  return;
+ }
+ default: return;
+ }
+}
+void UCrosshairMatchTest::TickNavProbe()
+{
+ UWorld* World=GetWorld();
+ auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+ static const TArray<TPair<const TCHAR*,const TCHAR*>> Maps={{TEXT("Nuketown"),TEXT("/Game/Crosshair/Maps/L_Nuketown")},{TEXT("Grid"),TEXT("/Game/Crosshair/Maps/L_Grid")},{TEXT("SpaceStation"),TEXT("/Game/Crosshair/Maps/L_SpaceStation")}};
+ const double Elapsed=FPlatformTime::Seconds()-StepStarted;
+ const APawn* Pawn=World->GetFirstPlayerController() ? World->GetFirstPlayerController()->GetPawn() : nullptr;
+ const int32 Index=Step/2;
+ if (Index>=Maps.Num()) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_NAV_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return; }
+ if (Step%2==0)
+ {
+  if (!Pawn || Elapsed<1) return;
+  FCrosshairBotMatchOptions Options; Options.BotCount=1;
+  Replay->ChangePracticeMap(Maps[Index].Value,UCrosshairMatchSession::TravelOptions(Options,false));
+  Next(Step+1); return;
+ }
+ const auto* Mode=World->GetAuthGameMode<ACrosshairMatchGameMode>();
+ auto* Navigation=FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+ if (!Pawn || !Mode || !World->GetMapName().Contains(FPaths::GetBaseFilename(Maps[Index].Value)) || Elapsed<8 || !Navigation || Navigation->IsNavigationBuildInProgress()) return;
+ ProbeNavFloors(Maps[Index].Key);
+ Next(Step+1);
 }
 
 // Two-process same-network test: one instance runs -CrosshairLanHost, a second -CrosshairLanClient.
@@ -704,11 +978,17 @@ void UCrosshairMatchTest::TickLan()
   }
   // The joined player's pawn as simulated on the host: sprint intent must arrive, or the host corrects them to walk speed.
   const ACrosshairCharacter* Mine=RunForward();
+  if (Mine && int32(Elapsed/3)>LanStanceTicks) { LanStanceTicks=int32(Elapsed/3); const_cast<ACrosshairCharacter*>(Mine)->PronePressed(); }
   for (TActorIterator<ACrosshairCharacter> It(World);It;++It)
-   if (*It!=Mine && !It->IsBot()) RemoteSpeedMax=FMath::Max(RemoteSpeedMax,float(It->GetVelocity().Size2D()));
+   if (*It!=Mine && !It->IsBot())
+   {
+    RemoteSpeedMax=FMath::Max(RemoteSpeedMax,float(It->GetVelocity().Size2D()));
+    bSawRemoteStance|=It->Stance->IsActive() && It->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()<60.f;
+   }
   if (Elapsed<20) return;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO host saw the joined player's top speed %.0f cm/s"),RemoteSpeedMax);
   if (!Check(RemoteSpeedMax>=560.f,TEXT("Joined player's sprint is simulated at sprint speed on the host (no walk-speed correction)"))) return;
+  if (!Check(bSawRemoteStance,TEXT("The joined player's prone or dive reaches the host with the low capsule"))) return;
   Next(40); return;
  }
  switch (Step)
@@ -764,9 +1044,11 @@ void UCrosshairMatchTest::TickLan()
  {
   // The host's soldier as seen on this client: it should move and step through walk/jog cycles, not slide.
   const ACrosshairCharacter* Mine=RunForward();
+  if (Mine && int32(Elapsed/3)>LanStanceTicks) { LanStanceTicks=int32(Elapsed/3); const_cast<ACrosshairCharacter*>(Mine)->PronePressed(); }
   for (TActorIterator<ACrosshairCharacter> It(World);It;++It)
   {
    if (*It==Mine || It->IsBot()) continue;
+   bSawRemoteStance|=It->Stance->IsActive() && It->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()<60.f;
    const float Speed=It->GetVelocity().Size2D();
    HostSpeedMax=FMath::Max(HostSpeedMax,Speed);
    if (const auto* Anim=Cast<UCrosshairLocomotionAnimInstance>(It->GetMesh()->GetAnimInstance()); Anim && Speed>200.f)
@@ -777,6 +1059,7 @@ void UCrosshairMatchTest::TickLan()
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_INFO client saw the host's top speed %.0f cm/s, stepping weight %.2f"),HostSpeedMax,HostSteppingMax);
   if (!Check(HostSpeedMax>300.f,TEXT("Client sees the host player moving"))) return;
   if (!Check(HostSteppingMax>.8f,TEXT("The host's soldier plays walk/jog locomotion on the client instead of sliding"))) return;
+  if (!Check(bSawRemoteStance,TEXT("The host's prone or dive reaches the client with the low capsule"))) return;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_LAN_PASS Client sees the host move with walk/jog locomotion (mode=%s map=%s players=%d)"),*UCrosshairBotMatch::ModeName(Match->Mode),*Match->MapName,Match->PlayerArray.Num());
   Next(40); return;
  }
@@ -883,6 +1166,8 @@ void UCrosshairMatchTest::Tick(float Delta)
  if (FPlatformTime::Seconds()-Started>480) { Check(false,TEXT("Timeout")); return; }
  if (Flag(TEXT("CrosshairSoldierProbe"))) { ProbeSoldier(); return; }
  if (Flag(TEXT("CrosshairMatchLayoutProbe"))) { TickProbe(); return; }
+ if (Flag(TEXT("CrosshairNavProbe"))) { TickNavProbe(); return; }
+ if (Flag(TEXT("CrosshairMovementSmoke"))) { TickMovement(); return; }
  if (Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient"))) { TickLan(); return; }
  // The rejected Testing-map match lasts a single frame; observe it before any visual-harness wait.
  if (Step==1)

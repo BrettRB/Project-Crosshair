@@ -97,3 +97,28 @@ Maps now offers Testing Map, Nuketown, Grid and Space Station, followed by local
 ## Offline matches and LAN (2026-10-21)
 
 Main menu > Offline match vs bots, or Escape / Start > Offline Match, starts Free-for-all or Team Deathmatch against bots on Nuketown, Grid or Space Station (not the Testing map or imports). Every kill you land is saved to Replays with a label (mid-air, 360, no-scope, wallbang, headshot, long shot). In a match, hold Tab / Back (View) for the scoreboard; Escape / Start pauses an offline match and offers Leave match. Practice keys (P, K, T and target editing) do nothing in matches. Same-network LAN hosting and joining are on the LAN tab. See [offline matches and LAN](offline-match-and-lan.md).
+
+## Sprint, slide, prone and dive (2026-11-09)
+
+| Action | Keyboard | Controller | Needs |
+| --- | --- | --- | --- |
+| Sprint | Hold Left Shift | Click left stick | Moving within 60 degrees of where you look |
+| Slide | C | B | Sprinting |
+| Lie down / get up | Left Ctrl | Click right stick | On the ground, not sprinting |
+| Dive | Left Ctrl | Click right stick | Sprinting |
+
+- **Sprint** builds to full speed over 0.25 s, adds a small field-of-view kick and head bob, and swings the gun low. It no longer works backwards or sideways, and it stops at once when you aim or fire. Bots are exempt from the direction limit.
+- **Slide** carries you forward at up to 950 cm/s, easing down over 0.85 s, and ends in a crouch. Jump during a slide to stand and jump straight out of it.
+- **Dive** launches you forward and slightly upward, then lands you prone. You can shoot during a dive.
+- **Prone** crawls at 110 cm/s. Left Ctrl gets up if there is room, or comes up to a crouch if there is only room for that. C comes up to a crouch; Jump also gets up. Resetting an attempt or dying always stands you back up.
+
+### Hit boxes
+
+Two things change with each stance. Both apply on every machine, and in replays and killcams:
+
+- **Movement capsule** (half-height): standing 96, crouch 58, slide 44, dive 42, prone 34.
+- **Shootable body**: shots hit the physics bodies that follow the third-person skeleton, so `UCrosshairLocomotionAnimInstance` poses the skeleton for each stance. Prone lies flat, head forward. A slide leans back, feet first. A dive is head first. A shot at standing chest height passes over a prone or sliding soldier, and one along the floor still hits a prone one.
+
+A prone body is longer than the capsule, so its head and feet slide away from nearby walls instead of poking through them.
+
+Tuning is on `UCrosshairStanceComponent` (speeds and durations) and `CrosshairLocomotion::LayFor` (body layout). Verify with `-game -CrosshairSmoke -CrosshairMovementSmoke -NullRHI`.

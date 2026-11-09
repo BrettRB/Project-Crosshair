@@ -414,3 +414,11 @@ When another soldier kills you in a match (offline or LAN), you see the last mom
 - A stand-in copied a ragdoll's mesh offset, so it faced the wrong way.
 
 **Not verified:** two separate PCs, a controller's Y button (the same code path as F), and the killcam during a lethal throw or a wallbang. The stand-ins don't show reload or switch animations, crouching, or thrown lethals in flight.
+
+## Bots and staircases (2026-11-09)
+
+- **The problem:** Recast leaves staircases built from separate step blocks without navmesh, so bots could not leave the ground floor. Random roaming also follows floor area, so upper levels were almost never chosen even where navmesh reached them.
+- **The fix:** when a match's navmesh has finished building, `ACrosshairStairLinks` scans the real collision inside the map's `NavMeshBoundsVolume`s using the character's 45 cm step limit, then records each walkable off-navmesh route that joins two levels. Scraps of navmesh under about 10 square metres don't count as levels. The scan is about 0.3 to 0.4 s on the host, once per match.
+- **What bots do:** 30% of new roam goals go to a staircase (`UpstairsChance`). The bot walks on the navmesh to the near end of the flight, follows the recorded waypoints up or down it, and resumes roaming. If stairs aren't available it can still pick an upper floor the navmesh reaches.
+- **Custom maps:** no setup is needed beyond a `NavMeshBoundsVolume` around the play space and stairs a soldier can walk. A map whose bots spawn in a pit should work the same way, because a trip starts from whichever end the bot can reach. No such map exists yet, so that case has not been run.
+- **Reports:** `-game -CrosshairSmoke -CrosshairNavProbe -NullRHI` logs walkable floors, navmesh coverage and reachability by height for each match map.

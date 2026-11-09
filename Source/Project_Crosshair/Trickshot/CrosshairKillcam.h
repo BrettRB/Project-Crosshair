@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameFramework/Actor.h"
+#include "CrosshairStance.h"
 #include "CrosshairKillcam.generated.h"
 
 class ACrosshairCharacter;
@@ -20,6 +21,7 @@ struct FCrosshairKillcamPose
  FVector Eye=FVector::ZeroVector;
  FRotator View=FRotator::ZeroRotator;
  float Aim=0;
+ ECrosshairStance Stance=ECrosshairStance::Normal;
  bool bFalling=false,bDead=false;
  const UCrosshairWeaponDefinition* Weapon=nullptr;
  int32 Shots=0;

@@ -2,6 +2,7 @@
 #include "CrosshairCharacter.h"
 #include "CrosshairData.h"
 #include "CrosshairMatch.h"
+#include "CrosshairStairLinks.h"
 #include "CrosshairWeapon.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/GameInstance.h"
@@ -19,7 +20,7 @@ ACrosshairBotController::ACrosshairBotController()
 void ACrosshairBotController::OnPossess(APawn* InPawn)
 {
  Super::OnPossess(InPawn);
- Target=nullptr; bHasDestination=false; bDirectMove=false; bChasingTag=false; GoalTag=nullptr; NextDecisionAt=0; LastKnown=FVector::ZeroVector;
+ Target=nullptr; TripStage=0; bHasDestination=false; bDirectMove=false; bChasingTag=false; GoalTag=nullptr; NextDecisionAt=0; LastKnown=FVector::ZeroVector;
  Tuning=GetGameInstance()->GetSubsystem<UCrosshairBotMatch>()->GetCurrentTuning();
  if (auto* Soldier=Cast<ACrosshairCharacter>(InPawn))
  {
@@ -91,6 +92,7 @@ void ACrosshairBotController::Decide()
   if (!Aware || Distance>=BestDistance || !CanSee(*It)) continue;
   Best=*It; BestDistance=Distance;
  }
+ if (bPassive) Best=nullptr;
  if (Best!=Target) { Target=Best; TargetSeenAt=Now; }
  if (Target) { LastKnown=Target->GetActorLocation(); bHasDestination=false; }
  // Aim error is an offset at the target's range, re-rolled each decision.
@@ -124,7 +126,7 @@ void ACrosshairBotController::Tick(float DeltaSeconds)
 void ACrosshairBotController::Engage(float DeltaSeconds)
 {
  auto* Self=Cast<ACrosshairCharacter>(GetPawn());
- if (bHasDestination || bDirectMove) { StopMovement(); bHasDestination=false; bDirectMove=false; }
+ if (bHasDestination || bDirectMove) { StopMovement(); bHasDestination=false; bDirectMove=false; TripStage=0; }
  ClearFocus(EAIFocusPriority::Move);
  Self->SetBotInput(true,false);
  const double Now=GetWorld()->GetTimeSeconds();
@@ -144,6 +146,21 @@ void ACrosshairBotController::Engage(float DeltaSeconds)
  if (Weapon->Ammo<Before) ++ShotsFired;
  // Semi-automatic weapons need a fresh trigger pull for each shot.
  if (!Weapon->Definition->bAutomatic) Weapon->StopFire();
+}
+void ACrosshairBotController::StartStairTrip(const TArray<FVector>& Route)
+{
+ auto* Self=Cast<ACrosshairCharacter>(GetPawn());
+ if (!Self || Route.IsEmpty()) return;
+ StopMovement(); TripRoute=Route; TripIndex=0; TripStallsLeft=3; TripStage=2; Destination=Route[0]; bHasDestination=true; bDirectMove=true; bChasingTag=false; LastKnown=FVector::ZeroVector;
+ LastProgressAt=GetWorld()->GetTimeSeconds(); LastProgressLocation=Self->GetActorLocation();
+}
+void ACrosshairBotController::TravelTo(const FVector& Goal)
+{
+ auto* Self=Cast<ACrosshairCharacter>(GetPawn());
+ if (!Self) return;
+ LastKnown=FVector::ZeroVector; Destination=Goal; bHasDestination=true; bChasingTag=false;
+ bDirectMove=MoveToLocation(Goal,120.f,true,true,true,false)==EPathFollowingRequestResult::Failed;
+ LastProgressAt=GetWorld()->GetTimeSeconds(); LastProgressLocation=Self->GetActorLocation();
 }
 bool ACrosshairBotController::SeekTag()
 {
@@ -166,6 +183,13 @@ void ACrosshairBotController::Roam()
  auto* Self=Cast<ACrosshairCharacter>(GetPawn());
  const double Now=GetWorld()->GetTimeSeconds();
  SeekTag();
+ const double FeetZ=Self->GetActorLocation().Z-Self->GetDefaultHalfHeight();
+ if (TripStage==1 && FVector::Dist2D(Self->GetActorLocation(),Destination)<160.f && FMath::Abs(FeetZ-Destination.Z)<70.f)
+ {
+  // At the foot of the flight: the steps have no navmesh, so follow the walked route up them.
+  StopMovement(); TripStage=2; TripIndex=0; TripStallsLeft=3; Destination=TripRoute[0]; bDirectMove=true;
+  LastProgressAt=Now; LastProgressLocation=Self->GetActorLocation();
+ }
  if (!bHasDestination)
  {
   FVector Goal=Self->GetActorLocation();
@@ -174,8 +198,13 @@ void ACrosshairBotController::Roam()
   {
    FNavLocation Point;
    auto* Navigation=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
-   if (Navigation && Navigation->GetRandomReachablePointInRadius(Self->GetActorLocation(),3500.f,Point)) Goal=Point.Location;
-   else if (const auto* Mode=GetWorld()->GetAuthGameMode<ACrosshairMatchGameMode>(); Mode && !Mode->GetSpawnPoints().IsEmpty())
+   const auto* Mode=GetWorld()->GetAuthGameMode<ACrosshairMatchGameMode>();
+   // Random points follow floor area, so upper levels would almost never come up; aim for them on purpose.
+   const ACrosshairStairLinks* Stairs=Mode ? Mode->GetStairLinks() : nullptr;
+   if (Stairs && FMath::FRand()<UpstairsChance && Stairs->PickTrip(Self->GetActorLocation(),TripRoute)) { Goal=TripRoute[0]; TripStage=1; }
+   else if (Stairs && FMath::FRand()<UpstairsChance && Stairs->PickUpperGoal(Self->GetActorLocation(),Goal)) {}
+   else if (Navigation && Navigation->GetRandomReachablePointInRadius(Self->GetActorLocation(),3500.f,Point)) Goal=Point.Location;
+   else if (Mode && !Mode->GetSpawnPoints().IsEmpty())
     if (const ACrosshairSpawnPoint* Spawn=Mode->GetSpawnPoints()[FMath::RandRange(0,Mode->GetSpawnPoints().Num()-1)]) Goal=Spawn->GetActorLocation();
   }
   Destination=Goal; bHasDestination=true;
@@ -189,13 +218,27 @@ void ACrosshairBotController::Roam()
   Self->AddMovementInput(Direction,1.f);
   SetControlRotation(FRotator(0,Direction.Rotation().Yaw,0));
  }
- else if (GetMoveStatus()==EPathFollowingStatus::Idle) bHasDestination=false;
- if (FVector::Dist2D(Self->GetActorLocation(),Destination)<(bChasingTag ? 40.f : 150.f)) bHasDestination=false;
+ else if (GetMoveStatus()==EPathFollowingStatus::Idle) { bHasDestination=false; TripStage=0; }
+ if (TripStage==2)
+ {
+  // Waypoint by waypoint; the last one (the top or bottom) goes back to normal roaming.
+  if (FVector::Dist2D(Self->GetActorLocation(),Destination)<70.f && FMath::Abs(FeetZ-Destination.Z)<90.f)
+  {
+   if (TripRoute.IsValidIndex(TripIndex+1)) Destination=TripRoute[++TripIndex];
+   else { TripStage=0; bDirectMove=false; bHasDestination=false; }
+  }
+ }
+ else if (TripStage==0 && FVector::Dist2D(Self->GetActorLocation(),Destination)<(bChasingTag ? 40.f : 150.f)) bHasDestination=false;
  if (FVector::DistSquared2D(Self->GetActorLocation(),LastProgressLocation)>FMath::Square(100.f)) { LastProgressAt=Now; LastProgressLocation=Self->GetActorLocation(); }
+ else if (TripStage==2 && Now-LastProgressAt>1.2 && TripStallsLeft>0 && TripRoute.IsValidIndex(TripIndex+1))
+ {
+  // Caught on a rail or corner: hop and aim for the next waypoint before giving the trip up.
+  --TripStallsLeft; Destination=TripRoute[++TripIndex]; Self->Jump(); LastProgressAt=Now;
+ }
  else if (Now-LastProgressAt>3.0)
  {
   // A tag the bot cannot reach (a roof, a ledge) is left for others.
   if (bChasingTag) { SkippedTag=GoalTag; bChasingTag=false; }
-  StopMovement(); bHasDestination=false; if (bDirectMove) Self->Jump(); LastProgressAt=Now;
+  StopMovement(); bHasDestination=false; TripStage=0; if (bDirectMove) Self->Jump(); bDirectMove=false; LastProgressAt=Now;
  }
 }

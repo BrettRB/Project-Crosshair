@@ -14,6 +14,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/StaticMesh.h"
+#include "CrosshairStance.h"
 #include "Components/CapsuleComponent.h"
 
 UCrosshairPlacementComponent::UCrosshairPlacementComponent() { PrimaryComponentTick.bCanEverTick = true; }
@@ -174,6 +175,7 @@ void UCrosshairAttemptComponent::ResetAttempt()
 	Player->Lethals->Reset();
 	Player->StopActions();
 	Player->Placement->bPlacing = false;
+	Player->Stance->Reset();
 	Player->UnCrouch();
 	Player->GetCharacterMovement()->StopMovementImmediately();
 	for (TActorIterator<ACrosshairWindow> It(GetWorld()); It; ++It) It->ResetGlass();

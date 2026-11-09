@@ -329,6 +329,7 @@ bool ACrosshairPlayerController::InputKey(const FInputKeyEventArgs& Params)
 			if (Pressed && (Key==EKeys::One || Key==EKeys::Two || Key==EKeys::MouseScrollUp || Key==EKeys::MouseScrollDown))
             { if (PracticePawn->CanAct() && !PracticePawn->Lethals->IsBusy()) { if (Key==EKeys::One || Key==EKeys::Two) PracticePawn->SelectWeaponSlot(Key==EKeys::One ? 0 : 1); else PracticePawn->SelectWeaponSlot(-1); } return true; }
             if (Key==EKeys::Gamepad_LeftThumbstick) { if (Pressed) PracticePawn->ControllerSprintPressed(); return true; }
+            if (Key==EKeys::LeftControl || Key==EKeys::Gamepad_RightThumbstick) { if (Pressed) PracticePawn->PronePressed(); return true; }
             if (Key==EKeys::G || Key==EKeys::Gamepad_RightShoulder)
 			{
 				if (Pressed) PracticePawn->Lethals->Prepare();

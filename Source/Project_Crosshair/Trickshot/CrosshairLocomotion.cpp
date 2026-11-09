@@ -1,4 +1,6 @@
 #include "CrosshairLocomotion.h"
+#include "CrosshairCharacter.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Animation/AnimNodeBase.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimationPoseData.h"
@@ -47,6 +49,25 @@ void UCrosshairLocomotionAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
  FallAlpha=FMath::FInterpConstantTo(FallAlpha,bFalling ? 1.f : 0.f,DeltaSeconds,6.f);
  FallTime=bFalling ? FallTime+DeltaSeconds : 0.0;
  IdleTime+=DeltaSeconds;
+ // Replicated stance sets the body layout, and shots hit the physics bodies that follow these bones.
+ const auto* Soldier=Cast<ACrosshairCharacter>(Pawn);
+ const ECrosshairStance Stance=Soldier ? Soldier->Stance->GetStance() : DrivenStance;
+ if (Stance!=ECrosshairStance::Normal) Lay=CrosshairLocomotion::LayFor(Stance);
+ LayAlpha=FMath::FInterpConstantTo(LayAlpha,Stance!=ECrosshairStance::Normal ? 1.f : 0.f,DeltaSeconds,6.f);
+ float ShiftGoal=0;
+ if (Soldier && Stance==ECrosshairStance::Prone && GetWorld())
+ {
+  // A lying body reaches well past the upright capsule: keep the head and feet out of nearby walls.
+  const float Head=85.f,Feet=95.f;
+  const FVector At=Soldier->GetMesh()->GetComponentLocation()+FVector(0,0,18);
+  const FVector Forward=Soldier->GetActorForwardVector();
+  FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairProneWall),false,Soldier);
+  FHitResult Ahead,Behind;
+  const bool bAhead=GetWorld()->LineTraceSingleByChannel(Ahead,At,At+Forward*Head,ECC_Pawn,Params);
+  const bool bBehind=GetWorld()->LineTraceSingleByChannel(Behind,At,At-Forward*Feet,ECC_Pawn,Params);
+  if (bAhead != bBehind) ShiftGoal=bAhead ? -(Head-Ahead.Distance) : Feet-Behind.Distance;
+ }
+ LayShift=FMath::FInterpTo(LayShift,ShiftGoal,DeltaSeconds,10.f);
  Weights=CrosshairLocomotion::Compute(Speed,Direction);
  // One shared step phase keeps walk and jog feet in step while blending.
  float WalkSum=0,JogSum=0;
@@ -66,6 +87,7 @@ void FCrosshairLocomotionProxy::PreUpdate(UAnimInstance* InAnimInstance,float De
  const auto* Instance=CastChecked<UCrosshairLocomotionAnimInstance>(InAnimInstance);
  Samples.Reset();
  AimPitch=Instance->AimPitch;
+ Lay=Instance->Lay; LayAlpha=Instance->LayAlpha; LayShift=Instance->LayShift;
  const float Ground=1.f-Instance->FallAlpha;
  auto Add=[this](const UAnimSequence* Sequence,double Time,float Weight)
  {
@@ -103,8 +125,40 @@ bool FCrosshairLocomotionProxy::Evaluate(FPoseContext& Output)
  }
  FAnimationPoseData Result(Output);
  FAnimationRuntime::BlendPosesTogether(Poses,Curves,Attributes,Weights,Result);
- // Upper-body aim: tilt spine_03 about the mesh's sideways axis (the mannequin faces +Y).
  const FBoneContainer& Bones=Output.Pose.GetBoneContainer();
+ // Stance layout: every bone hangs from the pelvis, so turning it lays the whole body (and its hit bodies) down.
+ auto BoneIndex=[&](const TCHAR* Name){ const int32 Mesh=Bones.GetPoseBoneIndexForBoneName(Name); return Mesh==INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(Mesh)); };
+ if (LayAlpha>KINDA_SMALL_NUMBER)
+ {
+  // Rotates a bone about the mesh's sideways axis (the mannequin faces +Y) whatever the bone's own axes are.
+  auto Turn=[&](FCompactPoseBoneIndex Bone,float Degrees)
+  {
+   if (!Bone.IsValid()) return;
+   const FCompactPoseBoneIndex Parent=Output.Pose.GetParentBoneIndex(Bone);
+   if (!Parent.IsValid()) return;
+   FCSPose<FCompactPose> Component; Component.InitPose(Output.Pose);
+   const FQuat ParentRotation=Component.GetComponentSpaceTransform(Parent).GetRotation();
+   FTransform& Local=Output.Pose[Bone];
+   Local.SetRotation((ParentRotation.Inverse()*FQuat(FVector(1,0,0),FMath::DegreesToRadians(Degrees*LayAlpha))*ParentRotation*Local.GetRotation()).GetNormalized());
+  };
+  const FCompactPoseBoneIndex Pelvis=BoneIndex(TEXT("pelvis"));
+  if (Pelvis.IsValid())
+  {
+   FCSPose<FCompactPose> Component; Component.InitPose(Output.Pose);
+   FTransform World=Component.GetComponentSpaceTransform(Pelvis);
+   FVector Location=World.GetLocation();
+   Location.Z=FMath::Lerp(Location.Z,double(Lay.PelvisZ),LayAlpha);
+   Location.Y+=LayShift*LayAlpha;
+   World.SetLocation(Location);
+   World.SetRotation((FQuat(FVector(1,0,0),FMath::DegreesToRadians(Lay.Tilt*LayAlpha))*World.GetRotation()).GetNormalized());
+   const FCompactPoseBoneIndex Parent=Output.Pose.GetParentBoneIndex(Pelvis);
+   Output.Pose[Pelvis]=Parent.IsValid() ? World.GetRelativeTransform(Component.GetComponentSpaceTransform(Parent)) : World;
+  }
+  Turn(BoneIndex(TEXT("clavicle_l")),Lay.Chest);
+  Turn(BoneIndex(TEXT("clavicle_r")),Lay.Chest);
+  Turn(BoneIndex(TEXT("neck_01")),Lay.Neck);
+ }
+ // Upper-body aim: tilt spine_03 about the mesh's sideways axis (the mannequin faces +Y).
  const int32 MeshIndex=Bones.GetPoseBoneIndexForBoneName(TEXT("spine_03"));
  if (MeshIndex!=INDEX_NONE && FMath::Abs(AimPitch)>.5f)
  {

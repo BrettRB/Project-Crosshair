@@ -128,7 +128,8 @@ void UCrosshairTraversalComponent::TickComponent(float Delta,ELevelTick Type,FAc
     if (!bMantling)
     {
         if (Player->GetCharacterMovement()->IsMovingOnGround()) LastGrounded=Now;
-        if (JumpQueuedUntil>=Now && Player->CanAct() && Now-LastGrounded<=CoyoteSeconds)
+        // Crouched soldiers cannot jump; a buffered press waits for a slide's capsule to stand back up.
+        if (JumpQueuedUntil>=Now && Player->CanAct() && Now-LastGrounded<=CoyoteSeconds && !Player->bIsCrouched)
         { Player->Jump(); JumpQueuedUntil=-100; }
         return;
     }

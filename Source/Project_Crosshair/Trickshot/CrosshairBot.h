@@ -23,6 +23,14 @@ public:
  virtual void UpdateControlRotation(float DeltaTime, bool bUpdatePawn = true) override;
  /** True when Target's head or chest is visible from the bot's eyes. */
  bool CanSee(const ACrosshairCharacter* Target) const;
+ /** Sends the bot to a point as its next roam destination. */
+ void TravelTo(const FVector& Goal);
+ /** Follows a staircase route (waypoints) from its foot; the next roam goal follows when it arrives. */
+ void StartStairTrip(const TArray<FVector>& Route);
+ /** Tests: keeps roaming and ignores enemies. */
+ bool bPassive=false;
+ /** How often a new roam destination is a floor reached by stairs, when the map has any. */
+ UPROPERTY(EditAnywhere,Category="Bot") float UpstairsChance=.3f;
  UPROPERTY(Transient) TObjectPtr<ACrosshairCharacter> Target;
  int32 ShotsFired=0;
  /** Live difficulty tuning, refreshed every decision. */
@@ -39,5 +47,8 @@ private:
  /** Kill Confirmed: the dog tag this bot is walking to (enemy tags to confirm, its team's to deny). */
  TWeakObjectPtr<AActor> GoalTag,SkippedTag;
  bool bChasingTag=false;
+ /** Staircase trip: 1 walking to the foot of the flight, 2 following TripRoute up or down it. */
+ int32 TripStage=0,TripIndex=0,TripStallsLeft=0;
+ TArray<FVector> TripRoute;
  bool SeekTag();
 };

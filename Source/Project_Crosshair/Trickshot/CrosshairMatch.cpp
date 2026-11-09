@@ -18,6 +18,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "NavigationSystem.h"
 #include "NavMesh/NavMeshBoundsVolume.h"
+#include "CrosshairStairLinks.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
@@ -265,7 +266,20 @@ void ACrosshairMatchGameMode::StartPlay()
  // Bot navigation: regenerate the map's navmesh asynchronously rather than trusting saved editor data.
  if (UNavigationSystemV1* Navigation=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()))
   for (TActorIterator<ANavMeshBoundsVolume> It(GetWorld());It;++It) Navigation->AddDirtyArea(It->GetComponentsBoundingBox(true),ENavigationDirtyFlag::All);
+ // Stairs are linked after that generation finishes, so the scan sees the finished navmesh.
+ GetWorldTimerManager().SetTimer(StairLinkTimer,this,&ACrosshairMatchGameMode::TryBuildStairLinks,1.f,true,1.f);
  if (!bLobby) BeginMatch();
+}
+void ACrosshairMatchGameMode::TryBuildStairLinks()
+{
+ auto* Navigation=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+ if (!Navigation || !Navigation->GetDefaultNavDataInstance() || Navigation->IsNavigationBuildInProgress() || SpawnPoints.IsEmpty() || !IsValid(SpawnPoints[0])) return;
+ // Generation may not have queued tiles yet, so also require real coverage at a spawn.
+ FNavLocation Spawn;
+ if (!Navigation->ProjectPointToNavigation(SpawnPoints[0]->GetActorLocation(),Spawn,FVector(120,120,250))) return;
+ GetWorldTimerManager().ClearTimer(StairLinkTimer);
+ StairLinks=GetWorld()->SpawnActor<ACrosshairStairLinks>();
+ if (StairLinks) StairLinks->Build();
 }
 bool ACrosshairMatchGameMode::IsInLobby() const { return bLobby; }
 bool ACrosshairMatchGameMode::PlayerCanRestart_Implementation(APlayerController* Player)

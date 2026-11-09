@@ -151,7 +151,7 @@ void UCrosshairFrontendTest::Tick(float Delta)
   if (Elapsed<.2) return;
   Key(EKeys::Gamepad_LeftThumbstick,IE_Pressed); Key(EKeys::Gamepad_LeftThumbstick,IE_Released); Next(14); return;
  case 14:
-  if (Elapsed<.2) return;
+  if (Elapsed<.45) return; // sprint builds up over SprintBuildSeconds
   if (!Check(P->GetCharacterMovement()->MaxWalkSpeed==P->SprintSpeed,TEXT("Controller click-and-release latches sprint while moving"))) return;
   PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::Gamepad_LeftY,IE_Axis,0.f)); Next(15); return;
  case 15:

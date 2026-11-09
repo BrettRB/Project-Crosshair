@@ -321,6 +321,13 @@ void ACrosshairWeapon::UpdatePresentation(float AimAlpha)
 		Offset.Z -= FMath::Sin(Phase * PI) * 20;
 		Rotation.Roll += FMath::Sin(Phase * PI) * 30;
 	}
+	// Sprint carry: the gun swings low and across the chest.
+	if (const auto* Runner=Cast<ACrosshairCharacter>(GetOwner()))
+	{
+		const float Carry=Runner->GetSprintAlpha()*(1.f-AimAlpha);
+		Offset+=FVector(-6,3,-7)*Carry;
+		Rotation.Yaw+=12*Carry; Rotation.Roll+=-14*Carry;
+	}
 	const float Now=GetSharedTime();
  if (bStowing)
  {

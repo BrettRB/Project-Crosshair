@@ -8,6 +8,7 @@
 #include "CrosshairGame.h"
 #include "CrosshairDummy.h"
 #include "CrosshairTraversal.h"
+#include "CrosshairStance.h"
 #include "CrosshairThrowable.h"
 #include "CrosshairMatch.h"
 #include "CrosshairSoldierAppearance.h"
@@ -45,11 +46,12 @@ ACrosshairCharacter::ACrosshairCharacter()
 	Lethals = CreateDefaultSubobject<UCrosshairLethalComponent>(TEXT("Lethals"));
 	Placement = CreateDefaultSubobject<UCrosshairPlacementComponent>(TEXT("Placement"));
 	Traversal = CreateDefaultSubobject<UCrosshairTraversalComponent>(TEXT("Traversal"));
+	Stance = CreateDefaultSubobject<UCrosshairStanceComponent>(TEXT("Stance"));
 	Attempt = CreateDefaultSubobject<UCrosshairAttemptComponent>(TEXT("Attempt"));
 	Health = CreateDefaultSubobject<UCrosshairHealthComponent>(TEXT("Health"));
 	MatchAppearance = CreateDefaultSubobject<UCrosshairSoldierAppearance>(TEXT("Match appearance"));
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
-	GetCharacterMovement()->SetCrouchedHalfHeight(58.f);
+	GetCharacterMovement()->SetCrouchedHalfHeight(CrosshairStanceRules::CrouchHalfHeight);
 	GetCharacterMovement()->JumpZVelocity = 460;
 	GetCharacterMovement()->AirControl = 0.25f;
 	GetCharacterMovement()->BrakingDecelerationFalling = 0;
@@ -196,6 +198,7 @@ void ACrosshairCharacter::RecordMatchKill(const ACrosshairCharacter* Victim, boo
 }
 void ACrosshairCharacter::HandleDeath()
 {
+	Stance->Reset();
 	StopActions();
 	if (HasAuthority()) for (ACrosshairWeapon* Weapon : Inventory->Weapons) if (Weapon) { Weapon->SetEquipped(false); Weapon->bHolstered = false; }
 	for (ACrosshairWeapon* Weapon : Inventory->Weapons) if (Weapon) Weapon->SetActorHiddenInGame(true);
@@ -289,11 +292,19 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		const float AimSeconds = Weapon && Weapon->Definition ? Weapon->Definition->AimSeconds : 0.2f;
 		const bool bWantsAim = bAimHeld && CanAct() && !Placement->bPlacing && !Lethals->IsBusy() && Weapon && !Weapon->bReloading && !Weapon->IsSwitching();
 		AimAlpha = FMath::FInterpConstantTo(AimAlpha, bWantsAim ? 1.f : 0.f, DeltaSeconds, 1.f / FMath::Max(0.01f, AimSeconds));
-		Camera->SetFieldOfView(FMath::Lerp(Settings.FieldOfView, Weapon && Weapon->Definition ? Weapon->Definition->AimFOV : Settings.FieldOfView, AimAlpha));
-		const float EyeZ = bIsCrouched ? 30.f : 64.f;
-		Camera->SetRelativeLocation(FVector(0, 0, FMath::FInterpTo(Camera->GetRelativeLocation().Z, EyeZ, DeltaSeconds, 12)));
-		GetCharacterMovement()->MaxWalkSpeedCrouched = CrouchSpeed;
-		GetCharacterMovement()->MaxWalkSpeed = bSprintHeld && !bWantsAim && !bIsCrouched ? SprintSpeed : WalkSpeed * FMath::Lerp(1.f, 0.6f, AimAlpha);
+		const bool bSprinting = WantsToSprint(bWantsAim);
+		// Sprint builds up but drops at once, so stopping, aiming and firing stay immediate.
+		SprintAlpha = bSprinting ? FMath::FInterpConstantTo(SprintAlpha, 1.f, DeltaSeconds, 1.f / FMath::Max(.01f, SprintBuildSeconds)) : 0.f;
+		const float HipFOV = Settings.FieldOfView + SprintFOVKick * SprintAlpha;
+		Camera->SetFieldOfView(FMath::Lerp(HipFOV, Weapon && Weapon->Definition ? Weapon->Definition->AimFOV : Settings.FieldOfView, AimAlpha));
+		const float StanceEye = CrosshairStanceRules::EyeOffset(Stance->GetStance());
+		const float EyeZ = StanceEye >= 0 ? StanceEye : bIsCrouched ? 30.f : 64.f;
+		// The bob rides on the settled eye height, so it never feeds back into the height interpolation.
+		EyeHeight = FMath::FInterpTo(EyeHeight, EyeZ, DeltaSeconds, 12);
+		const float Bob = IsLocallyControlled() ? FMath::Sin(GetWorld()->GetTimeSeconds() * 15.f) * 1.4f * SprintAlpha : 0.f;
+		Camera->SetRelativeLocation(FVector(0, 0, EyeHeight + Bob));
+		GetCharacterMovement()->MaxWalkSpeedCrouched = Stance->GetCrouchedSpeed(CrouchSpeed);
+		GetCharacterMovement()->MaxWalkSpeed = FMath::Lerp(WalkSpeed * FMath::Lerp(1.f, 0.6f, AimAlpha), SprintSpeed, SprintAlpha);
 		RecordedView.Location = Camera->GetComponentLocation();
 		RecordedView.Rotation = Camera->GetComponentRotation();
 		RecordedView.FOV = Camera->FieldOfView;
@@ -392,7 +403,7 @@ void ACrosshairCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 }
 void ACrosshairCharacter::Move(const FInputActionValue& Value)
 {
-	if (!CanAct() || Traversal->bMantling) return;
+	if (!CanAct() || Traversal->bMantling || Stance->BlocksMoveInput()) return;
 	const FVector2D Axis = Value.Get<FVector2D>().GetClampedToMaxSize(1.f);
 	const FRotationMatrix Rotation(FRotator(0, GetControlRotation().Yaw, 0));
 	AddMovementInput(Rotation.GetUnitAxis(EAxis::X), Axis.Y);
@@ -411,11 +422,29 @@ void ACrosshairCharacter::ApplyLookInput(FVector2D MouseDelta, FVector2D StickAx
 	Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) + Delta.Y, -85.f, 85.f);
 	GetController()->SetControlRotation(Rotation);
 }
-void ACrosshairCharacter::JumpPressed() { if (CanAct()) Traversal->RequestJump(); }
+void ACrosshairCharacter::JumpPressed() { if (CanAct() && !Stance->HandleJump()) Traversal->RequestJump(); }
 void ACrosshairCharacter::JumpReleased() { Traversal->ReleaseJump(); }
 void ACrosshairCharacter::SprintPressed() { if (CanAct()) { bControllerSprint=false; bSprintHeld = true; } }
 void ACrosshairCharacter::SprintReleased() { bSprintHeld = false; bControllerSprint=false; }
-void ACrosshairCharacter::CrouchPressed() { if (CanAct()) { if (bIsCrouched) UnCrouch(); else Crouch(); } }
+void ACrosshairCharacter::CrouchPressed()
+{
+	if (!CanAct() || Stance->BlocksMoveInput() || Stance->TrySlide()) return;
+	if (Stance->GetStance() == ECrosshairStance::Prone) { Stance->ProneToCrouch(); return; }
+	if (bIsCrouched) UnCrouch(); else Crouch();
+}
+void ACrosshairCharacter::PronePressed() { Stance->PressProne(); }
+bool ACrosshairCharacter::WantsToSprint(bool bWantsAim) const
+{
+	if (!bSprintHeld || bWantsAim || bIsCrouched) return false;
+	// Bots turn along their path, so only a player's stick or keys can point away from the view.
+	if (IsBot()) return true;
+	const FVector Input = GetCharacterMovement()->GetCurrentAcceleration().GetSafeNormal2D();
+	return !Input.IsNearlyZero() && FVector::DotProduct(Input, GetActorForwardVector().GetSafeNormal2D()) >= FMath::Cos(FMath::DegreesToRadians(SprintMaxAngle));
+}
+bool ACrosshairCharacter::IsSprinting() const
+{
+	return SprintAlpha > 0.f && GetCharacterMovement()->IsMovingOnGround() && GetVelocity().Size2D() >= WalkSpeed * .75f;
+}
 void ACrosshairCharacter::FirePressed()
 {
 	if (!CanAct() || Lethals->IsBusy()) return;
@@ -464,12 +493,16 @@ void ACrosshairCharacter::TargetHit(ACrosshairDummy* Target, bool bHeadshot, boo
 }
 void ACrosshairCharacter::StopActions()
 {
-	Lethals->Cancel(); Traversal->CancelMantle(); FireReleased(); StopJumping();
+	Lethals->Cancel(); Traversal->CancelMantle(); Stance->Interrupt(); FireReleased(); StopJumping();
 	// A joined player's sprint/aim intent is owned by their machine (ServerSetMoveIntent sends only changes);
 	// clearing it here would leave the host simulating them at walk speed.
 	if (!IsRemotePlayer()) { bAimHeld = false; bSprintHeld = false; bControllerSprint=false; }
 }
 
+// The engine changes the mesh offset here without moving the mesh, so a soldier crouching on the spot would keep its
+// shootable body at the old height until it next moved.
+void ACrosshairCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) { Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust); GetMesh()->UpdateComponentToWorld(); }
+void ACrosshairCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) { Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust); GetMesh()->UpdateComponentToWorld(); }
 bool ACrosshairCharacter::CanJumpWhileFalling() const { return Traversal && Traversal->AllowsCoyoteJump(); }
 void ACrosshairCharacter::ServerSetMoveIntent_Implementation(bool bSprint, bool bAim)
 {

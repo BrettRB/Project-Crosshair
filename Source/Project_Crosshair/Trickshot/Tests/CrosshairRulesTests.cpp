@@ -313,4 +313,23 @@ bool FCrosshairMatchDamageTest::RunTest(const FString& Parameters)
  TestTrue(TEXT("Up close the SMG kills faster (higher fire rate, same shots)"),ShotsToKill(MatchDamage(*SMG,500.f,EHitZone::Body))*SMG->ShotInterval<ShotsToKill(MatchDamage(*AR,500.f,EHitZone::Body))*AR->ShotInterval);
  return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairStanceRulesTest, "Crosshair.Movement.StanceRules", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairStanceRulesTest::RunTest(const FString&)
+{
+ using namespace CrosshairStanceRules;
+ TestTrue(TEXT("Lower stances use smaller capsules: crouch > slide > dive > prone"),CrouchHalfHeight>SlideHalfHeight && SlideHalfHeight>DiveHalfHeight && DiveHalfHeight>ProneHalfHeight);
+ TestTrue(TEXT("The prone capsule keeps the soldier's 34 cm radius valid"),ProneHalfHeight>=34.f);
+ TestTrue(TEXT("Normal leaves eye height to standing or crouching"),EyeOffset(ECrosshairStance::Normal)<0.f);
+ TestTrue(TEXT("Eyes sit lowest when prone"),EyeOffset(ECrosshairStance::Prone)<EyeOffset(ECrosshairStance::Dive) && EyeOffset(ECrosshairStance::Dive)<EyeOffset(ECrosshairStance::Slide));
+ TestEqual(TEXT("A slide starts at entry speed"),SlideSpeed(950.f,220.f,0.f),950.f);
+ TestEqual(TEXT("A slide ends at crouch speed"),SlideSpeed(950.f,220.f,1.f),220.f);
+ TestTrue(TEXT("A slide keeps most of its speed early on"),SlideSpeed(950.f,220.f,.3f)>850.f);
+ TestEqual(TEXT("Slide speed clamps past the end"),SlideSpeed(950.f,220.f,3.f),220.f);
+ using CrosshairLocomotion::LayFor;
+ TestEqual(TEXT("Normal does not lay the body out"),LayFor(ECrosshairStance::Normal).Tilt,0.f);
+ TestTrue(TEXT("Prone is face down and nearly flat"),LayFor(ECrosshairStance::Prone).Tilt<-80.f && LayFor(ECrosshairStance::Prone).PelvisZ<25.f);
+ TestTrue(TEXT("A slide leans back, feet first"),LayFor(ECrosshairStance::Slide).Tilt>30.f);
+ TestTrue(TEXT("A dive goes head first"),LayFor(ECrosshairStance::Dive).Tilt<-60.f);
+ return true;
+}
 #endif

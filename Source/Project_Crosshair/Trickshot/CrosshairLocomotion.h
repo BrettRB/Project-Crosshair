@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimInstanceProxy.h"
+#include "CrosshairStance.h"
 #include "CrosshairLocomotion.generated.h"
 
 class UAnimSequence;
@@ -53,6 +54,16 @@ namespace CrosshairLocomotion
  /** Applies the physique in component space: each bulked bone thickens (its twist bones follow) while
   *  the next joint (hand, head, foot, next limb segment) keeps its own size and moves with the wider frame. */
  PROJECT_CROSSHAIR_API void ApplyPhysique(FCompactPose& Pose);
+ /** How a stance lays the body out. Tilt turns the whole body about its pelvis (negative = face down, head forward;
+  *  positive = leaning back, feet forward); Chest and Neck bring the arms and head back toward the view. Heights in cm above the feet. */
+ struct FLay { float Tilt=0,PelvisZ=0,Chest=0,Neck=0; };
+ inline FLay LayFor(ECrosshairStance Stance)
+ {
+  if (Stance==ECrosshairStance::Prone) return {-88.f,17.f,74.f,62.f};
+  if (Stance==ECrosshairStance::Slide) return {58.f,40.f,-44.f,-36.f};
+  if (Stance==ECrosshairStance::Dive) return {-80.f,42.f,62.f,50.f};
+  return {};
+ }
 }
 
 USTRUCT()
@@ -67,6 +78,8 @@ private:
  struct FSample { const UAnimSequence* Sequence=nullptr; double Time=0; float Weight=0; };
  TArray<FSample,TInlineAllocator<8>> Samples;
  float AimPitch=0;
+ CrosshairLocomotion::FLay Lay;
+ float LayAlpha=0,LayShift=0;
 };
 
 USTRUCT()
@@ -131,6 +144,10 @@ public:
  FVector DrivenVelocity=FVector::ZeroVector;
  FRotator DrivenFacing=FRotator::ZeroRotator;
  float DrivenPitch=0;
+ ECrosshairStance DrivenStance=ECrosshairStance::Normal;
+ /** The body layout being blended into or out of. LayShift slides a prone body along itself, away from walls. */
+ CrosshairLocomotion::FLay Lay;
+ float LayAlpha=0,LayShift=0;
  bool bLoadedUnarmed=false;
  /** Fraction of the pose coming from walk/jog cycles (0 = standing idle). */
  float GetMovingWeight() const { return 1.f-Weights.Idle; }

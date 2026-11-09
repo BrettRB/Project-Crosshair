@@ -24,6 +24,11 @@ private:
  void Next(int32 NewStep);
  void Probe(const TCHAR* Map,FVector2D Center,float HalfSize,float Cell);
  void TickProbe();
+ /** Report-only (-CrosshairNavProbe): per-height counts of walkable floors, navmesh coverage and reachability on each match map. */
+ void TickNavProbe();
+ void ProbeNavFloors(const TCHAR* Map);
+ /** -CrosshairMovementSmoke: sprint, prone, dive and slide through real key presses, and bots walking up and down stairs. */
+ void TickMovement();
  void TickLan();
  /** LAN: walk, aim and switch weapons with real key presses through this player's own input mapping. True when done. */
  bool TickRealInput(const TCHAR* Who);
@@ -31,6 +36,14 @@ private:
  void ProbeSoldier();
  int32 Step=0;
  double Started=0,StepStarted=0;
+ double MoveFloorZ=0;
+ int32 StairMap=0;
+ bool bSawSlidePose=false;
+ /** LAN: each machine toggles prone every 3 s while running, and checks the other soldier's capsule shrinks. */
+ int32 LanStanceTicks=0;
+ bool bSawRemoteStance=false;
+ FVector StairLower=FVector::ZeroVector,StairUpper=FVector::ZeroVector;
+ TArray<FVector> StairRoute;
  bool bDone=false,bSawInvalid=false;
  TWeakObjectPtr<AController> Victim;
  /** Killcam test: the soldier that was killed (the respawn must replace it only after the killcam). */

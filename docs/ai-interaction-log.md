@@ -3828,3 +3828,60 @@ Make the shared lighting rig more realistic. Keep the four laptop presets workin
 ### Response Summary
 Described the lighting changes, the new options and presets, first-launch detection, and the test results.
 ---
+
+---
+## Interaction 83
+
+### User Prompt
+add more movement, like making the sprint better and adding the ability to lay down and diving using left ctrl, dive will only happen when the user is sprinting and then pushes the button causing the character to dive fowards. Also add the ability to slide using the crouch button, this will happen when the user is sprinting and then pushes the crouch button to slide foward. Both of these actions should adjust the hit box accordingly. Finally, make sure the bots can run upstairs on maps that have an upstairs area since they currently go up any stair case, this would allow someone to be able to create a map that has all the bots spawn in a hole.
+
+### Interpretation
+Improve sprint. Add prone and dive on Left Ctrl (dive only while sprinting) and slide on the crouch button (only while sprinting). Each stance must change the real hit box. Make bots able to use stairs. "They currently go up any stair case" was read as "they currently don't go up any staircase", which the navigation probe confirmed.
+
+### Requirements / Acceptance Criteria
+- Sprint feels better.
+- Left Ctrl lies down / gets up; while sprinting it dives forward.
+- Crouch while sprinting slides forward; otherwise it is still a plain crouch.
+- Prone, slide and dive change both the movement capsule and the shootable body.
+- Bots can climb stairs and reach upper floors, with no per-map setup, so a map with bots spawning in a hole can work.
+- Tests added; the build and regression smokes pass.
+
+### Actions Taken
+- **Root cause of the stairs (new report-only `-CrosshairNavProbe`):** players can walk up every staircase, but Recast leaves flights built from separate step blocks with no navmesh, and random roaming follows floor area so upper levels were almost never picked. Tighter navmesh agent settings and runtime `ANavLinkProxy` links were both tried and dropped; `DefaultEngine.ini` is unchanged in the end.
+- **Bots:** new `ACrosshairStairLinks` scans collision once the match navmesh is built (about 0.3-0.4 s on the host, once per match), and records walkable off-navmesh routes joining two levels. 30% of new roam goals are a staircase trip or an upper floor. Bots walk to the near end, follow the route's waypoints up or down, and hop to the next waypoint if they snag.
+- **Stances:** new `UCrosshairStanceComponent` (Normal / Prone / Slide / Dive), replicated with the owner deciding, like sprint. Capsule half-heights: crouch 58, slide 44, dive 42, prone 34.
+- **Hit box:** shots hit the third-person physics bodies, so `UCrosshairLocomotionAnimInstance` now poses the skeleton per stance (also in LAN, replays and killcams). A prone body shifts along itself away from walls.
+- **Engine quirk fixed:** crouching on the spot left the mesh, and so the hit bodies, at the old height until the soldier moved.
+- **Sprint:** 0.25 s build-up, forward arc only (60 degrees, bots exempt), FOV kick, head bob, lowered gun.
+- **Input:** Left Ctrl plus right stick click (an addition for controller parity), handled in `InputKey`, so no binary input asset changed.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairStance.h, CrosshairStance.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairStairLinks.h, CrosshairStairLinks.cpp (new)
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h, CrosshairCharacter.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairBot.h, CrosshairBot.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairMatch.h, CrosshairMatch.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairLocomotion.h, CrosshairLocomotion.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairKillcam.h, CrosshairKillcam.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp, CrosshairPractice.cpp, CrosshairTraversal.cpp, CrosshairWeapon.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.h, CrosshairMatchTest.cpp, CrosshairRulesTests.cpp, CrosshairFrontendTest.cpp, CrosshairSmokeTest.cpp
+- README.md, docs/gameplay-controls.md, docs/offline-match-and-lan.md, docs/traversal-and-targets.md, docs/ai-interaction-log.md
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development` and `Project_Crosshair Win64 Development`: Succeeded.
+- `-CrosshairSmoke -CrosshairMovementSmoke -NullRHI` (new): CROSSHAIR_MOVEMENT_OK on 3 of 3 repeat runs plus the final build. Real key presses for sprint, prone, dive, slide and their negative cases; traces confirm shots at standing chest and waist height pass over a prone soldier, chest height passes over a slide, and a floor-level shot still hits a prone soldier; a Nuketown bot walks up a staircase and back down.
+- `Automation RunTests Crosshair`: 16 passed, including the new `Crosshair.Movement.StanceRules`. Run before the final bot-snag change.
+- Match and Frontend smokes on the final code: OK. Lethal and Expansion: OK on the build before the bot-snag change.
+- Two-process LAN (`-CrosshairLanHost` / `-CrosshairLanClient`): HOST_OK and CLIENT_OK; each machine sees the other's prone or dive with the low capsule.
+- Core `-CrosshairSmoke`: fails at step 15 (backward movement), the known baseline failure recorded in Interaction 72.
+- An earlier movement run failed once when a bot snagged on a staircase; the waypoint-skip recovery was added after that.
+
+### Notes / Follow-up
+- Grid has no flights that need a trip, because the navmesh already reaches its upper level. In the one attempt, a bot sent to a Grid upper floor did not arrive within 70 s, so physically reaching Grid's upper level is unconfirmed.
+- No pit map exists, so the "bots spawn in a hole" case is reasoned from the Nuketown result, not run.
+- The stance poses are procedural (no prone or slide animation assets). They were checked by bone positions and traces, not viewed in a rendered run.
+- The LAN test covers prone and dive; slide replication uses the same path but was not separately asserted.
+
+### Response Summary
+Described the new sprint, prone, dive and slide, the hit box changes, the staircase root cause and bot fix, the test results, and what remains unconfirmed.
+---

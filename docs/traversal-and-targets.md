@@ -8,7 +8,7 @@ Choose Red Tiger or Arctic in Camos. Both are immediately available on each weap
 
 Shoot designated house glass to shatter it, then face the opening and press Space / controller A near it. The breaking shot continues through glass; thin walls can now be penetrated with reduced damage, while thick cover and NoWallbang-tagged frames stop the bullet. See [hit feedback and wallbangs](hit-feedback-and-wallbangs.md). Small decorative openings cannot fit the player. Use the same Jump button near a reachable ledge to mantle onto it. The path lifts, crosses and lowers the player with eased motion and swept capsule collision. A low opening automatically crouches the player; standing resumes only when there is clearance. Menu/focus loss/reset cancels traversal, and normal gravity is restored on both completion and cancellation.
 
-Jump buffering holds a request for 120ms while pressed, allowing a jump just before landing. Coyote time allows the first jump within 100ms after walking off a lip. It does not grant a double jump. Extra movement mechanics such as sliding and dedicated mantle animations remain future work.
+Jump buffering holds a request for 120ms while pressed, allowing a jump just before landing. Coyote time allows the first jump within 100ms after walking off a lip. It does not grant a double jump. Sprint, slide, prone and dive are described in [gameplay controls](gameplay-controls.md#sprint-slide-prone-and-dive-2026-11-09). Dedicated mantle animations remain future work.
 
 ## Future-map setup
 

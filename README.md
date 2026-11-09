@@ -75,7 +75,8 @@ Play in the editor or with **Standalone Game**; replays need Standalone or a pac
 | --- | --- | --- |
 | Move / look | WASD / mouse | Left stick / right stick |
 | Jump / mantle | Space | A |
-| Sprint / crouch | Left Shift / C | Left stick click / B |
+| Sprint / crouch (slide while sprinting) | Left Shift / C | Left stick click / B |
+| Lie down / get up (dive while sprinting) | Left Ctrl | Right stick click |
 | Fire / aim | Left / right mouse | RT / LT |
 | Reload / switch weapon | R / Q, 1, 2 or mouse wheel | X / Y |
 | Lethal (hold to cook, release to throw) / change lethal | G / F | RB / LB |

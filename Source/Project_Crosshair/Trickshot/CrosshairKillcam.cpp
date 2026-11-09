@@ -86,7 +86,7 @@ void ACrosshairKillcamGhost::ApplyPose(const FCrosshairKillcamPose& Pose)
  }
  SetActorLocationAndRotation(Pose.Location,FRotator(0,Pose.Facing.Yaw,0));
  if (auto* Anim=Cast<UCrosshairLocomotionAnimInstance>(Body->GetAnimInstance()))
- { Anim->DrivenVelocity=Pose.Velocity; Anim->DrivenFacing=FRotator(0,Pose.Facing.Yaw,0); Anim->DrivenPitch=FRotator::NormalizeAxis(Pose.View.Pitch); Anim->bDrivenFalling=Pose.bFalling; }
+ { Anim->DrivenVelocity=Pose.Velocity; Anim->DrivenFacing=FRotator(0,Pose.Facing.Yaw,0); Anim->DrivenPitch=FRotator::NormalizeAxis(Pose.View.Pitch); Anim->bDrivenFalling=Pose.bFalling; Anim->DrivenStance=Pose.Stance; }
  if (Pose.Weapon!=Shown)
  {
   Shown=Pose.Weapon;
@@ -138,6 +138,7 @@ void UCrosshairKillcam::Record(double Now)
   Pose.Aim=Soldier->GetSharedAimAlpha();
   Pose.bFalling=Soldier->GetCharacterMovement()->IsFalling();
   Pose.bDead=Soldier->Health->bDead;
+  Pose.Stance=Soldier->Stance->GetStance();
   if (const ACrosshairWeapon* Held=Soldier->Inventory->GetCurrent()) { Pose.Weapon=Held->Definition; Pose.Shots=Held->GetShotSequence(); }
   Frame.Soldiers.Add(*It,Pose);
  }
