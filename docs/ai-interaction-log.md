@@ -4162,3 +4162,33 @@ Add step-by-step Mac setup instructions to the README so a Mac user (who hasn't 
 ### Response Summary
 Added a full "Setting up on Mac" walkthrough to the README for Mac testers and noted it is untested on real hardware.
 ---
+
+---
+## Interaction 90
+
+### User Prompt
+merge it into master for me
+
+### Interpretation
+Bring the Mac README commits from branch `worktree-mac-readme` (interaction 89) onto master.
+
+### Requirements / Acceptance Criteria
+- master contains the README Mac setup section and the interaction 89 log entry.
+- No unrelated files changed; nothing pushed.
+
+### Actions Taken
+- Left the worktree (kept on disk) and ran a fast-forward merge on master in the main checkout.
+
+### Files Changed
+- docs/ai-interaction-log.md (this entry)
+
+### Verification
+- `git merge --ff-only worktree-mac-readme`: fast-forward 9be680f..4778441 (README.md, docs/ai-interaction-log.md).
+- `git status`: only the pre-existing `Build/Windows/FileOpenOrder/EditorOpenOrder.log` change remains uncommitted (not touched).
+
+### Notes / Follow-up
+- The `worktree-mac-readme` branch and `.claude/worktrees/mac-readme` can be deleted with `git worktree remove .claude/worktrees/mac-readme --force` and `git branch -d worktree-mac-readme`.
+
+### Response Summary
+Fast-forwarded master to include the Mac setup README commits.
+---
