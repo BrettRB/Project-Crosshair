@@ -20,7 +20,7 @@
 
 namespace
 {
-	const TCHAR* ProfileSlot()
+	const TCHAR* ReplayProfileSlotName()
 	{
 		return FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmokeSaved")) ? TEXT("CrosshairSmoke_v1") : TEXT("CrosshairProfile_v1");
 	}
@@ -29,7 +29,7 @@ namespace
 void UCrosshairReplaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	if (!FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke"))) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(ProfileSlot(), 0));
+	if (!FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke"))) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(ReplayProfileSlotName(), 0));
 	if (!Save) Save = Cast<UCrosshairSaveGame>(UGameplayStatics::CreateSaveGameObject(UCrosshairSaveGame::StaticClass()));
  auto& Settings=Save->Settings;
  UCrosshairBotMatch::Validate(Settings.BotMatch);
@@ -84,7 +84,7 @@ void UCrosshairReplaySubsystem::SaveSettings()
 	S.MouseSensitivity = FMath::Clamp(S.MouseSensitivity, 0.01f, 1.f);
 	S.AimSensitivity = FMath::Clamp(S.AimSensitivity, 0.05f, 1.f);
 	S.FieldOfView = FMath::Clamp(S.FieldOfView, 65.f, 110.f);
-	if (!UGameplayStatics::SaveGameToSlot(Save, ProfileSlot(), 0)) Report(TEXT("Unable to save settings/replay list. Check free disk space."));
+	if (!UGameplayStatics::SaveGameToSlot(Save, ReplayProfileSlotName(), 0)) Report(TEXT("Unable to save settings/replay list. Check free disk space."));
 }
 void UCrosshairReplaySubsystem::Report(const FString& Message)
 {

@@ -23,7 +23,7 @@ const FName UCrosshairEnvironmentSubsystem::OptOutTag(TEXT("CrosshairCustomLight
 
 namespace
 {
- template<typename T> T* FindOrSpawn(UWorld& World,const FVector& Location,const FRotator& Rotation=FRotator::ZeroRotator)
+ template<typename T> T* FindOrSpawnEnvironmentActor(UWorld& World,const FVector& Location,const FRotator& Rotation=FRotator::ZeroRotator)
  {
   for (TActorIterator<T> It(&World);It;++It) return *It;
   FActorSpawnParameters Params; Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -47,7 +47,7 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
  const FCrosshairSkyProfile& P=Profile;
 
  // Sun: the physically based atmosphere sun, at the profile's height and colour.
- Sun=FindOrSpawn<ADirectionalLight>(World,FVector(0,0,Ground+5000.f),FRotator(-42.f,-35.f,0.f));
+ Sun=FindOrSpawnEnvironmentActor<ADirectionalLight>(World,FVector(0,0,Ground+5000.f),FRotator(-42.f,-35.f,0.f));
  if (UDirectionalLightComponent* Light=Sun ? Cast<UDirectionalLightComponent>(Sun->GetLightComponent()) : nullptr)
  {
   Light->SetMobility(EComponentMobility::Movable);
@@ -71,7 +71,7 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
   if (*It!=Sun) if (auto* Extra=Cast<UDirectionalLightComponent>(It->GetLightComponent())) Extra->SetAtmosphereSunLight(false);
 
  // Sky atmosphere: Rayleigh scattering gives the blue, Mie the haze around the sun (dust on Nuketown).
- if (ASkyAtmosphere* Atmosphere=FindOrSpawn<ASkyAtmosphere>(World,FVector::ZeroVector))
+ if (ASkyAtmosphere* Atmosphere=FindOrSpawnEnvironmentActor<ASkyAtmosphere>(World,FVector::ZeroVector))
   if (USkyAtmosphereComponent* Air=Atmosphere->GetComponent())
   {
    Air->SetRayleighScatteringScale(P.Rayleigh);
@@ -82,7 +82,7 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
   }
 
  // Sky light captures the atmosphere and clouds every frame so ambient light matches the sky.
- SkyLight=FindOrSpawn<ASkyLight>(World,FVector(0,0,Ground+3000.f));
+ SkyLight=FindOrSpawnEnvironmentActor<ASkyLight>(World,FVector(0,0,Ground+3000.f));
  if (ASkyLight* Sky=SkyLight)
   if (USkyLightComponent* Ambient=Sky->GetLightComponent())
   {
@@ -101,7 +101,7 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
   }
 
  // Height fog with volumetric scattering: distance haze and light shafts rather than a flat backdrop.
- if (AExponentialHeightFog* Fog=FindOrSpawn<AExponentialHeightFog>(World,FVector(0,0,Ground)))
+ if (AExponentialHeightFog* Fog=FindOrSpawnEnvironmentActor<AExponentialHeightFog>(World,FVector(0,0,Ground)))
   if (UExponentialHeightFogComponent* Haze=Fog->GetComponent())
   {
    Haze->SetFogDensity(P.FogDensity);
@@ -123,7 +123,7 @@ void UCrosshairEnvironmentSubsystem::OnWorldBeginPlay(UWorld& World)
 
  // Volumetric clouds lit by the sun, casting soft cloud shadows; coverage, density and tint follow the
  // profile through a dynamic instance of the engine cloud material (a map's own cloud material is kept).
- Clouds=FindOrSpawn<AVolumetricCloud>(World,FVector::ZeroVector);
+ Clouds=FindOrSpawnEnvironmentActor<AVolumetricCloud>(World,FVector::ZeroVector);
  if (Clouds)
   if (UVolumetricCloudComponent* Cloud=Clouds->FindComponentByClass<UVolumetricCloudComponent>())
   {

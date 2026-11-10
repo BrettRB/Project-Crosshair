@@ -22,7 +22,7 @@ public:
 private:
  bool Check(bool Value,const TCHAR* Message);
  void Next(int32 NewStep);
- void Probe(const TCHAR* Map,FVector2D Center,float HalfSize,float Cell);
+ void Probe(const TCHAR* Map,FVector2D Center,float HalfSize,float ProbeCellSize);
  void TickProbe();
  /** Report-only (-CrosshairNavProbe): per-height counts of walkable floors, navmesh coverage and reachability on each match map. */
  void TickNavProbe();

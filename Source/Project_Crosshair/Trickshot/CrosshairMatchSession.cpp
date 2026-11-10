@@ -25,7 +25,7 @@ namespace
  const FName CrosshairHostKey(TEXT("CROSSHAIR_HOST"));
  const FName CrosshairBotsKey(TEXT("CROSSHAIR_BOTS"));
  const FName CrosshairCodeKey(TEXT("CROSSHAIRCODE"));
- IOnlineSessionPtr Sessions(const UObject* Context) { return Online::GetSessionInterface(Context ? Context->GetWorld() : nullptr); }
+ IOnlineSessionPtr GetMatchSessionInterface(const UObject* Context) { return Online::GetSessionInterface(Context ? Context->GetWorld() : nullptr); }
  IOnlineSubsystem* EpicSubsystem() { return UCrosshairMatchSession::IsOnlineConfigured() ? IOnlineSubsystem::Get(TEXT("EOS")) : nullptr; }
 }
 bool UCrosshairMatchSession::IsOnlineConfigured()
@@ -51,7 +51,7 @@ bool UCrosshairMatchSession::IsOnlineConfigured()
 }
 IOnlineSessionPtr UCrosshairMatchSession::SessionInterface() const
 {
- if (!bOnlineSession) return Sessions(this);
+ if (!bOnlineSession) return GetMatchSessionInterface(this);
  IOnlineSubsystem* Epic=EpicSubsystem();
  return Epic ? Epic->GetSessionInterface() : nullptr;
 }

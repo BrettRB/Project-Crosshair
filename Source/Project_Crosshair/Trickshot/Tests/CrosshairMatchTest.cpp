@@ -63,14 +63,14 @@
 #include "ShaderCompiler.h"
 #endif
 
-namespace { bool Flag(const TCHAR* Name) { return FParse::Param(FCommandLine::Get(),Name); } }
+namespace { bool HasMatchTestFlag(const TCHAR* Name) { return FParse::Param(FCommandLine::Get(),Name); } }
 
 bool UCrosshairMatchTest::ShouldCreateSubsystem(UObject* Outer) const
 {
 #if UE_BUILD_SHIPPING
  return false;
 #else
- return Flag(TEXT("CrosshairSmoke")) && (Flag(TEXT("CrosshairMatchSmoke")) || Flag(TEXT("CrosshairMatchLayoutProbe")) || Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient")) || Flag(TEXT("CrosshairSoldierProbe")) || Flag(TEXT("CrosshairGraphicsCheck")) || Flag(TEXT("CrosshairNavProbe")) || Flag(TEXT("CrosshairMovementSmoke")) || Flag(TEXT("CrosshairMovementVisual")) || Flag(TEXT("CrosshairMenuVisual")) || Flag(TEXT("CrosshairOnlineHost")) || Flag(TEXT("CrosshairOnlineClient")));
+ return HasMatchTestFlag(TEXT("CrosshairSmoke")) && (HasMatchTestFlag(TEXT("CrosshairMatchSmoke")) || HasMatchTestFlag(TEXT("CrosshairMatchLayoutProbe")) || HasMatchTestFlag(TEXT("CrosshairLanHost")) || HasMatchTestFlag(TEXT("CrosshairLanClient")) || HasMatchTestFlag(TEXT("CrosshairSoldierProbe")) || HasMatchTestFlag(TEXT("CrosshairGraphicsCheck")) || HasMatchTestFlag(TEXT("CrosshairNavProbe")) || HasMatchTestFlag(TEXT("CrosshairMovementSmoke")) || HasMatchTestFlag(TEXT("CrosshairMovementVisual")) || HasMatchTestFlag(TEXT("CrosshairMenuVisual")) || HasMatchTestFlag(TEXT("CrosshairOnlineHost")) || HasMatchTestFlag(TEXT("CrosshairOnlineClient")));
 #endif
 }
 void UCrosshairMatchTest::Initialize(FSubsystemCollectionBase& Collection)
@@ -88,20 +88,20 @@ bool UCrosshairMatchTest::Check(bool Value,const TCHAR* Message)
 }
 void UCrosshairMatchTest::Next(int32 NewStep) { Step=NewStep; StepStarted=FPlatformTime::Seconds(); }
 
-void UCrosshairMatchTest::Probe(const TCHAR* Map,FVector2D Center,float HalfSize,float Cell)
+void UCrosshairMatchTest::Probe(const TCHAR* Map,FVector2D Center,float HalfSize,float ProbeCellSize)
 {
  UWorld* World=GetWorld();
  FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairMatchProbe),true);
  for (TActorIterator<ACrosshairCharacter> It(World);It;++It) Params.AddIgnoredActor(*It);
- const int32 Cells=FMath::CeilToInt(HalfSize*2/Cell);
- UE_LOG(LogTemp,Display,TEXT("MATCH_LAYOUT %s GRID x_from=%.0f y_from=%.0f cell=%.0f cells=%d (rows descend in X, columns ascend in Y; metres; ~ steep)"),Map,Center.X+HalfSize,Center.Y-HalfSize,Cell,Cells);
+ const int32 Cells=FMath::CeilToInt(HalfSize*2/ProbeCellSize);
+ UE_LOG(LogTemp,Display,TEXT("MATCH_LAYOUT %s GRID x_from=%.0f y_from=%.0f cell=%.0f cells=%d (rows descend in X, columns ascend in Y; metres; ~ steep)"),Map,Center.X+HalfSize,Center.Y-HalfSize,ProbeCellSize,Cells);
  for (int32 Row=0;Row<Cells;++Row)
  {
-  const float X=Center.X+HalfSize-(Row+.5f)*Cell;
+  const float X=Center.X+HalfSize-(Row+.5f)*ProbeCellSize;
   FString Line;
   for (int32 Col=0;Col<Cells;++Col)
   {
-   const float Y=Center.Y-HalfSize+(Col+.5f)*Cell;
+   const float Y=Center.Y-HalfSize+(Col+.5f)*ProbeCellSize;
    FHitResult Hit;
    if (World->LineTraceSingleByChannel(Hit,FVector(X,Y,6000),FVector(X,Y,-6000),ECC_Visibility,Params))
     Line+=FString::Printf(TEXT("%5.1f%s"),Hit.ImpactPoint.Z/100.f,Hit.ImpactNormal.Z<.7f ? TEXT("~") : TEXT(" "));
@@ -130,7 +130,7 @@ void UCrosshairMatchTest::TickProbe()
  const APawn* Pawn=World->GetFirstPlayerController() ? World->GetFirstPlayerController()->GetPawn() : nullptr;
  switch (Step)
  {
- case 0: if (Pawn && Elapsed>1) { Library->PlayMap(Flag(TEXT("CrosshairProbeGridOnly")) ? 2 : 1); Next(Flag(TEXT("CrosshairProbeGridOnly")) ? 2 : 1); } return;
+ case 0: if (Pawn && Elapsed>1) { Library->PlayMap(HasMatchTestFlag(TEXT("CrosshairProbeGridOnly")) ? 2 : 1); Next(HasMatchTestFlag(TEXT("CrosshairProbeGridOnly")) ? 2 : 1); } return;
  case 1:
   if (!Pawn || !MapName.Contains(TEXT("L_Nuketown")) || Elapsed<4) return;
   Probe(TEXT("Nuketown"),FVector2D(-600,1300),4800,200);
@@ -158,9 +158,9 @@ void UCrosshairMatchTest::ProbeNavFloors(const TCHAR* Map)
  if (!Navigation->ProjectPointToNavigation(Mode->GetSpawnPoints()[0]->GetActorLocation(),Hub,FVector(120,120,250))) { UE_LOG(LogTemp,Warning,TEXT("CROSSHAIR_NAV %s first spawn is off the navmesh"),Map); return; }
  struct FBucket { int32 Floors=0,OnNav=0,Reachable=0,Roam=0; FVector MissedNav=FVector::ZeroVector,MissedPath=FVector::ZeroVector,Reached=FVector::ZeroVector; };
  TMap<int32,FBucket> Buckets;
- const float Cell=75.f;
- for (double X=Area.Min.X;X<=Area.Max.X;X+=Cell)
-  for (double Y=Area.Min.Y;Y<=Area.Max.Y;Y+=Cell)
+ const float NavProbeCellSize=75.f;
+ for (double X=Area.Min.X;X<=Area.Max.X;X+=NavProbeCellSize)
+  for (double Y=Area.Min.Y;Y<=Area.Max.Y;Y+=NavProbeCellSize)
   {
    FVector From(X,Y,Area.Max.Z);
    for (int32 Layer=0;Layer<8;++Layer)
@@ -401,7 +401,7 @@ void UCrosshairMatchTest::TickOnline()
  const FString CodeFile=FPaths::ProjectSavedDir()/TEXT("CrosshairOnlineCode.txt");
  if (Session->LanStatus!=OnlineLastStatus) { OnlineLastStatus=Session->LanStatus; UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO status: %s"),*OnlineLastStatus); }
  auto Finish=[&]{ UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_DONE")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); };
- const bool bHost=Flag(TEXT("CrosshairOnlineHost"));
+ const bool bHost=HasMatchTestFlag(TEXT("CrosshairOnlineHost"));
  switch (Step)
  {
  case 0:
@@ -949,7 +949,7 @@ void UCrosshairMatchTest::TickLan()
   }
   return Mine;
  };
- if (Flag(TEXT("CrosshairLanHost")))
+ if (HasMatchTestFlag(TEXT("CrosshairLanHost")))
  {
   if (Step==0)
   {
@@ -1350,17 +1350,17 @@ void UCrosshairMatchTest::Tick(float Delta)
  UWorld* World=GetWorld(); if (!World || !World->IsGameWorld() || bDone) return;
  if (GetGameInstance()->GetSubsystem<UCrosshairStartup>()->IsPreparing()) { Started=StepStarted=FPlatformTime::Seconds(); return; }
  if (FPlatformTime::Seconds()-Started>480) { Check(false,TEXT("Timeout")); return; }
- if (Flag(TEXT("CrosshairSoldierProbe"))) { ProbeSoldier(); return; }
- if (Flag(TEXT("CrosshairMatchLayoutProbe"))) { TickProbe(); return; }
- if (Flag(TEXT("CrosshairNavProbe"))) { TickNavProbe(); return; }
- if (Flag(TEXT("CrosshairMovementSmoke"))) { TickMovement(); return; }
+ if (HasMatchTestFlag(TEXT("CrosshairSoldierProbe"))) { ProbeSoldier(); return; }
+ if (HasMatchTestFlag(TEXT("CrosshairMatchLayoutProbe"))) { TickProbe(); return; }
+ if (HasMatchTestFlag(TEXT("CrosshairNavProbe"))) { TickNavProbe(); return; }
+ if (HasMatchTestFlag(TEXT("CrosshairMovementSmoke"))) { TickMovement(); return; }
 #if WITH_EDITOR
- if ((Flag(TEXT("CrosshairMovementVisual")) || Flag(TEXT("CrosshairMenuVisual"))) && GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return;
+ if ((HasMatchTestFlag(TEXT("CrosshairMovementVisual")) || HasMatchTestFlag(TEXT("CrosshairMenuVisual"))) && GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return;
 #endif
- if (Flag(TEXT("CrosshairMovementVisual"))) { TickMovementVisual(); return; }
- if (Flag(TEXT("CrosshairMenuVisual"))) { TickMenuVisual(); return; }
- if (Flag(TEXT("CrosshairOnlineHost")) || Flag(TEXT("CrosshairOnlineClient"))) { TickOnline(); return; }
- if (Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient"))) { TickLan(); return; }
+ if (HasMatchTestFlag(TEXT("CrosshairMovementVisual"))) { TickMovementVisual(); return; }
+ if (HasMatchTestFlag(TEXT("CrosshairMenuVisual"))) { TickMenuVisual(); return; }
+ if (HasMatchTestFlag(TEXT("CrosshairOnlineHost")) || HasMatchTestFlag(TEXT("CrosshairOnlineClient"))) { TickOnline(); return; }
+ if (HasMatchTestFlag(TEXT("CrosshairLanHost")) || HasMatchTestFlag(TEXT("CrosshairLanClient"))) { TickLan(); return; }
  // The rejected Testing-map match lasts a single frame; observe it before any visual-harness wait.
  if (Step==1)
   if (const auto* Rejecting=World->GetAuthGameMode<ACrosshairMatchGameMode>(); Rejecting && World->GetMapName().Contains(TEXT("L_Practice")))
@@ -1371,11 +1371,11 @@ void UCrosshairMatchTest::Tick(float Delta)
    return;
   }
 #if WITH_EDITOR
- if ((Flag(TEXT("CrosshairMatchVisual")) || Flag(TEXT("CrosshairGraphicsCheck"))) && GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return;
+ if ((HasMatchTestFlag(TEXT("CrosshairMatchVisual")) || HasMatchTestFlag(TEXT("CrosshairGraphicsCheck"))) && GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return;
 #endif
- if (Flag(TEXT("CrosshairGraphicsCheck"))) { TickGraphics(); return; }
+ if (HasMatchTestFlag(TEXT("CrosshairGraphicsCheck"))) { TickGraphics(); return; }
  const double Elapsed=FPlatformTime::Seconds()-StepStarted;
- auto Capture=[&](const TCHAR* Name){ if (Flag(TEXT("CrosshairMatchVisual"))) FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots")/Name,false,false); };
+ auto Capture=[&](const TCHAR* Name){ if (HasMatchTestFlag(TEXT("CrosshairMatchVisual"))) FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots")/Name,false,false); };
  auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
  auto* Session=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>();
  FCrosshairBotMatchOptions& Options=Replay->GetSettings().BotMatch;
@@ -1459,7 +1459,7 @@ void UCrosshairMatchTest::Tick(float Delta)
    }
   }
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO %s spawn audit: %d of %d valid"),Map,Points.Num()-Bad,Points.Num());
-  if (Flag(TEXT("CrosshairMatchSpawnAudit")))
+  if (HasMatchTestFlag(TEXT("CrosshairMatchSpawnAudit")))
   {
    // Report-only placement tuning: '#' cells can stand and path to the hub, '.' are walkable ground outside the play space.
    FBox Area(ForceInit); for (const ACrosshairSpawnPoint* Point:Points) Area+=Point->GetActorLocation();
@@ -1934,7 +1934,7 @@ for (TActorIterator<ACrosshairKillcamGhost> It(World);It;++It) if (KillcamVictim
    OnTeamStart+=Point && uint8(Point->InitialTeam)==State->Team ? 1 : 0;
   }
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO Grid spawn points=%d team-start=%d"),Mode->GetSpawnPoints().Num(),OnTeamStart);
-  if (Flag(TEXT("CrosshairMatchSpawnAudit")))
+  if (HasMatchTestFlag(TEXT("CrosshairMatchSpawnAudit")))
   {
    if (!NavReady() && Elapsed<120) return;
    ValidateSpawns(TEXT("Grid"));

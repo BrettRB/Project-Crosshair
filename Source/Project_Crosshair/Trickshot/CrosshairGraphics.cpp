@@ -12,23 +12,23 @@
 
 namespace
 {
- void SetCVar(const TCHAR* Name,int32 Value)
+ void SetGraphicsCVar(const TCHAR* Name,int32 Value)
  {
   if (IConsoleVariable* Var=IConsoleManager::Get().FindConsoleVariable(Name)) Var->Set(Value,ECVF_SetByCode);
  }
- void SetCVar(const TCHAR* Name,float Value)
+ void SetGraphicsCVar(const TCHAR* Name,float Value)
  {
   if (IConsoleVariable* Var=IConsoleManager::Get().FindConsoleVariable(Name)) Var->Set(Value,ECVF_SetByCode);
  }
- int32 GetCVar(const TCHAR* Name,int32 Fallback)
+ int32 GetGraphicsCVar(const TCHAR* Name,int32 Fallback)
  {
   const IConsoleVariable* Var=IConsoleManager::Get().FindConsoleVariable(Name);
   return Var ? Var->GetInt() : Fallback;
  }
- constexpr int32 FrameRates[]={0,30,60,75,90,120,144,165,240};
- constexpr int32 FrameRateCount=UE_ARRAY_COUNT(FrameRates);
- int32 Wrap(int32 Value,int32 Count) { return ((Value%Count)+Count)%Count; }
- const TCHAR* OnOff(bool b) { return b ? TEXT("On") : TEXT("Off"); }
+ constexpr int32 GraphicsFrameRates[]={0,30,60,75,90,120,144,165,240};
+ constexpr int32 GraphicsFrameRateCount=UE_ARRAY_COUNT(GraphicsFrameRates);
+ int32 WrapGraphicsIndex(int32 Value,int32 Count) { return ((Value%Count)+Count)%Count; }
+ const TCHAR* GraphicsOnOffText(bool b) { return b ? TEXT("On") : TEXT("Off"); }
 }
 
 const TCHAR* CrosshairGraphics::PresetName(int32 Preset)
@@ -79,7 +79,7 @@ bool CrosshairGraphics::IsCustom(const FCrosshairSettings& Settings)
 bool CrosshairGraphics::IsRayTracingSupported() { return IsRayTracingAllowed(); }
 bool CrosshairGraphics::IsRayTracingActive()
 {
- return IsRayTracingSupported() && GetCVar(TEXT("r.RayTracing.Enable"),0)!=0 && GetCVar(TEXT("r.Lumen.HardwareRayTracing"),0)!=0;
+ return IsRayTracingSupported() && GetGraphicsCVar(TEXT("r.RayTracing.Enable"),0)!=0 && GetGraphicsCVar(TEXT("r.Lumen.HardwareRayTracing"),0)!=0;
 }
 
 void CrosshairGraphics::SelectPreset(FCrosshairSettings& Settings,int32 Preset)
@@ -157,17 +157,17 @@ void CrosshairGraphics::Apply(const FCrosshairSettings& Settings)
  Scalability::SetQualityLevels(Levels,true);
  // Ray tracing toggles at runtime (r.RayTracing.EnableOnDemand); hardware Lumen falls back to software Lumen when off.
  const bool bRayTracing=Settings.bRayTracing && IsRayTracingSupported();
- SetCVar(TEXT("r.RayTracing.Enable"),bRayTracing ? 1 : 0);
- SetCVar(TEXT("r.Lumen.HardwareRayTracing"),bRayTracing ? 1 : 0);
+ SetGraphicsCVar(TEXT("r.RayTracing.Enable"),bRayTracing ? 1 : 0);
+ SetGraphicsCVar(TEXT("r.Lumen.HardwareRayTracing"),bRayTracing ? 1 : 0);
  // Options set after scalability so they win over the quality groups' own values.
  const int32 AAMethods[]={0,1,2,4};
- SetCVar(TEXT("r.AntiAliasingMethod"),AAMethods[FMath::Clamp(O.AntiAliasing,0,3)]);
- SetCVar(TEXT("t.MaxFPS"),float(O.FrameRateLimit));
- SetCVar(TEXT("r.VSync"),O.bVSync ? 1 : 0);
- SetCVar(TEXT("r.VolumetricFog"),O.bVolumetricFog ? 1 : 0);
- SetCVar(TEXT("r.MotionBlurQuality"),O.MotionBlur==0 ? 0 : O.PostProcess>=3 ? 4 : 3);
+ SetGraphicsCVar(TEXT("r.AntiAliasingMethod"),AAMethods[FMath::Clamp(O.AntiAliasing,0,3)]);
+ SetGraphicsCVar(TEXT("t.MaxFPS"),float(O.FrameRateLimit));
+ SetGraphicsCVar(TEXT("r.VSync"),O.bVSync ? 1 : 0);
+ SetGraphicsCVar(TEXT("r.VolumetricFog"),O.bVolumetricFog ? 1 : 0);
+ SetGraphicsCVar(TEXT("r.MotionBlurQuality"),O.MotionBlur==0 ? 0 : O.PostProcess>=3 ? 4 : 3);
  const float Sharpen[]={0.f,.5f,1.f,1.6f};
- SetCVar(TEXT("r.Tonemapper.Sharpen"),Sharpen[FMath::Clamp(O.Sharpening,0,3)]);
+ SetGraphicsCVar(TEXT("r.Tonemapper.Sharpen"),Sharpen[FMath::Clamp(O.Sharpening,0,3)]);
  if (GEngine) for (const FWorldContext& Context:GEngine->GetWorldContexts())
   if (UWorld* World=Context.World()) if (auto* Environment=World->GetSubsystem<UCrosshairEnvironmentSubsystem>()) Environment->ApplyQuality(O,bRayTracing);
  UE_LOG(LogTemp,Display,TEXT("Crosshair graphics: %s%s, %d%% resolution, ray tracing %s, AA %s, FPS %s"),PresetName(Preset),IsCustom(Settings) ? TEXT(" (custom)") : TEXT(""),
@@ -214,7 +214,7 @@ FString CrosshairGraphics::OptionValue(const FCrosshairGraphicsOptions& O,int32 
  {
  case AntiAliasing: return AANames[FMath::Clamp(O.AntiAliasing,0,3)];
  case FrameRateLimit: return O.FrameRateLimit<=0 ? FString(TEXT("Unlimited")) : FString::Printf(TEXT("%d FPS"),O.FrameRateLimit);
- case VSync: return OnOff(O.bVSync);
+ case VSync: return GraphicsOnOffText(O.bVSync);
  case ViewDistance: return QualityName(O.ViewDistance);
  case Shadows: return QualityName(O.Shadows);
  case GlobalIllumination: return QualityName(O.GlobalIllumination);
@@ -224,10 +224,10 @@ FString CrosshairGraphics::OptionValue(const FCrosshairGraphicsOptions& O,int32 
  case PostProcess: return QualityName(O.PostProcess);
  case Foliage: return QualityName(O.Foliage);
  case Shading: return QualityName(O.Shading);
- case VolumetricFog: return OnOff(O.bVolumetricFog);
- case VolumetricClouds: return OnOff(O.bVolumetricClouds);
+ case VolumetricFog: return GraphicsOnOffText(O.bVolumetricFog);
+ case VolumetricClouds: return GraphicsOnOffText(O.bVolumetricClouds);
  case MotionBlur: return Levels3[FMath::Clamp(O.MotionBlur,0,2)];
- case FilmEffects: return OnOff(O.bFilmEffects);
+ case FilmEffects: return GraphicsOnOffText(O.bFilmEffects);
  case Brightness: return O.Brightness==0 ? FString(TEXT("Default")) : FString::Printf(TEXT("%+d"),O.Brightness);
  case Sharpening: return Levels4[FMath::Clamp(O.Sharpening,0,3)];
  default: return FString();
@@ -265,29 +265,29 @@ void CrosshairGraphics::StepOption(FCrosshairGraphicsOptions& O,int32 Option,int
  const int32 D=Direction>=0 ? 1 : -1;
  switch (Option)
  {
- case AntiAliasing: O.AntiAliasing=Wrap(O.AntiAliasing+D,4); break;
+ case AntiAliasing: O.AntiAliasing=WrapGraphicsIndex(O.AntiAliasing+D,4); break;
  case FrameRateLimit:
  {
   int32 Index=0;
-  for (int32 i=0;i<FrameRateCount;++i) if (FrameRates[i]==O.FrameRateLimit) Index=i;
-  O.FrameRateLimit=FrameRates[Wrap(Index+D,FrameRateCount)]; break;
+  for (int32 i=0;i<GraphicsFrameRateCount;++i) if (GraphicsFrameRates[i]==O.FrameRateLimit) Index=i;
+  O.FrameRateLimit=GraphicsFrameRates[WrapGraphicsIndex(Index+D,GraphicsFrameRateCount)]; break;
  }
  case VSync: O.bVSync=!O.bVSync; break;
- case ViewDistance: O.ViewDistance=Wrap(O.ViewDistance+D,4); break;
- case Shadows: O.Shadows=Wrap(O.Shadows+D,4); break;
- case GlobalIllumination: O.GlobalIllumination=Wrap(O.GlobalIllumination+D,4); break;
- case Reflections: O.Reflections=Wrap(O.Reflections+D,4); break;
- case Textures: O.Textures=Wrap(O.Textures+D,4); break;
- case Effects: O.Effects=Wrap(O.Effects+D,4); break;
- case PostProcess: O.PostProcess=Wrap(O.PostProcess+D,4); break;
- case Foliage: O.Foliage=Wrap(O.Foliage+D,4); break;
- case Shading: O.Shading=Wrap(O.Shading+D,4); break;
+ case ViewDistance: O.ViewDistance=WrapGraphicsIndex(O.ViewDistance+D,4); break;
+ case Shadows: O.Shadows=WrapGraphicsIndex(O.Shadows+D,4); break;
+ case GlobalIllumination: O.GlobalIllumination=WrapGraphicsIndex(O.GlobalIllumination+D,4); break;
+ case Reflections: O.Reflections=WrapGraphicsIndex(O.Reflections+D,4); break;
+ case Textures: O.Textures=WrapGraphicsIndex(O.Textures+D,4); break;
+ case Effects: O.Effects=WrapGraphicsIndex(O.Effects+D,4); break;
+ case PostProcess: O.PostProcess=WrapGraphicsIndex(O.PostProcess+D,4); break;
+ case Foliage: O.Foliage=WrapGraphicsIndex(O.Foliage+D,4); break;
+ case Shading: O.Shading=WrapGraphicsIndex(O.Shading+D,4); break;
  case VolumetricFog: O.bVolumetricFog=!O.bVolumetricFog; break;
  case VolumetricClouds: O.bVolumetricClouds=!O.bVolumetricClouds; break;
- case MotionBlur: O.MotionBlur=Wrap(O.MotionBlur+D,3); break;
+ case MotionBlur: O.MotionBlur=WrapGraphicsIndex(O.MotionBlur+D,3); break;
  case FilmEffects: O.bFilmEffects=!O.bFilmEffects; break;
  case Brightness: O.Brightness=FMath::Clamp(O.Brightness+D,-5,5); break;
- case Sharpening: O.Sharpening=Wrap(O.Sharpening+D,4); break;
+ case Sharpening: O.Sharpening=WrapGraphicsIndex(O.Sharpening+D,4); break;
  default: break;
  }
 }

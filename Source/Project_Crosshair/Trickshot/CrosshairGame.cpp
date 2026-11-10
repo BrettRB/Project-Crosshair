@@ -94,7 +94,7 @@ bool ACrosshairPlayerController::IsInLobby() const
 { const auto* Match=ACrosshairMatchState::Get(this); return Match && Match->bInLobby && IsInMatch(); }
 namespace
 {
- FString ModeHelp(ECrosshairMatchMode Mode)
+ FString MatchModeHelpText(ECrosshairMatchMode Mode)
  {
   switch (Mode)
   {
@@ -142,7 +142,7 @@ FString ACrosshairPlayerController::GetRowHelp(int32 Row) const
  if (Row==GetOnlineRow()+1) return bEditingCode ? TEXT("Type the code. Backspace deletes; Enter finishes.") : TEXT("Press Enter to type the code your friend sent you.");
  if (Row==GetOnlineRow()+2) return TEXT("Find that match and join it.");
  if (Row==Lan) return bEditingName ? TEXT("Type your username (letters, numbers, space, - _ .). Backspace deletes; Enter saves.") : TEXT("Your name in matches. Enter to type it; Left / Right picks a callsign.");
- if (Row==Lan+1) return ModeHelp(GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().Lan.Match.Mode);
+ if (Row==Lan+1) return MatchModeHelpText(GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().Lan.Match.Mode);
  if (Row==Lan+2) return TEXT("Nuketown, Grid or Space Station. Random picks one of them when you host.");
  if (Row==Lan+3) return TEXT("On: bots fill the lobby. Off: only players on your network.");
  if (Row==Lan+4) return TEXT("How well the bots react and aim.");
@@ -164,7 +164,7 @@ FString ACrosshairPlayerController::GetRowHelp(int32 Row) const
  if (Row==B+1) return bTeams ? TEXT("Players on each team, including you. Bots fill the rest.") : TEXT("Bot opponents in the free-for-all.");
  if (Row==B+2) return O.Mode==ECrosshairMatchMode::KillConfirmed ? TEXT("Confirmed tags needed to win.") : bTeams ? TEXT("Team kills needed to win.") : TEXT("Kills needed to win.");
  if (Row==B+3) return TEXT("The highest score wins when time runs out.");
- if (Row==B+4) return ModeHelp(O.Mode);
+ if (Row==B+4) return MatchModeHelpText(O.Mode);
  if (Row==B+5) return TEXT("Nuketown, Grid or Space Station. Random picks one of them each time a match starts.");
  if (Row==B+6) return TEXT("Load the map and start. Every kill you land is saved to Replays.");
  if (Row==B+7) return TEXT("Advertise a match to players on this network. Windows may ask for firewall access.");

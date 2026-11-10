@@ -12,8 +12,8 @@
 
 namespace
 {
- const TCHAR* const Suffixes[CrosshairLocomotion::Directions]={TEXT("Fwd"),TEXT("Fwd_Right"),TEXT("Right"),TEXT("Bwd_Right"),TEXT("Bwd"),TEXT("Bwd_Left"),TEXT("Left"),TEXT("Fwd_Left")};
- UAnimSequence* LoadRifle(const FString& Path) { return LoadObject<UAnimSequence>(nullptr,*(TEXT("/Game/Characters/Mannequins/Anims/Rifle/")+Path)); }
+ const TCHAR* const LocomotionDirectionSuffixes[CrosshairLocomotion::Directions]={TEXT("Fwd"),TEXT("Fwd_Right"),TEXT("Right"),TEXT("Bwd_Right"),TEXT("Bwd"),TEXT("Bwd_Left"),TEXT("Left"),TEXT("Fwd_Left")};
+ UAnimSequence* LoadLocomotionRifleAnim(const FString& Path) { return LoadObject<UAnimSequence>(nullptr,*(TEXT("/Game/Characters/Mannequins/Anims/Rifle/")+Path)); }
 }
 
 UCrosshairLocomotionAnimInstance::UCrosshairLocomotionAnimInstance() {}
@@ -26,13 +26,13 @@ void UCrosshairLocomotionAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
   // Initialization can update once before the owner sets bUnarmed, so reload when it changes.
   bLoadedUnarmed=bUnarmed;
   // Mannequin rifle set (template content); cooked via DirectoriesToAlwaysCook.
-  Idle=bUnarmed ? LoadObject<UAnimSequence>(nullptr,TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle")) : LoadRifle(TEXT("MF_Rifle_Idle_ADS.MF_Rifle_Idle_ADS"));
-  Fall=LoadRifle(TEXT("Jump/MM_Rifle_Jump_Fall_Loop.MM_Rifle_Jump_Fall_Loop"));
+  Idle=bUnarmed ? LoadObject<UAnimSequence>(nullptr,TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle")) : LoadLocomotionRifleAnim(TEXT("MF_Rifle_Idle_ADS.MF_Rifle_Idle_ADS"));
+  Fall=LoadLocomotionRifleAnim(TEXT("Jump/MM_Rifle_Jump_Fall_Loop.MM_Rifle_Jump_Fall_Loop"));
   Walk.Reset(); Jog.Reset();
-  for (const TCHAR* Suffix:Suffixes)
+  for (const TCHAR* Suffix:LocomotionDirectionSuffixes)
   {
-   Walk.Add(LoadRifle(FString::Printf(TEXT("Walk/MF_Rifle_Walk_%s.MF_Rifle_Walk_%s"),Suffix,Suffix)));
-   Jog.Add(LoadRifle(FString::Printf(TEXT("Jog/MF_Rifle_Jog_%s.MF_Rifle_Jog_%s"),Suffix,Suffix)));
+   Walk.Add(LoadLocomotionRifleAnim(FString::Printf(TEXT("Walk/MF_Rifle_Walk_%s.MF_Rifle_Walk_%s"),Suffix,Suffix)));
+   Jog.Add(LoadLocomotionRifleAnim(FString::Printf(TEXT("Jog/MF_Rifle_Jog_%s.MF_Rifle_Jog_%s"),Suffix,Suffix)));
   }
  }
  const APawn* Pawn=TryGetPawnOwner();
