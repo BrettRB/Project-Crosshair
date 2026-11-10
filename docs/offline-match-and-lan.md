@@ -415,6 +415,8 @@ When another soldier kills you in a match (offline or LAN), you see the last mom
 
 **Not verified:** two separate PCs, a controller's Y button (the same code path as F), and the killcam during a lethal throw or a wallbang. The stand-ins don't show reload or switch animations, crouching, or thrown lethals in flight.
 
+**The match keeps going during a killcam (2026-11-10):** a killcam never pauses or changes the match. One way it could reach the live game is fixed: when the recorded death plays, the victim's stand-in ragdolls, and it used the engine's Ragdoll collision, which blocks soldiers and catches traces. On the host (whose world everyone plays in) that left an invisible body that could stop players and shots for the rest of the killcam. The stand-in now falls onto the map only (physics-only collision that ignores soldiers, shots and sight checks). The match smoke now checks, during a killcam, that the other soldiers keep moving, the clock keeps running and nothing pauses, and that a ragdolling stand-in ignores soldiers and traces.
+
 ## Bots and staircases (2026-11-09)
 
 - **The problem:** Recast leaves staircases built from separate step blocks without navmesh, so bots could not leave the ground floor. Random roaming also follows floor area, so upper levels were almost never chosen even where navmesh reached them.
@@ -434,3 +436,18 @@ When another soldier kills you in a match (offline or LAN), you see the last mom
 **After a match:** LAN and Online groups return to the same lobby together when the results timer ends; the host can go early with Enter / A. Leave from the lobby to quit.
 
 **Status:** the code rules, menus and "not set up" path are tested. A real Epic sign-in, host and join have not been run yet because they need the IDs.
+
+### Online made to work with Epic (2026-11-10)
+
+The first real run with the Epic IDs failed at sign-in: the engine's old `OnlineSubsystemEOS` plugin cannot sign in with a device ID on Windows (Epic requires a display name with device-ID logins, and that engine build never sends one). Online now runs on Epic Game Services through the engine's newer **`OnlineServicesEOSGS`** plugin:
+
+- **Sign-in:** each PC creates (or reuses) its device ID and logs in anonymously through `OnlineServicesEOSGS`. No Epic account. The IDs from `CrosshairOnline.local.ini` are registered with the engine's Epic SDK manager at runtime, so the secret still never goes into checked-in config.
+- **Host:** publishes an Epic session in the `Crosshair:Online` bucket with the five-character code and the host's Epic user ID as searchable attributes, then opens the lobby as a listen server on Epic's peer-to-peer driver (`NetDriverEOS`).
+- **Join:** searches for the code (retrying a few times, since a brand new listing can take a moment to appear), then travels to `[EOS:<host's Epic user ID>]`. Epic's relay carries the traffic if a direct connection fails. Typing your own code says "That code is your own match."
+- **Leave:** the host's code listing is removed when they leave or quit. Joined players drop back to Home when the host leaves.
+- LAN is unchanged: it still uses the Null subsystem and IP sockets.
+- Developer setup is the same five IDs in `CrosshairOnline.local.ini`. The Epic client needs a policy that allows Connect (device ID) sign-in, sessions and peer-to-peer (the Peer2Peer preset does).
+
+**Verified with the real Epic IDs** (two processes on one PC; `-CrosshairSmoke -CrosshairOnlineHost` / `-CrosshairOnlineClient -NullRHI`): the host signs in, publishes a code and opens the lobby; the client signs in as a different Epic user, finds the code, connects peer-to-peer, sees the same code and both players in the lobby; the host starts the match; each side sees the other's soldier; the host leaves and the listing is removed (`CROSSHAIR_ONLINE_HOST_OK` / `CROSSHAIR_ONLINE_CLIENT_OK`). For the one-PC test only, the client passes `-CrosshairOnlineFreshDevice` so it gets its own device ID instead of sharing the first game's.
+
+**Not verified:** two separate PCs on different networks (the relay path), a packaged build, and a full Online match with killcams and the lobby return (these share the LAN code and were verified over LAN).

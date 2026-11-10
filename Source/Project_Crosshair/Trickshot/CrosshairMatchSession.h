@@ -30,8 +30,10 @@ namespace CrosshairOnlineCode
 
 /**
  * Starts offline matches and owns the hosted sessions. LAN uses the engine's Null online subsystem: broadcast
- * discovery on the local network only. Online uses Epic Online Services: a host publishes a short code, friends
- * look it up, and they connect peer-to-peer (Epic's relay carries the traffic when a direct path fails).
+ * discovery on the local network only. Online uses Epic Online Services (Game Services only, through the engine's
+ * OnlineServicesEOSGS plugin): each PC signs in anonymously with a device ID, a host publishes an Epic session
+ * carrying a short code and its Epic user ID, friends look the code up, and they connect peer-to-peer
+ * (Epic's relay carries the traffic when a direct path fails).
  */
 UCLASS()
 class PROJECT_CROSSHAIR_API UCrosshairMatchSession : public UGameInstanceSubsystem
@@ -81,14 +83,26 @@ private:
  void OnFindComplete(bool bSuccess);
  void OnJoinComplete(FName Session,EOnJoinSessionCompleteResult::Type Result);
  void ClearHandles();
- /** The session interface for the current mode: Epic for Online, Null for LAN. */
+ /** The LAN (Null) session interface. Online sessions go straight to Epic's SDK. */
  IOnlineSessionPtr SessionInterface() const;
  bool bOnlineSession=false;
+ /** Online host: this machine's Epic session (the code listing) is up. */
+ bool bOnlineHosting=false;
+ /** Online player: connected or connecting to a host found by code. */
+ bool bOnlineJoined=false;
+ bool bSigningIn=false;
+ /** Online host: the local name of this machine's Epic session. */
+ FString OnlineSessionName;
  /** Runs Then once this player is signed in to Epic, with a device ID: no Epic account needed. */
  void SignInOnline(TFunction<void()> Then);
  void CreateOnlineSession();
- void OnFindOnlineComplete(bool bSuccess);
- FDelegateHandle LoginHandle;
+ /** Looks the code up; a listing made seconds ago can take a moment to be searchable, so misses retry a few times. */
+ void FindOnlineHost(const FString& Code,int32 Attempt=0);
+ static constexpr int32 OnlineSearchAttempts=4;
+ /** Removes this machine's Epic code listing, if it has one. */
+ void DestroyOnlineSession();
+ /** This player's Epic user ID as text, once signed in. */
+ FString OnlineUserId() const;
  TSharedPtr<FOnlineSessionSearch> Search;
  /** LAN host: the map rolled when the session was advertised. */
  ECrosshairMatchMap HostedMap=ECrosshairMatchMap::Nuketown;

@@ -399,39 +399,84 @@ void UCrosshairMatchTest::TickOnline()
  const auto* Match=ACrosshairMatchState::Get(World);
  const double Elapsed=FPlatformTime::Seconds()-StepStarted;
  const FString CodeFile=FPaths::ProjectSavedDir()/TEXT("CrosshairOnlineCode.txt");
+ // The joined player writes this once it has played on the host; the host stays up until then.
+ const FString ClientDoneFile=FPaths::ProjectSavedDir()/TEXT("CrosshairOnlineClientDone.txt");
  if (Session->LanStatus!=OnlineLastStatus) { OnlineLastStatus=Session->LanStatus; UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO status: %s"),*OnlineLastStatus); }
  auto Finish=[&]{ UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_DONE")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); };
  const bool bHost=HasMatchTestFlag(TEXT("CrosshairOnlineHost"));
+ // A soldier played from the other machine (not a bot, not this machine's own).
+ auto Remote=[&]()->ACrosshairCharacter*
+ {
+  for (TActorIterator<ACrosshairCharacter> It(World);It;++It) if (!It->IsBot() && !It->IsLocallyControlled() && !It->Health->bDead) return *It;
+  return nullptr;
+ };
  switch (Step)
  {
  case 0:
   if (!PC || !PC->GetPawn() || Elapsed<3) return;
   if (!Check(UCrosshairMatchSession::IsOnlineConfigured(),TEXT("The Epic IDs are read from the local file"))) return;
-  if (bHost) { IFileManager::Get().Delete(*CodeFile); Session->HostOnlineMatch(); Next(1); }
+  if (bHost) { IFileManager::Get().Delete(*CodeFile); IFileManager::Get().Delete(*ClientDoneFile); Session->HostOnlineMatch(); Next(1); }
   else Next(2);
   return;
  case 1:
   if (!Match || !Match->bInLobby || Match->JoinCode.IsEmpty()) { if (Elapsed>90) Check(false,TEXT("Host signs in with Epic and opens a lobby with a code")); return; }
-  if (!Check(CrosshairOnlineCode::IsValid(Match->JoinCode),TEXT("Host signs in with Epic and opens a lobby with a code"))) return;
+  if (!Check(CrosshairOnlineCode::IsValid(Match->JoinCode) && World->GetNetMode()==NM_ListenServer,TEXT("Host signs in with Epic and opens a lobby with a code"))) return;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO hosting with code %s"),*Match->JoinCode);
   FFileHelper::SaveStringToFile(Match->JoinCode,*CodeFile);
   Next(3); return;
  case 3:
-  // Stays up for the other process; reports anyone who arrives.
-  if (Match && Match->CountHumans()>=2) { Check(true,TEXT("A second player joined through the code")); Finish(); return; }
-  if (Elapsed>100) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO nobody connected to the host")); Finish(); }
-  return;
+  if (!Match || Match->CountHumans()<2) { if (Elapsed>120) Check(false,TEXT("A second player joins through the code")); return; }
+  if (Elapsed<1) return;
+  Check(true,TEXT("A second player joins through the code"));
+  // Give the joined player a moment in the lobby, then start like the host would (Start match).
+  StepStarted=FPlatformTime::Seconds(); Next(5); return;
+ case 5:
+  if (Elapsed<4) return;
+  if (!Check(PC && PC->bLobbyScreen && PC->GetVisibleMenuRows().Contains(PC->LobbyStartRow),TEXT("The Online host's lobby shows Start match"))) return;
+  PC->ActivateMenuRow(PC->LobbyStartRow);
+  Next(6); return;
+ case 6:
+  if (!Match || Match->bInLobby || !PC->GetPawn() || !Remote()) { if (Elapsed>40) Check(false,TEXT("The Online match starts and the host sees the joined player's soldier")); return; }
+  Check(true,TEXT("The Online match starts and the host sees the joined player's soldier"));
+  Next(8); return;
+ case 8:
+  if (!IFileManager::Get().FileExists(*ClientDoneFile)) { if (Elapsed>90) Check(false,TEXT("The joined player confirms the Online match")); return; }
+  Check(true,TEXT("The joined player confirms the Online match"));
+  // Leaving removes the code listing.
+  Session->LeaveMatch();
+  Next(10); return;
+ case 10:
+  if (Elapsed<4) return;
+  if (!Check(!Session->HasLanSession() && Session->OnlineCode.IsEmpty(),TEXT("Leaving ends the Online match and its code"))) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_HOST_OK"));
+  Finish(); return;
  case 2:
  {
   FString Code;
   if (!FFileHelper::LoadFileToString(Code,*CodeFile)) { if (Elapsed>120) Check(false,TEXT("The host published a code")); return; }
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO joining with code %s"),*Code);
+  OnlineJoinCode=Code;
   Session->JoinOnlineMatch(Code); Next(4); return;
  }
  case 4:
-  if (Match && World->GetNetMode()==NM_Client) { Check(true,TEXT("The client connected to the host through the code")); Finish(); return; }
-  if (Elapsed>70) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO client timed out, last status: %s"),*Session->LanStatus); Finish(); }
-  return;
+  if (!Match || World->GetNetMode()!=NM_Client || !Match->bInLobby) { if (Elapsed>90) Check(false,TEXT("The joined player reaches the host's lobby through Epic")); return; }
+  // Replicated state arrives over a few frames after the map loads.
+  if ((Match->JoinCode.IsEmpty() || Match->CountHumans()<2) && Elapsed<20) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO client lobby: code '%s' (joined with '%s'), humans %d, pawn %d"),*Match->JoinCode,*OnlineJoinCode,Match->CountHumans(),PC && PC->GetPawn() ? 1 : 0);
+  if (!Check(Match->JoinCode==OnlineJoinCode && Match->CountHumans()>=2 && !PC->GetPawn(),TEXT("The joined player reaches the host's lobby through Epic and sees its code"))) return;
+  Next(7); return;
+ case 7:
+ {
+  if (!Match || Match->bInLobby || !PC || !PC->GetPawn() || !Remote()) { if (Elapsed>90) Check(false,TEXT("The joined player spawns when the host starts and sees the host's soldier")); return; }
+  if (!Check(World->GetNetMode()==NM_Client,TEXT("The joined player spawns when the host starts and sees the host's soldier"))) return;
+  FFileHelper::SaveStringToFile(TEXT("ok"),*ClientDoneFile);
+  Next(9); return;
+ }
+ case 9:
+  // The host leaves: this player is sent back to Home.
+  if (World->GetNetMode()==NM_Client && Elapsed<40) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_CLIENT_OK"));
+  Finish(); return;
  default: return;
  }
 }
@@ -1853,6 +1898,10 @@ void UCrosshairMatchTest::Tick(float Delta)
 for (TActorIterator<ACrosshairKillcamGhost> It(World);It;++It) if (KillcamVictim.IsValid() && FVector::Dist2D(It->GetActorLocation(),KillcamVictim->GetActorLocation())<150.f)   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO killcam facing: the player's stand-in actor yaw %.0f, body yaw %.0f"),It->GetActorRotation().Yaw,It->Body->GetComponentRotation().Yaw);
   if (!Check(KillerState && PC->Killcam->KillerName==KillerState->GetPlayerName() && PC->Killcam->WeaponName==TEXT("Assault Rifle"),TEXT("The killcam names the killer and the weapon"))) return;
   if (!Check(Cast<ACameraActor>(PC->GetViewTarget())!=nullptr && Ghosts>=2 && bLiveHidden,TEXT("The killcam views from the killer on stand-in soldiers, with the live soldiers hidden"))) return;
+  // Where the live soldiers are now: the match must carry on while this player watches.
+  KillcamLiveStart.Reset();
+  for (ACrosshairCharacter* Character:Characters()) if (Character!=KillcamVictim.Get() && !Character->Health->bDead) KillcamLiveStart.Add(Character,Character->GetActorLocation());
+  KillcamClockStart=World->GetTimeSeconds();
   Next(92); return;
  }
  case 92:
@@ -1861,6 +1910,13 @@ for (TActorIterator<ACrosshairKillcamGhost> It(World);It;++It) if (KillcamVictim
   // Past the old 3 s respawn: still dead, the respawn waits for the killcam.
   if (World->GetTimeSeconds()-WorldMark<4.5) return;
   if (!Check(Pawn==KillcamVictim.Get() && Pawn->Health->bDead && PC->Killcam->IsPlaying(),TEXT("The respawn waits for the killcam (still down 4.5 s after the death)"))) return;
+  {
+   int32 Moved=0,Tracked=0;
+   for (const auto& Entry:KillcamLiveStart)
+    if (Entry.Key.IsValid() && !Entry.Key->Health->bDead) { ++Tracked; if (FVector::Dist2D(Entry.Key->GetActorLocation(),Entry.Value)>100.f) ++Moved; }
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO during the killcam: %d of %d live soldiers moved over %.1fs, kill feed %d, match over %d"),Moved,Tracked,World->GetTimeSeconds()-KillcamClockStart,Match ? Match->KillFeed.Num() : -1,Match && Match->bMatchOver ? 1 : 0);
+   if (!Check(Moved>=1 && World->GetTimeSeconds()-KillcamClockStart>2.0 && Match && !Match->bMatchOver && !World->IsPaused(),TEXT("While the killcam plays the match keeps running: soldiers keep moving and nothing pauses"))) return;
+  }
   Key(EKeys::F,IE_Pressed); Key(EKeys::F,IE_Released);
   if (!Check(!PC->Killcam->IsPlaying() && PC->GetViewTarget()==Pawn,TEXT("F skips the killcam and returns the view"))) return;
   Next(93); return;
@@ -1869,6 +1925,17 @@ for (TActorIterator<ACrosshairKillcamGhost> It(World);It;++It) if (KillcamVictim
  {
   // Near the end of the watched killcam (the moments just before the death), on the stand-ins.
   if (Step==95 && PC->Killcam->IsPlaying()) { const double Into=World->GetTimeSeconds()-WorldMark; if (Into>5.8 && Into<6.3) Capture(TEXT("MatchKillcamStandIns.png")); }
+  // The recorded death ragdolls the player's stand-in: it may only fall onto the map, never block or catch live shots.
+  if (Step==95 && PC->Killcam->IsPlaying())
+   for (TActorIterator<ACrosshairKillcamGhost> It(World);It;++It)
+    if (It->Body->IsSimulatingPhysics())
+    {
+     const UPrimitiveComponent* Body=It->Body;
+     const bool bSafe=Body->GetCollisionEnabled()==ECollisionEnabled::PhysicsOnly && Body->GetCollisionResponseToChannel(ECC_Pawn)==ECR_Ignore
+      && Body->GetCollisionResponseToChannel(ECC_Visibility)==ECR_Ignore && Body->GetCollisionResponseToChannel(ECC_WorldStatic)==ECR_Block;
+     if (!bSawRagdollStandIn) UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO killcam ragdoll stand-in: collision %d, pawn %d, visibility %d"),int32(Body->GetCollisionEnabled()),int32(Body->GetCollisionResponseToChannel(ECC_Pawn)),int32(Body->GetCollisionResponseToChannel(ECC_Visibility)));
+     bSawRagdollStandIn=true; bRagdollStandInSafe&=bSafe;
+    }
   if (!Pawn || Pawn==KillcamVictim.Get() || Pawn->Health->bDead) { if (Elapsed>12) Check(false,TEXT("The player respawns after the killcam")); return; }
   const double Down=World->GetTimeSeconds()-WorldMark;
   bool bShown=true; for (ACrosshairCharacter* Character:Characters()) bShown&=!PC->HiddenActors.Contains(Character);
@@ -1878,6 +1945,7 @@ for (TActorIterator<ACrosshairKillcamGhost> It(World);It;++It) if (KillcamVictim
   // Skipped: respawn as soon as allowed. Watched: about 1.2 s + 5 s replay + 0.4 s, before the host's 10 s timeout.
   if (Step==93) { if (!Check(Down<6.0,TEXT("Skipping the killcam respawns the player straight away"))) return; Next(94); return; }
   if (!Check(Down>6.0 && Down<9.5,TEXT("Watching the whole killcam respawns the player when it ends"))) return;
+  if (!Check(bSawRagdollStandIn && bRagdollStandInSafe,TEXT("A killcam ragdoll stand-in never blocks live soldiers or shots"))) return;
   Next(9); return;
  }
  case 9:

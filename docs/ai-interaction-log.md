@@ -4020,3 +4020,79 @@ Recommend the next release version after v1.2.1, and write Markdown release note
 ### Response Summary
 Recommended v1.3.0, saved the release notes to Downloads, and flagged the Epic credentials that would ship in the package and the untested Online mode.
 ---
+
+---
+## Interaction 87
+
+### User Prompt
+implement the "online" multiplayer functionality. Also ensure that when a kill cam goes off for a user, the rest of the game doesn't stop going
+
+### Interpretation
+Make Play > Online (friend-code matches over Epic Online Services, added in 24980e4 but never run against Epic) actually work now that the Epic IDs are filled in. Also make sure a player's killcam never stops or changes the match for anyone else, and prove it with a test.
+
+### Requirements / Acceptance Criteria
+- Two copies of the game can sign in to Epic anonymously, host by code, find the code, connect peer-to-peer, meet in the lobby, start and play the match, and leave cleanly.
+- The Epic Client Secret stays out of the repository.
+- LAN, offline matches and the menus keep working.
+- While a killcam plays, other soldiers keep moving, the clock runs and nothing pauses. The killcam leaves nothing in the live world that can block players or shots.
+- The build, automation tests and regression smokes pass locally.
+
+### Actions Taken
+- **Diagnosis (first real Epic run):** the old Online test failed at sign-in with `EOS_InvalidParameters` (`UserLoginInfo must not be null`). The engine's `OnlineSubsystemEOS` sends device-ID logins without the display name Epic requires (`bAddUserLoginInfo` is off for Windows in that engine plugin), so anonymous Online could never sign in.
+- **Online rewritten on `OnlineServicesEOSGS`** (Epic Game Services, engine plugin), in `UCrosshairMatchSession`:
+  - **IDs:** read from `CrosshairOnline.local.ini` and registered at runtime as an Epic SDK platform config.
+  - **Sign-in:** a device ID, then an `OnlineServicesEOSGS` Auth login (`ExternalAuth` / `DeviceIdAccessToken`). No Epic account.
+  - **Host:** creates an Epic session in the `Crosshair:Online` bucket, with the code, the host's Epic user ID, the mode and the map as attributes, then opens the listen-server lobby on `NetDriverEOS`.
+  - **Join:** searches by bucket and code, retrying up to 4 times 2.5 s apart (a new listing can take a moment to appear). It then travels to `[EOS:<host Epic user ID>]` and refuses the player's own code.
+  - **Leave or quit:** removes the listing. LAN code paths are unchanged apart from clearing Online state.
+- **Test-only flag** `-CrosshairOnlineFreshDevice`: two games on one Windows account share one device ID, so the test client replaces its device ID to become a different Epic user.
+- **Plugins/config:** `.uproject` swaps `OnlineSubsystemEOS` for `OnlineServicesEOSGS`. `Build.cs` swaps the module for the OnlineServices modules. `DefaultEngine.ini` drops the `[OnlineSubsystemEOS]` section; the net driver definitions are unchanged.
+- **Online test rewritten** (`-CrosshairOnlineHost` / `-CrosshairOnlineClient`):
+  - Host: code → second player joins → Start match → sees the joined player's soldier → waits for the client's confirmation → leaves, and the listing is gone.
+  - Client: finds the code → reaches the lobby with the same replicated code and 2 humans → spawns at the start → sees the host's soldier → writes the confirmation.
+- **Killcam:**
+  - Reviewed what a killcam touches. The view target, hidden actors and stand-ins are all local, and nothing pauses outside the offline pause menu.
+  - The one leak into the shared world: the victim's stand-in switched to the engine "Ragdoll" collision profile when its recorded death played. That profile blocks soldiers and traces, so on the host an invisible body could block players and shots for the rest of the killcam.
+  - The stand-in now uses physics-only collision that blocks only world geometry.
+  - New match-smoke checks: during a killcam, other soldiers move, time advances, the match isn't over and the world isn't paused. A ragdolling stand-in is physics-only and ignores pawns and visibility traces.
+- **Docs:** README (new Online section) and docs/offline-match-and-lan.md (Online on Epic Game Services, killcam note).
+- **Process:** the background-job guard blocked edits in the main checkout. The work was done in worktree `.claude/worktrees/online-eos-killcam`, on branch `online-eos-killcam` from local master f567185, and committed there. That conflicts with the standing "work on master" preference; the response explains how to fast-forward master.
+
+### Files Changed
+- Source/Project_Crosshair/Trickshot/CrosshairMatchSession.h, CrosshairMatchSession.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairKillcam.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.h, CrosshairMatchTest.cpp
+- Source/Project_Crosshair/Project_Crosshair.Build.cs
+- Project_Crosshair.uproject
+- Config/DefaultEngine.ini
+- README.md, docs/offline-match-and-lan.md, docs/ai-interaction-log.md
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development`: Succeeded. The first attempt failed on `IEOSSDKManager::Initialize` (not public; EOSShared starts the SDK itself) and an ambiguous `FExternalAuthToken`; both were fixed.
+- `Build.bat Project_Crosshair Win64 Development -DisableAdaptiveUnity` (packaging-style full unity): Succeeded, no errors or warnings.
+- Online, two processes with the real Epic IDs (`-CrosshairSmoke -CrosshairOnlineHost` / `-CrosshairOnlineClient -CrosshairOnlineFreshDevice -NullRHI`):
+  - Before the fix: sign-in failed as described above.
+  - First runs after the rewrite: sign-in and hosting worked, but the search found nothing until the bucket parameter and retries were added. Then the client connected peer-to-peer (host log: "Join succeeded").
+  - Final run: CROSSHAIR_ONLINE_HOST_OK and CROSSHAIR_ONLINE_CLIENT_OK. The two sides signed in as different Epic users; the code was found, the lobby showed the same code and 2 humans; after the start each side saw the other's soldier; leaving removed the listing (EOS_Success).
+- `-CrosshairSmoke -CrosshairMatchSmoke -NullRHI`: CROSSHAIR_MATCH_OK.
+  - During the killcam, 3 of 4 live soldiers moved over 3.3 s, the kill feed kept growing and the match was not over.
+  - The ragdoll stand-in had collision PhysicsOnly and ignored Pawn and Visibility.
+  - Skip respawned at 4.55 s; watched to the end, 7.83 s.
+- Two-process LAN (`-CrosshairLanHost` / `-CrosshairLanClient -NullRHI`): CROSSHAIR_LAN_HOST_OK and CROSSHAIR_LAN_CLIENT_OK, including both killcams, lobby return, mode and map change.
+  - Two earlier LAN runs in the worktree failed when the joined soldier moved only 85 cm.
+  - That case started from a smoke save left on Kill Confirmed / Space Station by an earlier failed run.
+  - Unchanged master (f567185) fails the same 85 cm way with that save (step 43, host after respawn) and passes with the normal save. So it is an existing flaky case, not a regression.
+- `Automation RunTests Crosshair`: 18 of 18 passed.
+- `-CrosshairSmoke -CrosshairFrontendSmoke -NullRHI`: CROSSHAIR_FRONTEND_OK. (A first attempt without `-CrosshairSmoke` was a launch mistake and was rerun.)
+
+### Notes / Follow-up
+- Online was tested with two processes on one PC, which uses Epic's real backend but not separate networks or NAT. Two PCs on different internet connections (the relay path) and a packaged build are not verified.
+- A full Online match with killcams and the lobby return was not run over Online; those share the LAN code verified above.
+- The Epic client policy must allow Connect (device ID) sign-in, sessions and peer-to-peer; the Peer2Peer preset does.
+- Packaged builds still stage `CrosshairOnline.local.ini` with the Client Secret (noted in Interaction 86).
+- The LAN test is flaky when it starts from a Space Station save (a soldier walks into something, 85 cm); this is pre-existing and was not fixed here.
+- Logs for these runs are in the job's temp folder, not the repository.
+
+### Response Summary
+Explained why Online could not sign in and the move to OnlineServicesEOSGS, the killcam stand-in fix and new checks, the test results (including the pre-existing LAN flake), what is not verified, and how to bring the worktree branch onto master.
+---

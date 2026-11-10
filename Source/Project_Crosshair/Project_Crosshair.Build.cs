@@ -25,7 +25,11 @@ public class Project_Crosshair : ModuleRules
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
 			"AnimationCore",
-			"OnlineSubsystemEOS",
+			"CoreOnline",
+			"OnlineServicesInterface",
+			"OnlineServicesCommon",
+			"OnlineServicesEpicCommon",
+			"OnlineServicesEOSGS",
 			"EOSShared",
 			"EOSSDK"
 		});

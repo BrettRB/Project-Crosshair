@@ -33,9 +33,14 @@ private:
  void TickMovementVisual();
  /** -CrosshairMenuVisual (rendered): screenshots of the main menu, exit popup, each page and the pause screen. */
  void TickMenuVisual();
- /** -CrosshairOnlineHost and -CrosshairOnlineClient: a real Epic sign-in, published code and lookup. Needs the Epic IDs. */
+ /**
+  * -CrosshairOnlineHost and -CrosshairOnlineClient: a real Epic sign-in, published code, lookup, peer-to-peer join,
+  * lobby, match start and leave. Needs the Epic IDs; on one PC the client also passes -CrosshairOnlineFreshDevice.
+  */
  void TickOnline();
  FString OnlineLastStatus;
+ /** Online client: the code it joined with (the host's lobby must replicate the same one). */
+ FString OnlineJoinCode;
  TWeakObjectPtr<class ACameraActor> VisualCamera;
  int32 VisualShot=0;
  FVector VisualSpot=FVector::ZeroVector;
@@ -60,6 +65,10 @@ private:
  TWeakObjectPtr<class ACrosshairCharacter> KillcamVictim;
  TWeakObjectPtr<class ACrosshairCharacter> KillcamShooter;
  double KillcamStagedAt=0;
+ /** Live soldiers when the killcam began: they must keep moving while it plays. */
+ TMap<TWeakObjectPtr<class ACrosshairCharacter>,FVector> KillcamLiveStart;
+ double KillcamClockStart=0;
+ bool bSawRagdollStandIn=false,bRagdollStandInSafe=true;
  bool bSawBotKillsBot=false,bSawBotHitsPlayer=false;
  int32 ReplaysBefore=0;
  int32 DamageShots=0;

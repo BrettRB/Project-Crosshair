@@ -80,7 +80,13 @@ void ACrosshairKillcamGhost::ApplyPose(const FCrosshairKillcamPose& Pose)
  {
   // The recorded death: drop like the live soldier did.
   bRagdoll=true; Weapon->SetVisibility(false);
-  Body->SetCollisionProfileName(TEXT("Ragdoll"));
+  // Falls onto the map only: never a query (shots, sight checks) or a block for live soldiers, so the stand-in
+  // cannot change the match that keeps running underneath (on the host it shares the world with everyone).
+  Body->SetCollisionObjectType(ECC_PhysicsBody);
+  Body->SetCollisionResponseToAllChannels(ECR_Ignore);
+  Body->SetCollisionResponseToChannel(ECC_WorldStatic,ECR_Block);
+  Body->SetCollisionResponseToChannel(ECC_WorldDynamic,ECR_Block);
+  Body->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
   Body->SetAllBodiesSimulatePhysics(true); Body->SetSimulatePhysics(true); Body->WakeAllRigidBodies();
   return;
  }

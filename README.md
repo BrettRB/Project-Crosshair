@@ -32,6 +32,10 @@ This project was made for an **AI-Assisted Software Engineering** course. It was
 - A **LAN lobby**: hosted matches wait until everyone has joined. The lobby lists every player, lets each player choose Alpha or Bravo in Team Deathmatch and Kill Confirmed, and only the host can start the match.
 - After a LAN match, everyone returns to the **same lobby** to change classes and play again. The host can change the mode, map, bots and limits there from **Match settings**.
 
+### Online with a friend code (experimental)
+- **Play > Online**: host to get a five-character code, or type a friend's code to join them over the internet. No account or sign-up: each PC signs in anonymously to Epic Online Services (free), which finds the host by code and connects players peer-to-peer, through Epic's relay when needed.
+- Online uses the same lobby, setup, match rules and killcam as LAN. Builds need the developer's Epic IDs in `Content/Online/CrosshairOnline.local.ini`; see [Online matches](docs/offline-match-and-lan.md#online-made-to-work-with-epic-2026-11-10).
+
 ### Everything else
 - Main menu and pause menu designed for mouse, keyboard and controller, with custom weapon classes and weapon camos (including Red Tiger and Arctic).
 - Controller support with adjustable sensitivity, dead zone, inversion and a direction calibration.
