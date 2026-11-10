@@ -71,7 +71,76 @@ Open `Project_Crosshair.uproject` in Unreal Editor 5.8 (let it build the C++ mod
 
 Play in the editor or with **Standalone Game**; replays need Standalone or a packaged build. The game opens on the main menu: choose **Trickshot practice**, **Offline match vs bots** or **LAN match**.
 
-**Mac:** Apple Silicon and macOS 14 or later. Open the project in Unreal Editor 5.8 for Mac, or package an app with `sh Scripts/package_mac.sh`. See [Playing on Mac](docs/mac.md).
+### Setting up on Mac
+
+> **Status:** Mac support was prepared on Windows and hasn't been run on a real Mac yet. If something fails, please note the step and copy the error text (see **Reporting problems** at the end of this section).
+
+A Mac build has to be made **on a Mac**: Unreal compiles Mac code and Metal shaders with Xcode, which doesn't run on Windows. A Windows build of the game won't run on a Mac.
+
+**1. Check the Mac**
+
+- Apple Silicon (M1 or newer). Intel Macs aren't supported, because the project uses Metal SM6 features (Nanite, Lumen, virtual shadow maps).
+- macOS 14 Sonoma or later (Apple menu → **About This Mac**).
+- Plenty of free disk space: the engine, Xcode and the project together need well over 100 GB.
+
+**2. Install the tools**
+
+1. **Xcode** 15.2 or newer (the current Mac App Store version is fine). Open it once and accept the licence, then run this in Terminal:
+   ```
+   xcode-select --install
+   ```
+2. **Unreal Engine 5.8**: install the Epic Games Launcher for Mac, sign in, open **Unreal Engine → Library** and install version **5.8**. It goes to `/Users/Shared/Epic Games/UE_5.8` by default.
+3. **Git and Git LFS**. The easiest route is [Homebrew](https://brew.sh):
+   ```
+   brew install git git-lfs
+   git lfs install
+   ```
+   Without Git LFS the maps and models download as tiny placeholder files and the game opens to empty levels.
+
+**3. Download the project**
+
+```
+git clone git@github.com:BrettRB/Project-Crosshair.git
+cd Project-Crosshair
+git lfs pull
+```
+
+Without a GitHub SSH key, clone `https://github.com/BrettRB/Project-Crosshair.git` instead. Don't use GitHub's **Download ZIP**: it leaves out the LFS files.
+
+**4. Open and play in the editor**
+
+1. Double-click `Project_Crosshair.uproject` (or use **Browse** in the Epic Games Launcher's Unreal Engine library).
+2. When it asks to rebuild the missing `Project_Crosshair` modules, click **Yes**. The first build and shader compile can take a long time; let it finish.
+3. In the editor's Play dropdown, choose **Standalone Game**. Replays need Standalone or a packaged app.
+4. If macOS asks whether to accept incoming network connections, click **Allow** (needed to host LAN or Online matches).
+
+**5. (Optional) Package a standalone Mac app**
+
+From the project folder in Terminal:
+
+```
+sh Scripts/package_mac.sh            # Development build
+sh Scripts/package_mac.sh Shipping   # Shipping build
+```
+
+The app is written to `Packaged/Mac/Project_Crosshair.app`. If Unreal is installed somewhere else, run `UE_ROOT="/path/to/UE_5.8" sh Scripts/package_mac.sh`. You can also package from the editor with **Platforms → Mac → Package Project**.
+
+The app isn't signed by Apple, so on another Mac it may say it is "damaged" or from an "unidentified developer". Right-click the app and choose **Open**, or run:
+
+```
+xattr -dr com.apple.quarantine Project_Crosshair.app
+```
+
+**Online play:** Online friend-code matches need the developer's Epic IDs in `Content/Online/CrosshairOnline.local.ini`, which isn't in the repository. Get the file from the project owner and put it in `Content/Online/` before playing or packaging; without it the game shows "Online isn't available in this build". Practice, offline matches and LAN work without it.
+
+**Tips for Mac players**
+
+- Use a mouse rather than a trackpad, and turn off **System Settings → Mouse → Pointer acceleration** for consistent aim. On a trackpad, aim (right-click) is a two-finger click.
+- Xbox, PlayStation and MFi controllers work through macOS's built-in controller support.
+- If the frame rate is low, use **Auto-detect** in the Graphics menu. Ray tracing only appears if the Mac supports it.
+- Settings, replays and imported maps are saved in `~/Library/Application Support/Epic/Project_Crosshair/`.
+
+**Reporting problems:** note which step failed (installing, building, shader compile, packaging or in game), the macOS version and Mac model, and copy the error text. Useful logs are the editor's **Output Log** window and the files in `Saved/Logs/` inside the project folder (for a packaged app, `~/Library/Logs/Project_Crosshair/`). More detail: [Playing on Mac](docs/mac.md).
 
 ## Controls
 

@@ -4127,3 +4127,38 @@ Fast-forwarded master from f567185 to c440296 with `git merge --ff-only online-e
 ### Response Summary
 Reported the fast-forward merge onto master, that nothing was pushed, and the optional worktree cleanup.
 ---
+
+---
+## Interaction 89
+
+### User Prompt
+add to the readme about how to set up the game on Mac devices, I can get someone with a Mac to test it later to ensure it can work properly but I need instructions for those users
+
+### Interpretation
+Add step-by-step Mac setup instructions to the README so a Mac user (who hasn't seen the project before) can install the tools, download the project, run it and report problems. The README previously only had a one-line Mac note linking to `docs/mac.md`.
+
+### Requirements / Acceptance Criteria
+- README explains Mac requirements, tool installation, cloning with Git LFS, opening/playing in the editor and packaging an app.
+- Instructions match the existing Mac support (`docs/mac.md`, `Scripts/package_mac.sh`, Metal SM6 config).
+- States clearly that Mac support hasn't been verified on a real Mac and tells testers what to report.
+- No gameplay or project-setting changes.
+
+### Actions Taken
+- Read README, `docs/mac.md`, `Scripts/package_mac.sh`, `Config/DefaultEngine.ini` (Mac targets Metal SM6) and the online config notes.
+- Replaced the one-line Mac note under Getting started with a "Setting up on Mac" section: check the Mac, install Xcode/Unreal 5.8/Git LFS, clone and `git lfs pull` (HTTPS alternative, no ZIP download), open and build in the editor, Standalone play, firewall prompt, optional packaging and Gatekeeper workaround, online `CrosshairOnline.local.ini` note, player tips, and what to include in a problem report with log locations.
+- The background-job harness required a worktree, so the edit was made in `.claude/worktrees/mac-readme` on branch `worktree-mac-readme` and then fast-forwarded onto master.
+
+### Files Changed
+- README.md
+- docs/ai-interaction-log.md
+
+### Verification
+- Documentation-only change; no build or tests needed. Re-read the new section against `docs/mac.md` and `Scripts/package_mac.sh` for consistency (paths, script arguments, `UE_ROOT`, output folder).
+- `git diff` reviewed: only README.md and this log changed.
+
+### Notes / Follow-up
+- Mac build, cook and run are still unverified; the Mac tester should follow the README section and report any compiler, cook or runtime errors.
+
+### Response Summary
+Added a full "Setting up on Mac" walkthrough to the README for Mac testers and noted it is untested on real hardware.
+---
