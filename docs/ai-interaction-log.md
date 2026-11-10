@@ -4146,7 +4146,7 @@ Add step-by-step Mac setup instructions to the README so a Mac user (who hasn't 
 ### Actions Taken
 - Read README, `docs/mac.md`, `Scripts/package_mac.sh`, `Config/DefaultEngine.ini` (Mac targets Metal SM6) and the online config notes.
 - Replaced the one-line Mac note under Getting started with a "Setting up on Mac" section: check the Mac, install Xcode/Unreal 5.8/Git LFS, clone and `git lfs pull` (HTTPS alternative, no ZIP download), open and build in the editor, Standalone play, firewall prompt, optional packaging and Gatekeeper workaround, online `CrosshairOnline.local.ini` note, player tips, and what to include in a problem report with log locations.
-- The background-job harness required a worktree, so the edit was made in `.claude/worktrees/mac-readme` on branch `worktree-mac-readme` and then fast-forwarded onto master.
+- The background-job harness required a worktree, so the edit was made in `.claude/worktrees/mac-readme` on branch `worktree-mac-readme`; the user fast-forwards master with `git merge --ff-only worktree-mac-readme` from the main checkout.
 
 ### Files Changed
 - README.md
