@@ -96,7 +96,7 @@ void UCrosshairLethalTest::Tick(float Delta)
         Key(EKeys::Escape,IE_Pressed);
         if (!Check(!Lethals->IsHolding() && Lethals->Remaining==2 && Pawn->Inventory->GetCurrent()->Ammo==Ammo,TEXT("Gun fire blocked while primed; opening menu cancels without throwing"))) return;
         PC->SetMenuTab(0); PC->ActivateMenuRow(PC->GetLethalRow());
-        if (!Check(Lethals->Selected==ECrosshairLethalType::Tomahawk && PC->GetFirstReplayRow()==PC->GetLanRow()+ACrosshairPlayerController::LanRowCount && PC->GetLanRow()==PC->GetGraphicsRow()+ACrosshairPlayerController::GraphicsRowCount && PC->GetGraphicsRow()==PC->GetBotMatchRow()+ACrosshairPlayerController::MatchRowCount,TEXT("Practice equipment row cycles type without moving camo/replay actions"))) return;
+        if (!Check(Lethals->Selected==ECrosshairLethalType::Tomahawk && PC->GetFirstReplayRow()==PC->GetOnlineRow()+ACrosshairPlayerController::OnlineRowCount && PC->GetLanRow()==PC->GetGraphicsRow()+ACrosshairPlayerController::GraphicsRowCount && PC->GetGraphicsRow()==PC->GetBotMatchRow()+ACrosshairPlayerController::MatchRowCount,TEXT("Practice equipment row cycles type without moving camo/replay actions"))) return;
         {
             auto* Save=Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("CrosshairSmoke_v1"),0));
             if (!Check(Save && Save->Settings.LethalType==ECrosshairLethalType::Tomahawk,TEXT("Lethal selection saved to isolated profile"))) return;
@@ -105,7 +105,7 @@ void UCrosshairLethalTest::Tick(float Delta)
         Next(2); return;
     case 2:
         if (Elapsed<.2) return;
-        Key(EKeys::Escape,IE_Pressed); Key(EKeys::Gamepad_RightShoulder,IE_Pressed); Next(3); return;
+        PC->ToggleMenu(); Key(EKeys::Gamepad_RightShoulder,IE_Pressed); Next(3); return;
     case 3:
 #if WITH_EDITOR
         if (FParse::Param(FCommandLine::Get(),TEXT("CrosshairLethalVisual")) && GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return;

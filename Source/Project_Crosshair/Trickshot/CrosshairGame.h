@@ -27,8 +27,23 @@ public:
 	virtual void FlushPressedKeys() override;
 	virtual void BeginPlay() override;
 	virtual void UpdateRotation(float DeltaTime) override;
+	/** Opens the menu at its top screen, or closes it. */
 	UFUNCTION(BlueprintCallable) void ToggleMenu();
+	/** Esc / B / Start: one level back. A page returns to the top screen; at the main menu it asks to exit to desktop. */
+	void MenuBack();
+	/** The "Exit to desktop?" popup over the main menu; ExitChoice is 0 Exit, 1 Cancel. */
+	bool bExitPrompt = false;
+	int32 ExitChoice = 1;
+	void ChooseExit(int32 Choice);
 	UPROPERTY(BlueprintReadOnly) bool bMenuOpen = false;
+	/** Top screen rows: Play (Resume in a game), Customize, Settings and, in a game, Main menu or Leave match. */
+	static constexpr int32 HubPlayRow = 0;
+	static constexpr int32 HubCustomizeRow = 1;
+	static constexpr int32 HubSettingsRow = 2;
+	static constexpr int32 HubLeaveRow = 3;
+	/** The tabs that belong with MenuTab: Play, Customize or Settings. */
+	TArray<int32> GetTabGroup() const;
+	FString GetTabGroupName() const;
 	static constexpr int32 WeaponRow = 13;
 	static constexpr int32 MapRow = 14;
 	static constexpr int32 QuitRow = 15;
@@ -56,6 +71,10 @@ public:
  /** LAN setup rows from GetLanRow(): username, mode, map, bots, bot difficulty, bot count or team size, score, time, max players. */
  int32 GetLanRow() const { return GetGraphicsRow()+GraphicsRowCount; }
  static constexpr int32 LanRowCount = 9;
+ /** Online rows from GetOnlineRow(): host, friend's code, join. The rest of the page reuses the LAN setup rows. */
+ int32 GetOnlineRow() const { return GetLanRow()+LanRowCount; }
+ static constexpr int32 OnlineRowCount = 3;
+ bool bEditingCode=false;
  /** Typing a username on the LAN tab (Enter starts and finishes). */
  bool bEditingName=false;
  /** Each player sends the username saved on their own machine; the server applies it. */
@@ -99,7 +118,7 @@ public:
 	void ActivateMenuRow(int32 Row);
 	void AdjustMenuRow(int32 Row, int32 Direction);
 	int32 MenuTab = 0;
-	static constexpr int32 MenuTabCount = 10;
+	static constexpr int32 MenuTabCount = 11;
 	/** One-line explanation of a menu row, shown under the list. */
 	FString GetRowHelp(int32 Row) const;
 	/** Tabs whose practice tools are unavailable during a match. */
@@ -117,6 +136,7 @@ private:
 	void AdjustGraphics(int32 Offset,int32 Direction);
 	void AdjustLan(int32 Offset,int32 Direction);
 	void EditNameKey(const FKey& Key);
+		void EditCodeKey(const FKey& Key);
 	void ActivateSelection();
 	int32 MapChoice = 0;
 };

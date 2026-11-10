@@ -24,7 +24,10 @@ public class Project_Crosshair : ModuleRules
 			"NavigationSystem",
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
-			"AnimationCore"
+			"AnimationCore",
+			"OnlineSubsystemEOS",
+			"EOSShared",
+			"EOSSDK"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "NetworkReplayStreaming", "LocalFileNetworkReplayStreaming", "AssetRegistry", "RenderCore", "RHI" });

@@ -113,9 +113,10 @@ void ACrosshairCharacter::BeginPlay()
 		if (!IsBot() && IsLocallyControlled()) GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->BeginMatchRecording(this);
 		if (IsBot())
 		{
-			const int32 Count = FMath::Max(1, Inventory->Weapons.Num());
-			const int32 Primary = FMath::RandRange(0, Count - 1);
-			Inventory->ApplyLoadout(Primary, (Primary + FMath::RandRange(1, FMath::Max(1, Count - 1))) % Count, FMath::RandBool() ? ECrosshairLethalType::Frag : ECrosshairLethalType::Tomahawk);
+			// Bots follow the same slot rules as players.
+			const int32 Primary = FMath::RandRange(0, 2);
+			const int32 Secondary = Primary == CrosshairLoadoutRules::SMG || FMath::RandBool() ? CrosshairLoadoutRules::Pistol : CrosshairLoadoutRules::SMG;
+			Inventory->ApplyLoadout(Primary, Secondary, FMath::RandBool() ? ECrosshairLethalType::Frag : ECrosshairLethalType::Tomahawk);
 		}
 		// A joined player's class comes from their own machine (PawnClientRestart -> ServerApplyLoadout).
 		else if (!IsRemotePlayer()) Inventory->ApplyClass();
@@ -170,7 +171,7 @@ bool ACrosshairCharacter::UsesWorldPresentation() const
 {
 	// In a match replay only the recording player keeps the first-person view.
 	if (IsReplayPlayback()) return IsInMatch() && !bReplayFocus;
-	return IsInMatch() && (IsBot() || !IsLocallyControlled());
+	return IsInMatch() && (IsBot() || !IsLocallyControlled() || bForceWorldBody);
 }
 float ACrosshairCharacter::GetRecentSpin(double Window) const
 {
@@ -301,6 +302,8 @@ void ACrosshairCharacter::Tick(float DeltaSeconds)
 		const float EyeZ = StanceEye >= 0 ? StanceEye : bIsCrouched ? 30.f : 64.f;
 		// The bob rides on the settled eye height, so it never feeds back into the height interpolation.
 		EyeHeight = FMath::FInterpTo(EyeHeight, EyeZ, DeltaSeconds, 12);
+		SlideView = FMath::FInterpTo(SlideView, Stance->GetStance() == ECrosshairStance::Slide ? 1.f : 0.f, DeltaSeconds, 12);
+		DiveView = FMath::FInterpTo(DiveView, Stance->GetStance() == ECrosshairStance::Dive ? 1.f : 0.f, DeltaSeconds, 12);
 		const float Bob = IsLocallyControlled() ? FMath::Sin(GetWorld()->GetTimeSeconds() * 15.f) * 1.4f * SprintAlpha : 0.f;
 		Camera->SetRelativeLocation(FVector(0, 0, EyeHeight + Bob));
 		GetCharacterMovement()->MaxWalkSpeedCrouched = Stance->GetCrouchedSpeed(CrouchSpeed);
@@ -531,9 +534,7 @@ void ACrosshairCharacter::ServerApplyLoadout_Implementation(int32 Primary, int32
 {
 	const int32 Count = Inventory->Weapons.Num();
 	if (Count < 2 || !IsInMatch()) return;
-	Primary = FMath::Clamp(Primary, 0, Count - 1);
-	Secondary = FMath::Clamp(Secondary, 0, Count - 1);
-	if (Secondary == Primary) Secondary = (Primary + 1) % Count;
+	// ApplyLoadout enforces the slot rules, so a joined player cannot request an illegal class either.
 	Inventory->ApplyLoadout(Primary, Secondary, Lethal == ECrosshairLethalType::Tomahawk ? Lethal : ECrosshairLethalType::Frag);
 }
 void ACrosshairCharacter::ClientTargetHit_Implementation(bool bHeadshot, bool bWallbang)

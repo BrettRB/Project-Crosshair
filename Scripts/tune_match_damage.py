@@ -5,6 +5,7 @@ Black Ops (core modes, 100 health) style: full damage out to falloff_start, easi
   Sniper: 100 anywhere above the waist -> one shot to the head or torso; arms and legs take 70 (two shots).
   AR:     40 to 25 m, 30 from 50 m -> 3 shots close, 4 far; 56 to the head (2 headshots).
   SMG:    35 to 10 m, 20 from 25 m -> 3 shots close, 5 at range; 49 to the head (3 headshots).
+  Pistol: 30 to 12 m, 20 from 30 m -> 4 shots close, 5 at range; 45 to the head (3 headshots). Secondary only.
 Practice targets keep body_damage / head_damage (trickshot practice is unchanged).
 """
 import unreal as ue
@@ -14,6 +15,7 @@ PROFILES = {
     'DA_Sniper': (100.0, 100.0, 100000.0, 100000.0, 1.0, 0.7),
     'DA_AR': (40.0, 30.0, 2500.0, 5000.0, 1.4, 1.0),
     'DA_SMG': (35.0, 20.0, 1000.0, 2500.0, 1.4, 1.0),
+    'DA_Pistol': (30.0, 20.0, 1200.0, 3000.0, 1.5, 1.0),
 }
 KEYS = ('match_max_damage', 'match_min_damage', 'match_falloff_start', 'match_falloff_end',
         'match_head_multiplier', 'match_limb_multiplier')

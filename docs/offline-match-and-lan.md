@@ -422,3 +422,15 @@ When another soldier kills you in a match (offline or LAN), you see the last mom
 - **What bots do:** 30% of new roam goals go to a staircase (`UpstairsChance`). The bot walks on the navmesh to the near end of the flight, follows the recorded waypoints up or down it, and resumes roaming. If stairs aren't available it can still pick an upper floor the navmesh reaches.
 - **Custom maps:** no setup is needed beyond a `NavMeshBoundsVolume` around the play space and stairs a soldier can walk. A map whose bots spawn in a pit should work the same way, because a trip starts from whichever end the bot can reach. No such map exists yet, so that case has not been run.
 - **Reports:** `-game -CrosshairSmoke -CrosshairNavProbe -NullRHI` logs walkable floors, navmesh coverage and reachability by height for each match map.
+
+## Online matches with a friend code (2026-11-09)
+
+**For players:** Play > Online. Set a username, then type a friend's five-character code and choose Join, or choose Host to open a lobby and get a code to share. No account or sign-up. The code stays on the lobby screen for the whole session.
+
+**How it works:** Epic Online Services matches the code to the host and connects players peer-to-peer, using Epic's relay when a direct path fails. Each PC signs in anonymously with a device ID. Online reuses the LAN lobby, setup and match rules; only finding and connecting differs. LAN stays on IP sockets.
+
+**One-time developer setup:** create a product and a Peer2Peer client in the [Epic Developer Portal](https://dev.epicgames.com/portal), then put its five IDs in `Content/Online/CrosshairOnline.local.ini`. The file is git-ignored and packaged builds include it automatically, so GitHub releases work for players while the source repository holds no secret. A source build without it shows "Online isn't available in this build". `CrosshairOnline.example.ini` is the template.
+
+**After a match:** LAN and Online groups return to the same lobby together when the results timer ends; the host can go early with Enter / A. Leave from the lobby to quit.
+
+**Status:** the code rules, menus and "not set up" path are tested. A real Epic sign-in, host and join have not been run yet because they need the IDs.

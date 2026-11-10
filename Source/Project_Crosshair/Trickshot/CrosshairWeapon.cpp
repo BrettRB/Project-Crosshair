@@ -327,6 +327,10 @@ void ACrosshairWeapon::UpdatePresentation(float AimAlpha)
 		const float Carry=Runner->GetSprintAlpha()*(1.f-AimAlpha);
 		Offset+=FVector(-6,3,-7)*Carry;
 		Rotation.Yaw+=12*Carry; Rotation.Roll+=-14*Carry;
+		// Slide: pulled in and canted. Dive: thrust out ahead of the body.
+		const float Slide=Runner->GetSlideView()*(1.f-AimAlpha),Dive=Runner->GetDiveView()*(1.f-AimAlpha);
+		Offset+=FVector(-5,7,-6)*Slide+FVector(12,-2,-4)*Dive;
+		Rotation.Roll+=-16*Slide; Rotation.Pitch+=6*Slide-8*Dive;
 	}
 	const float Now=GetSharedTime();
  if (bStowing)
@@ -435,6 +439,8 @@ void UCrosshairInventoryComponent::ApplyLoadout(int32 Primary,int32 Secondary,EC
  auto* Player=Cast<ACrosshairCharacter>(GetOwner());
  if (!Player || Player->IsReplayPlayback()) return;
  Player->StopActions();
+ // The single place every loadout passes through: menus, saves, bots and LAN clients alike.
+ if (Weapons.Num()>CrosshairLoadoutRules::Pistol) CrosshairLoadoutRules::Sanitize(Primary,Secondary);
  PrimaryIndex=Primary; SecondaryIndex=Secondary;
  Player->Lethals->Selected=Lethal;
  ResetWeapons(); Player->Lethals->Reset(); EquipSlot(0);

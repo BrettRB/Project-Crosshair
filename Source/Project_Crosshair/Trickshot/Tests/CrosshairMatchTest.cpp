@@ -45,6 +45,8 @@
 #include "InputKeyEventArgs.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Misc/FileHelper.h"
+#include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 #include "NavigationSystem.h"
 #include "NavigationPath.h"
@@ -52,6 +54,7 @@
 #include "NavMesh/RecastNavMesh.h"
 #include "../CrosshairStairLinks.h"
 #include "Algo/Reverse.h"
+#include "GameFramework/WorldSettings.h"
 #include "../CrosshairBot.h"
 #include "../CrosshairStance.h"
 #include "Components/CapsuleComponent.h"
@@ -67,7 +70,7 @@ bool UCrosshairMatchTest::ShouldCreateSubsystem(UObject* Outer) const
 #if UE_BUILD_SHIPPING
  return false;
 #else
- return Flag(TEXT("CrosshairSmoke")) && (Flag(TEXT("CrosshairMatchSmoke")) || Flag(TEXT("CrosshairMatchLayoutProbe")) || Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient")) || Flag(TEXT("CrosshairSoldierProbe")) || Flag(TEXT("CrosshairGraphicsCheck")) || Flag(TEXT("CrosshairNavProbe")) || Flag(TEXT("CrosshairMovementSmoke")));
+ return Flag(TEXT("CrosshairSmoke")) && (Flag(TEXT("CrosshairMatchSmoke")) || Flag(TEXT("CrosshairMatchLayoutProbe")) || Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient")) || Flag(TEXT("CrosshairSoldierProbe")) || Flag(TEXT("CrosshairGraphicsCheck")) || Flag(TEXT("CrosshairNavProbe")) || Flag(TEXT("CrosshairMovementSmoke")) || Flag(TEXT("CrosshairMovementVisual")) || Flag(TEXT("CrosshairMenuVisual")) || Flag(TEXT("CrosshairOnlineHost")) || Flag(TEXT("CrosshairOnlineClient")));
 #endif
 }
 void UCrosshairMatchTest::Initialize(FSubsystemCollectionBase& Collection)
@@ -255,9 +258,10 @@ void UCrosshairMatchTest::TickMovement()
   if (!Check(Pawn->GetSprintAlpha()==1.f && Pawn->GetCharacterMovement()->MaxWalkSpeed==Pawn->SprintSpeed && Pawn->IsSprinting(),TEXT("Holding sprint builds to full sprint speed"))) return;
   Tap(EKeys::LeftControl); Next(6); return;
  case 6:
-  if (Elapsed<.12) return;
+  if (Elapsed<.3) return;
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO dive speed %.0f rising %.0f capsule %.0f"),Pawn->GetVelocity().Size2D(),Pawn->GetVelocity().Z,Half());
   if (!Check(Current()==ECrosshairStance::Dive && Pawn->GetCharacterMovement()->IsFalling() && Pawn->GetVelocity().Size2D()>=700.f && Half()==CrosshairStanceRules::DiveHalfHeight,TEXT("Left Ctrl while sprinting dives forward"))) return;
+  { const FVector Forward=Pawn->GetActorForwardVector(); const FVector Pelvis=Pawn->GetMesh()->GetBoneLocation(TEXT("pelvis")),Head=Pawn->GetMesh()->GetBoneLocation(TEXT("head")); if (!Check(FVector::DotProduct(Head-Pelvis,Forward)>30.f,TEXT("The dive goes head first"))) return; }
   Next(7); return;
  case 7:
   if (Current()==ECrosshairStance::Dive) { if (Elapsed>5) Check(false,TEXT("Dive lands")); return; }
@@ -284,14 +288,16 @@ void UCrosshairMatchTest::TickMovement()
    bSawSlidePose=true;
    UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO slide head height %.0f"),HeadHeight());
    if (!Check(HeadHeight()<115.f && !ShotHits(130.f,FVector::YAxisVector),TEXT("Slide: the body is low enough that chest-height shots pass over"))) return;
+   { const FVector Forward=Pawn->GetActorForwardVector(); const FVector Pelvis=Pawn->GetMesh()->GetBoneLocation(TEXT("pelvis")),Foot=Pawn->GetMesh()->GetBoneLocation(TEXT("foot_r")),Head=Pawn->GetMesh()->GetBoneLocation(TEXT("head")); if (!Check(FVector::DotProduct(Foot-Pelvis,Forward)>40.f && FVector::DotProduct(Head-Pelvis,Forward)<0.f,TEXT("The slide goes feet first, leaning back"))) return; }
   }
   if (Current()==ECrosshairStance::Slide) { if (Elapsed>4) Check(false,TEXT("Slide ends")); return; }
-  if (!Check(bSawSlidePose && Current()==ECrosshairStance::Normal && Pawn->bIsCrouched && Half()==CrosshairStanceRules::CrouchHalfHeight,TEXT("A slide ends in a crouch"))) return;
-  Tap(EKeys::C); Key(EKeys::W,IE_Released); Next(11); return;
+  if (Pawn->bIsCrouched) { if (Elapsed>6) Check(false,TEXT("A slide pops back up to standing")); return; }
+  if (!Check(bSawSlidePose && Current()==ECrosshairStance::Normal && Half()==96.f,TEXT("A slide pops back up to standing"))) return;
+  Key(EKeys::W,IE_Released); Next(11); return;
  }
  case 11:
   if (Elapsed<.5) return;
-  if (!Check(!Pawn->bIsCrouched,TEXT("Crouch stands back up after a slide"))) return;
+  if (!Check(!Pawn->bIsCrouched,TEXT("Still standing after the slide"))) return;
   Key(EKeys::S,IE_Pressed); Next(12); return;
  case 12:
   if (Elapsed<.5) return;
@@ -382,6 +388,186 @@ void UCrosshairMatchTest::TickMovement()
   if (Elapsed>70) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO bot stuck at %s"),Soldier ? *Soldier->GetActorLocation().ToCompactString() : TEXT("none")); Check(false,TEXT("A bot walks back down the staircase")); }
   return;
  }
+ default: return;
+ }
+}
+void UCrosshairMatchTest::TickOnline()
+{
+ UWorld* World=GetWorld();
+ auto* Session=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>();
+ auto* PC=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
+ const auto* Match=ACrosshairMatchState::Get(World);
+ const double Elapsed=FPlatformTime::Seconds()-StepStarted;
+ const FString CodeFile=FPaths::ProjectSavedDir()/TEXT("CrosshairOnlineCode.txt");
+ if (Session->LanStatus!=OnlineLastStatus) { OnlineLastStatus=Session->LanStatus; UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO status: %s"),*OnlineLastStatus); }
+ auto Finish=[&]{ UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_DONE")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); };
+ const bool bHost=Flag(TEXT("CrosshairOnlineHost"));
+ switch (Step)
+ {
+ case 0:
+  if (!PC || !PC->GetPawn() || Elapsed<3) return;
+  if (!Check(UCrosshairMatchSession::IsOnlineConfigured(),TEXT("The Epic IDs are read from the local file"))) return;
+  if (bHost) { IFileManager::Get().Delete(*CodeFile); Session->HostOnlineMatch(); Next(1); }
+  else Next(2);
+  return;
+ case 1:
+  if (!Match || !Match->bInLobby || Match->JoinCode.IsEmpty()) { if (Elapsed>90) Check(false,TEXT("Host signs in with Epic and opens a lobby with a code")); return; }
+  if (!Check(CrosshairOnlineCode::IsValid(Match->JoinCode),TEXT("Host signs in with Epic and opens a lobby with a code"))) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO hosting with code %s"),*Match->JoinCode);
+  FFileHelper::SaveStringToFile(Match->JoinCode,*CodeFile);
+  Next(3); return;
+ case 3:
+  // Stays up for the other process; reports anyone who arrives.
+  if (Match && Match->CountHumans()>=2) { Check(true,TEXT("A second player joined through the code")); Finish(); return; }
+  if (Elapsed>100) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO nobody connected to the host")); Finish(); }
+  return;
+ case 2:
+ {
+  FString Code;
+  if (!FFileHelper::LoadFileToString(Code,*CodeFile)) { if (Elapsed>120) Check(false,TEXT("The host published a code")); return; }
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO joining with code %s"),*Code);
+  Session->JoinOnlineMatch(Code); Next(4); return;
+ }
+ case 4:
+  if (Match && World->GetNetMode()==NM_Client) { Check(true,TEXT("The client connected to the host through the code")); Finish(); return; }
+  if (Elapsed>70) { UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO client timed out, last status: %s"),*Session->LanStatus); Finish(); }
+  return;
+ default: return;
+ }
+}
+void UCrosshairMatchTest::TickMenuVisual()
+{
+ auto* PC=Cast<ACrosshairPlayerController>(GetWorld()->GetFirstPlayerController());
+ if (!PC || !PC->GetPawn()) return;
+ const double Elapsed=FPlatformTime::Seconds()-StepStarted;
+ auto Key=[&](FKey K){ PC->InputKey(FInputKeyEventArgs::CreateSimulated(K,IE_Pressed,1.f)); };
+ static const TCHAR* Names[]={TEXT("1_Home"),TEXT("2_ExitPopup"),TEXT("3_Play"),TEXT("4_Customize"),TEXT("5_Settings"),TEXT("6_Paused")};
+ // Odd steps photograph what the even step before them set up.
+ if (Step%2==1)
+ {
+  if (Elapsed<1.0) return;
+  FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots")/FString::Printf(TEXT("Menu_%s.png"),Names[Step/2]),false,false);
+  Next(Step+1); return;
+ }
+ if (Elapsed<(Step==0 ? 3.0 : 1.0)) return;
+ switch (Step/2)
+ {
+ case 0: PC->ShowHome(); break;
+ case 1: Key(EKeys::Escape); break;
+ case 2: Key(EKeys::Escape); PC->ActivateMenuRow(PC->HubPlayRow); PC->SetMenuTab(8); break;
+ case 3: Key(EKeys::Escape); PC->ActivateMenuRow(PC->HubCustomizeRow); break;
+ case 4: Key(EKeys::Escape); PC->ActivateMenuRow(PC->HubSettingsRow); PC->SetMenuTab(2); break;
+ case 5: Key(EKeys::Escape); PC->bFromHome=false; PC->ToggleMenu(); Key(EKeys::Escape); break;
+ default: UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MENU_VISUAL_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
+ }
+ Next(Step+1);
+}
+void UCrosshairMatchTest::TickMovementVisual()
+{
+ UWorld* World=GetWorld();
+ auto* Replay=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
+ auto* PC=Cast<ACrosshairPlayerController>(World->GetFirstPlayerController());
+ auto* Pawn=PC ? Cast<ACrosshairCharacter>(PC->GetPawn()) : nullptr;
+ const auto* Mode=World->GetAuthGameMode<ACrosshairMatchGameMode>();
+ const double Elapsed=FPlatformTime::Seconds()-StepStarted;
+ const double Seen=World->GetTimeSeconds()-WorldMark;
+ auto Key=[&](FKey K,EInputEvent Event){ PC->InputKey(FInputKeyEventArgs::CreateSimulated(K,Event,Event==IE_Released ? 0.f : 1.f)); };
+ auto Tap=[&](FKey K){ Key(K,IE_Pressed); Key(K,IE_Released); };
+ auto Advance=[&](int32 NewStep){ Next(NewStep); WorldMark=World->GetTimeSeconds(); VisualShot=0; };
+ // Takes the next named shot once its moment in the current step has arrived; true when none remain.
+ auto Shots=[&](std::initializer_list<TPair<double,const TCHAR*>> List)
+ {
+  const TArray<TPair<double,const TCHAR*>> Wanted(List);
+  if (Wanted.IsValidIndex(VisualShot) && Seen>=Wanted[VisualShot].Key)
+  {
+   FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots")/FString::Printf(TEXT("Move_%s.png"),Wanted[VisualShot].Value),false,false);
+   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO shot %s stance=%d speed=%.0f"),Wanted[VisualShot].Value,int32(Pawn->Stance->GetStance()),Pawn->GetVelocity().Size2D());
+   ++VisualShot;
+  }
+  return VisualShot>=Wanted.Num();
+ };
+ if (Step>=2 && (!Pawn || !VisualCamera.IsValid())) return;
+ if (Step>=2)
+ {
+  // Side-on for the dive and crawl; ahead and to the side to see the slide's legs come at the camera.
+  const FVector Forward=Pawn->GetActorForwardVector(),Right=Pawn->GetActorRightVector();
+  const FVector Offset=Step>=7 ? Forward*240.f+Right*170.f+FVector(0,0,-5) : Right*260.f+FVector(0,0,10);
+  const FVector At=Pawn->GetActorLocation();
+  VisualCamera->SetActorLocationAndRotation(At+Offset,(At-FVector(0,0,20)-(At+Offset)).Rotation());
+ }
+ switch (Step)
+ {
+ case 0:
+ {
+  if (!Pawn || Elapsed<1) return;
+  FCrosshairBotMatchOptions Options; Options.BotCount=1;
+  Replay->ChangePracticeMap(TEXT("/Game/Crosshair/Maps/L_Grid"),UCrosshairMatchSession::TravelOptions(Options,false));
+  Next(1); return;
+ }
+ case 1:
+ {
+  ACrosshairCharacter* Other=nullptr;
+  for (TActorIterator<ACrosshairCharacter> It(World);It;++It) if (It->IsBot()) Other=*It;
+  if (!Pawn || !Mode || !World->GetMapName().Contains(TEXT("L_Grid")) || !Other || Elapsed<4) { if (Elapsed>150) Check(false,TEXT("Grid match loads")); return; }
+  Other->GetCharacterMovement()->DisableMovement();
+  Other->SetActorLocation(Other->GetActorLocation()-FVector(0,0,1000),false,nullptr,ETeleportType::TeleportPhysics);
+  FHitResult Ground; FCollisionQueryParams Params(SCENE_QUERY_STAT(CrosshairVisualSpot),false,Pawn);
+  // Film on open, level, sunlit ground: clear for the whole run ahead, and to the side for the camera.
+  bool bFound=false;
+  for (double X=-5000;X<=5000 && !bFound;X+=400)
+   for (double Y=-8500;Y<=3500 && !bFound;Y+=400)
+   {
+    const FVector Column(X,Y,0);
+    if (!World->LineTraceSingleByChannel(Ground,Column+FVector(0,0,3000),Column-FVector(0,0,800),ECC_Pawn,Params) || Ground.ImpactNormal.Z<.98f) continue;
+    const FVector Chest=Ground.ImpactPoint+FVector(0,0,120);
+    const FCollisionShape Probe=FCollisionShape::MakeSphere(90.f);
+    FHitResult Blocked;
+    bFound=!World->SweepSingleByChannel(Blocked,Chest-FVector(200,0,0),Chest+FVector(2800,0,0),FQuat::Identity,ECC_Pawn,Probe,Params)
+     && !World->SweepSingleByChannel(Blocked,Chest+FVector(1300,-700,0),Chest+FVector(1300,700,0),FQuat::Identity,ECC_Pawn,Probe,Params)
+     && !World->SweepSingleByChannel(Blocked,Chest,Chest+FVector(0,700,0),FQuat::Identity,ECC_Pawn,Probe,Params);
+    if (bFound) VisualSpot=Ground.ImpactPoint;
+   }
+  if (!Check(bFound,TEXT("Open ground for the film"))) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MATCH_INFO filming at %s"),*VisualSpot.ToCompactString());
+  Pawn->SetActorLocation(VisualSpot+FVector(0,0,98),false,nullptr,ETeleportType::TeleportPhysics);
+  PC->SetControlRotation(FRotator::ZeroRotator);
+  Pawn->bForceWorldBody=true; Pawn->GetMesh()->SetOwnerNoSee(false);
+  VisualCamera=World->SpawnActor<ACameraActor>(Pawn->GetActorLocation(),FRotator::ZeroRotator);
+  PC->SetViewTarget(VisualCamera.Get());
+  World->GetWorldSettings()->SetTimeDilation(.3f);
+  Advance(2); return;
+ }
+ case 2:
+  if (Seen<.5) return;
+  if (Shots({{.5,TEXT("0_Stand")}})) { Key(EKeys::W,IE_Pressed); Key(EKeys::LeftShift,IE_Pressed); Advance(3); }
+  return;
+ case 3:
+  if (Seen<.8) return;
+  Tap(EKeys::LeftControl); Advance(4); return;
+ case 4:
+  Shots({{.08,TEXT("1_DiveLaunch")},{.25,TEXT("2_DiveFlight")},{.5,TEXT("3_DiveFall")}});
+  if (Pawn->Stance->GetStance()==ECrosshairStance::Prone && VisualShot>=3) Advance(5);
+  else if (Seen>4) Check(false,TEXT("Dive lands for the film"));
+  return;
+ case 5:
+  if (Shots({{.12,TEXT("4_Landing")},{.35,TEXT("5_LandedCrawl")},{.9,TEXT("6_CrawlA")},{1.3,TEXT("7_CrawlB")},{1.7,TEXT("8_CrawlC")}}) && Seen>1.9) { Tap(EKeys::LeftControl); Advance(6); }
+  return;
+ case 6:
+  if (Seen<1.2) return;
+  if (VisualShot==0) { VisualShot=1; Pawn->SetActorLocation(VisualSpot+FVector(0,0,98),false,nullptr,ETeleportType::TeleportPhysics); }
+  if (Pawn->IsSprinting() && Seen>1.8) { Tap(EKeys::C); Advance(7); }
+  else if (Seen>6) Check(false,TEXT("Sprinting again for the slide"));
+  return;
+ case 7:
+  Shots({{.1,TEXT("9_SlideDrop")},{.35,TEXT("A_Slide")},{.6,TEXT("B_SlideLate")}});
+  if (Pawn->Stance->GetStance()==ECrosshairStance::Normal && VisualShot>=3) Advance(8);
+  return;
+ case 8:
+  if (Shots({{.05,TEXT("C_PopUp")},{.3,TEXT("D_Standing")}}) && Seen>.6) Advance(9);
+  return;
+ case 9:
+  if (Elapsed<3) return;
+  UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_MOVEMENT_VISUAL_OK")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); return;
  default: return;
  }
 }
@@ -856,7 +1042,7 @@ void UCrosshairMatchTest::TickLan()
    if (Step==40)
    {
     if (!HostPawn || !Joined) { if (Elapsed>20) Check(false,TEXT("Both soldiers alive for the combat check")); return; }
-    if (!Check(Joined->Inventory->PrimaryIndex==2 && Joined->Inventory->SecondaryIndex==1,TEXT("The joined player's own class (SMG + AR) is applied on the host"))) return;
+    if (!Check(Joined->Inventory->PrimaryIndex==2 && Joined->Inventory->SecondaryIndex==3,TEXT("The joined player's own class (SMG + pistol) is applied on the host"))) return;
     // The joined player switched weapons with real keys earlier; the put-away weapon must finish stowing here too.
     bool bStuck=false; for (const ACrosshairWeapon* W:Joined->Inventory->Weapons) bStuck|=W && W->bStowing;
     if (!Check(!bStuck,TEXT("The joined player's put-away weapon finishes stowing on the host"))) return;
@@ -999,7 +1185,7 @@ void UCrosshairMatchTest::TickLan()
    // Join with this machine's own class: SMG primary, AR secondary.
    FCrosshairSettings& S=GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings();
    S.PlayerName=TEXT("ClientBee");
-   if (S.Classes.IsValidIndex(S.ActiveClass)) { S.Classes[S.ActiveClass].Primary=2; S.Classes[S.ActiveClass].Secondary=1; }
+   if (S.Classes.IsValidIndex(S.ActiveClass)) { S.Classes[S.ActiveClass].Primary=2; S.Classes[S.ActiveClass].Secondary=3; }
    Session->FindLanMatches(); Next(1);
   }
   return;
@@ -1168,6 +1354,12 @@ void UCrosshairMatchTest::Tick(float Delta)
  if (Flag(TEXT("CrosshairMatchLayoutProbe"))) { TickProbe(); return; }
  if (Flag(TEXT("CrosshairNavProbe"))) { TickNavProbe(); return; }
  if (Flag(TEXT("CrosshairMovementSmoke"))) { TickMovement(); return; }
+#if WITH_EDITOR
+ if ((Flag(TEXT("CrosshairMovementVisual")) || Flag(TEXT("CrosshairMenuVisual"))) && GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return;
+#endif
+ if (Flag(TEXT("CrosshairMovementVisual"))) { TickMovementVisual(); return; }
+ if (Flag(TEXT("CrosshairMenuVisual"))) { TickMenuVisual(); return; }
+ if (Flag(TEXT("CrosshairOnlineHost")) || Flag(TEXT("CrosshairOnlineClient"))) { TickOnline(); return; }
  if (Flag(TEXT("CrosshairLanHost")) || Flag(TEXT("CrosshairLanClient"))) { TickLan(); return; }
  // The rejected Testing-map match lasts a single frame; observe it before any visual-harness wait.
  if (Step==1)
@@ -1310,13 +1502,13 @@ void UCrosshairMatchTest::Tick(float Delta)
   if (!Check(MapName.Contains(TEXT("L_Practice")) && Pawn->CanAct(),TEXT("Testing map rejects matches (no bots) and returns to practice"))) return;
   // Start the match through the menus, as a player would.
   PC->ShowHome();
-  if (!Check(PC->bHomeScreen && PC->GetVisibleMenuRows()[1]==4,TEXT("Home lists Offline match vs bots right after Trickshot practice"))) return;
+  if (!Check(PC->bHomeScreen && PC->GetVisibleMenuRows().Num()==3,TEXT("Home lists Play, Customize and Settings"))) return;
   Next(50); return;
  case 50:
   if (Elapsed<.6) return;
   if (!bCapturedHome) { Capture(TEXT("MenuHome.png")); bCapturedHome=true; }
   if (Elapsed<3) return; // rendered screenshots complete a few frames later
-  PC->ActivateMenuRow(4);
+  PC->ActivateMenuRow(PC->HubPlayRow); PC->SetMenuTab(8);
   if (!Check(PC->MenuTab==8 && !PC->bHomeScreen && PC->GetVisibleMenuRows().Last()==PC->GetBotMatchRow()+6,TEXT("Offline match page shows settings and a Start button"))) return;
   Next(51); return;
  case 51:

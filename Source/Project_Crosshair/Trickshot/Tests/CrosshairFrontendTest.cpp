@@ -1,4 +1,5 @@
 #include "CrosshairFrontendTest.h"
+#include "../CrosshairMatchSession.h"
 #include "../CrosshairStartup.h"
 #include "UObject/GarbageCollection.h"
 #include "../CrosshairCombatAppearance.h"
@@ -96,7 +97,32 @@ void UCrosshairFrontendTest::Tick(float Delta)
   Capture(TEXT("FrontendHome.png")); Next(16); return;
  case 16:
   if (Elapsed<.3) return;
-  PC->ActivateMenuRow(4);
+  if (!Check(PC->GetVisibleMenuRows().Num()==3 && PC->GetMenuRows()[0]==TEXT("Play") && PC->GetMenuRows()[1]==TEXT("Customize") && PC->GetMenuRows()[2]==TEXT("Settings"),TEXT("Main menu offers Play, Customize and Settings"))) return;
+  Key(EKeys::Escape,IE_Pressed);
+  if (!Check(PC->bExitPrompt && PC->ExitChoice==1 && PC->bMenuOpen,TEXT("Esc at the main menu opens the exit popup on Cancel"))) return;
+  Key(EKeys::Enter,IE_Pressed);
+  if (!Check(!PC->bExitPrompt && PC->bHomeScreen,TEXT("Cancel returns to the main menu"))) return;
+  PC->ActivateMenuRow(PC->HubSettingsRow);
+  if (!Check(PC->MenuTab==1 && PC->GetTabGroup()==TArray<int32>({1,2}),TEXT("Settings holds Controls and Graphics"))) return;
+  Key(EKeys::Escape,IE_Pressed);
+  if (!Check(PC->bHomeScreen && !PC->bExitPrompt,TEXT("Esc from a page goes back to the main menu"))) return;
+  PC->ActivateMenuRow(PC->HubCustomizeRow);
+  if (!Check(PC->MenuTab==6 && PC->GetTabGroup()==TArray<int32>({6,5}),TEXT("Customize holds Classes and Camos"))) return;
+  Key(EKeys::Escape,IE_Pressed);
+  PC->ActivateMenuRow(PC->HubPlayRow);
+  if (!Check(PC->MenuTab==0 && PC->GetTabGroup()==TArray<int32>({0,8,10,9,7,4}),TEXT("Play holds every game mode, maps and replays"))) return;
+  PC->SetMenuTab(10);
+  PC->ActivateMenuRow(PC->GetOnlineRow()+1);
+  if (!Check(PC->bEditingCode,TEXT("Online code row starts typing"))) return;
+  for (const FKey CodeKey:{EKeys::K,EKeys::Seven,EKeys::Q,EKeys::O,EKeys::X,EKeys::M}) Key(CodeKey,IE_Pressed);
+  Key(EKeys::Enter,IE_Pressed);
+  if (!Check(!PC->bEditingCode && GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->TypedCode==TEXT("K7QXM"),TEXT("Typed code keeps valid characters only"))) return;
+  if (!UCrosshairMatchSession::IsOnlineConfigured())
+  {
+   PC->ActivateMenuRow(PC->GetOnlineRow());
+   if (!Check(GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->LanStatus.Contains(TEXT("available in this build")) && PC->bMenuOpen,TEXT("Online without Epic IDs says it is unavailable and stays in the menu"))) return;
+  }
+  PC->SetMenuTab(8);
   if (!Check(PC->MenuTab==8 && !PC->bHomeScreen,TEXT("Home opens match setup before gameplay"))) return;
   S.BotMatch=FCrosshairBotMatchOptions(); // COD defaults: FFA, seven bots
   PC->AdjustMenuRow(PC->GetBotMatchRow(),1); PC->AdjustMenuRow(PC->GetBotMatchRow()+1,1);
@@ -112,21 +138,21 @@ void UCrosshairFrontendTest::Tick(float Delta)
  {
   if (Elapsed<.3) return;
   PC->ActivateMenuRow(1); if (!Check(PC->MenuTab==6 && !PC->bHomeScreen,TEXT("Home opens class creator"))) return;
-  PC->EditingClass=2; auto& C=S.Classes[2]; C.Primary=2; C.Secondary=0; C.Lethal=ECrosshairLethalType::Tomahawk;
+  PC->EditingClass=2; auto& C=S.Classes[2]; C.Primary=2; C.Secondary=3; C.Lethal=ECrosshairLethalType::Tomahawk;
   PC->ActivateMenuRow(PC->GetClassRow()+4);
-  if (!Check(S.ActiveClass==2 && P->Inventory->PrimaryIndex==2 && P->Inventory->SecondaryIndex==0 && P->Lethals->Selected==ECrosshairLethalType::Tomahawk,TEXT("Class equips primary, secondary and lethal"))) return;
+  if (!Check(S.ActiveClass==2 && P->Inventory->PrimaryIndex==2 && P->Inventory->SecondaryIndex==3 && P->Lethals->Selected==ECrosshairLethalType::Tomahawk,TEXT("Class equips primary, secondary and lethal"))) return;
   if (auto* Saved=Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("CrosshairSmoke_v1"),0))) { if (!Check(Saved->Settings.ActiveClass==2 && Saved->Settings.Classes[2].Primary==2,TEXT("Classes persist on disk"))) return; } else { Check(false,TEXT("Class save missing")); return; }
   Capture(TEXT("FrontendClasses.png")); Next(2); return;
  }
  case 2:
   if (Elapsed<.3) return;
   PC->StartPlaying(); Key(EKeys::Two,IE_Pressed);
-  if (!Check(P->Inventory->ActiveIndex==0,TEXT("Number 2 selects secondary"))) return;
+  if (!Check(P->Inventory->ActiveIndex==3,TEXT("Number 2 selects secondary"))) return;
   Key(EKeys::Gamepad_FaceButton_Top,IE_Pressed); Key(EKeys::Gamepad_FaceButton_Top,IE_Released); Next(3); return;
  case 3:
   if (Elapsed<.2) return;
   if (!Check(P->Inventory->ActiveIndex==2,TEXT("Y switches from secondary to primary"))) return;
-  Key(EKeys::MouseScrollDown,IE_Pressed); if (!Check(P->Inventory->ActiveIndex==0,TEXT("Wheel switches only between class slots"))) return;
+  Key(EKeys::MouseScrollDown,IE_Pressed); if (!Check(P->Inventory->ActiveIndex==3,TEXT("Wheel switches only between class slots"))) return;
   Key(EKeys::One,IE_Pressed); if (!Check(P->Inventory->ActiveIndex==2,TEXT("Number 1 selects primary"))) return;
   PC->ToggleMenu(); PC->SetMenuTab(8); PC->AdjustMenuRow(PC->GetBotMatchRow(),1);
   if (!Check(S.BotMatch.Difficulty==ECrosshairBotDifficulty::Veteran,TEXT("Pause menu changes bot difficulty during gameplay"))) return;
@@ -286,7 +312,7 @@ void UCrosshairFrontendTest::Tick(float Delta)
    const auto Saved=P->Placement->CaptureTargets();P->Placement->RestoreTargets(Saved);
    for(const auto& At:Saved){bool Found=false;for(TActorIterator<ACrosshairDummy> It(World);It;++It) if(It->GetActorTransform().Equals(At.Transform,.01) && It->SoldierAppearance->DesignIndex==At.SoldierDesign) Found=true;if(!Check(Found,TEXT("Snapshot restore keeps each target transform and soldier design"))) return;}
   }
-  P->Inventory->Equip(0);P->GetFirstPersonMesh()->SetHiddenInGame(true,true);P->Inventory->GetCurrent()->PresentationMesh->SetHiddenInGame(true);
+  P->Inventory->Equip(3);P->GetFirstPersonMesh()->SetHiddenInGame(true,true);P->Inventory->GetCurrent()->PresentationMesh->SetHiddenInGame(true);
   SoldierPhoto=0;SoldierCamera=World->SpawnActor<ACameraActor>(FVector(280,-395,145),FRotator(-7,3,0));PC->SetViewTarget(SoldierCamera);Next(55);return;
  case 55:
   if(Elapsed<1) return;
@@ -301,16 +327,16 @@ void UCrosshairFrontendTest::Tick(float Delta)
  case 41:
   if (Elapsed<.6) return;
   P->Inventory->Equip(2);
-  if (!Check(P->Inventory->Weapons[0]->bStowing && P->Inventory->GetPresentationWeapon()==P->Inventory->Weapons[0],TEXT("Switch begins outgoing shoulder stow while hands follow old weapon"))) return;
+  if (!Check(P->Inventory->Weapons[3]->bStowing && P->Inventory->GetPresentationWeapon()==P->Inventory->Weapons[3],TEXT("Switch begins outgoing shoulder stow while hands follow old weapon"))) return;
   { auto* W=P->Inventory->GetCurrent();const int32 Ammo=W->Ammo;W->StartFire();W->StopFire();if(!Check(W->Ammo==Ammo,TEXT("Draw transition blocks firing"))) return; }
   Next(42);return;
  case 42:
   if (Elapsed<.09) return;
-  if (!Check(P->Inventory->Weapons[0]->Mesh->GetRelativeLocation().Y>20,TEXT("Stowing gun and hands move toward the shoulder"))) return;
+  if (!Check(P->Inventory->Weapons[3]->Mesh->GetRelativeLocation().Y>20,TEXT("Stowing gun and hands move toward the shoulder"))) return;
   Capture(TEXT("SwitchStow.png"));Next(43);return;
  case 43:
   if (Elapsed<.4) return;
-  if (!Check(P->Inventory->Weapons[0]->bHolstered && P->Inventory->Weapons[0]->Mesh->GetAttachParent()==P->GetCapsuleComponent() && !P->Inventory->GetCurrent()->IsSwitching(),TEXT("Old gun is carried on back and new draw finishes"))) return;
+  if (!Check(P->Inventory->Weapons[3]->bHolstered && P->Inventory->Weapons[3]->Mesh->GetAttachParent()==P->GetCapsuleComponent() && !P->Inventory->GetCurrent()->IsSwitching(),TEXT("Old gun is carried on back and new draw finishes"))) return;
   if (!Check(P->GetMesh()->GetUpVector().Z>.99f,TEXT("World character body is upright for back carry"))) return;
   { auto* Camera=World->SpawnActor<ACameraActor>(P->GetActorLocation()+FVector(-260,-260,100),(P->GetActorLocation()-(P->GetActorLocation()+FVector(-260,-260,100))).Rotation());PC->SetViewTarget(Camera);
     P->GetFirstPersonMesh()->SetHiddenInGame(true);P->Inventory->GetCurrent()->PresentationMesh->SetHiddenInGame(true); }

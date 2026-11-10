@@ -1,9 +1,11 @@
-﻿"""Author three original centimeter-scale rigid weapons and import through Unreal.
+﻿"""Author four original centimeter-scale rigid weapons and import through Unreal.
+Set CROSSHAIR_WEAPON_MODELS=Pistol (comma separated) to import only those; reimporting resets material slots.
 No downloaded or third-party artwork. Run with UnrealEditor-Cmd -run=pythonscript.
 Generated OBJ sources are retained in ContentSource/Weapons for editing/reimport.
 """
 from pathlib import Path
 import math
+import os
 import unreal as ue
 ROOT = Path(ue.Paths.project_dir())
 DEST = '/Game/Crosshair/Weapons/Models'
@@ -209,10 +211,30 @@ def sniper():
     m.box((11,0,-3.3),(6,3.8,.6),2,.12)
     return m
 
+def pistol():
+    m=Model(); m.grip()
+    # Slide with cocking serrations, exposed barrel crown, frame and hammer.
+    m.profile([(-6,3.2),(14,3.2),(15,4),(15,7.2),(14,8),(-5,8),(-6,7)],2.9,0,.18)
+    m.profile([(-5,1.8),(12,1.8),(13,3.4),(-6,3.4)],2.6,0,.14)
+    for side in [-1,1]:
+        for i in range(7): m.box((-4.5+i*.7,side*1.52,5.6),(.28,.14,3),2,.03)
+    m.tube((14,0,5.7),(17,0,5.7),.75,1)
+    m.ring(17,0,5.7,.85,.25,.8)
+    m.box((3,1.46,7),(4,.12,1.5),2,.05)
+    m.box((-6.5,0,6.5),(1,1,1.6),1,.08)
+    # Notched rear sight and post front sight share a line at z=8.9.
+    for y in [-.6,.6]: m.box((-4,y,8.5),(1.2,.7,.9),1,.05)
+    m.box((13,0,8.45),(.8,.5,.9),1,.05)
+    m.box((-1.5,0,-10.3),(4,3,.6),2,.1)
+    m.screws(-3,2.6)
+    return m
+
 source=ROOT/'ContentSource'/'Weapons'; source.mkdir(parents=True,exist_ok=True)
 (source/'Crosshair.mtl').write_text('\n'.join('newmtl '+n+'\nKd .1 .1 .1\n' for n in ['Paint','Metal','Rubber','Glass']))
 tools=ue.AssetToolsHelpers.get_asset_tools(); assets=ue.EditorAssetLibrary
-for name,model in [('AR',automatic()),('SMG',automatic(True)),('Sniper',sniper())]:
+only=[n for n in os.environ.get('CROSSHAIR_WEAPON_MODELS','').split(',') if n]
+for name,model in [('AR',automatic()),('SMG',automatic(True)),('Sniper',sniper()),('Pistol',pistol())]:
+    if only and name not in only: continue
     obj=source/('SM_'+name+'.obj'); model.write(obj)
     options=ue.FbxImportUI(); options.set_editor_property('import_mesh',True)
     options.set_editor_property('import_materials',False); options.set_editor_property('import_textures',False)
@@ -230,10 +252,27 @@ for name,model in [('AR',automatic()),('SMG',automatic(True)),('Sniper',sniper()
     slots=mesh.get_editor_property('static_materials')
     if len(slots)<3: raise RuntimeError('Expected paint/metal/rubber slots: '+str(slots))
     for i,slot in enumerate(slots): ue.log(name+' slot '+str(i)+' = '+str(slot.get_editor_property('material_slot_name')))
-    definition=assets.load_asset('/Game/Crosshair/Weapons/DA_'+name)
+    path='/Game/Crosshair/Weapons/DA_'+name
+    if not assets.does_asset_exist(path) and not assets.duplicate_asset('/Game/Crosshair/Weapons/DA_SMG',path): raise RuntimeError('Could not create '+path)
+    definition=assets.load_asset(path)
     definition.set_editor_property('presentation_mesh',mesh); definition.set_editor_property('use_prototype_geometry',False)
-    definition.set_editor_property('display_name',{'AR':'Assault Rifle','SMG':'Submachine Gun','Sniper':'Bolt-Action Sniper'}[name])
-    definition.set_editor_property('hip_offset',ue.Vector(48,12,-19))
-    definition.set_editor_property('aim_offset',ue.Vector(35,0,-15 if name=='Sniper' else -12.8))
+    definition.set_editor_property('display_name',{'AR':'Assault Rifle','SMG':'Submachine Gun','Sniper':'Bolt-Action Sniper','Pistol':'Pistol'}[name])
+    definition.set_editor_property('hip_offset',ue.Vector(38,13,-18) if name=='Pistol' else ue.Vector(48,12,-19))
+    definition.set_editor_property('aim_offset',ue.Vector(30,0,-8.9) if name=='Pistol' else ue.Vector(35,0,-15 if name=='Sniper' else -12.8))
+    if name=='Pistol':
+        # Semi-automatic sidearm: quick to raise, four body shots up close, weaker than every primary at range.
+        for key,value in dict(automatic=False,magazine_size=12,shot_interval=.16,reload_seconds=1.4,equip_seconds=.2,aim_seconds=.14,
+                              hip_spread_degrees=1.4,aim_spread_degrees=.2,recoil_degrees=.8,aim_fov=70.0,body_damage=34.0,head_damage=67.0,
+                              match_max_damage=30.0,match_min_damage=20.0,match_falloff_start=1200.0,match_falloff_end=3000.0,
+                              match_head_multiplier=1.5,match_limb_multiplier=1.0,left_hand_grip=ue.Vector(2,-3.5,-5)).items():
+            definition.set_editor_property(key,value)
     assets.save_loaded_asset(definition,False)
+    if name=='Pistol':
+        character=assets.load_asset('/Game/Crosshair/Player/BP_PracticeCharacter')
+        cdo=ue.get_default_object(character.generated_class())
+        loadout=list(cdo.get_editor_property('default_loadout'))
+        if definition not in loadout:
+            loadout.append(definition); cdo.set_editor_property('default_loadout',loadout)
+        if not assets.save_loaded_asset(character,False): raise RuntimeError('Could not save the character')
+        ue.log('CROSSHAIR_PISTOL_LOADOUT '+str([w.get_name() for w in cdo.get_editor_property('default_loadout')]))
 ue.log('CROSSHAIR_AUTHORED_MODELS_OK')

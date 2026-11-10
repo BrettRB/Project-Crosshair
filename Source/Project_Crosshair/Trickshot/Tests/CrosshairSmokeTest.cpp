@@ -39,7 +39,7 @@ bool UCrosshairSmokeTest::ShouldCreateSubsystem(UObject* Outer) const
 #if UE_BUILD_SHIPPING
 	return false;
 #else
-	return !FParse::Param(FCommandLine::Get(), TEXT("CrosshairFrontendSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLethalSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairExpansionSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMatchSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairNavProbe")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMovementSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMatchLayoutProbe")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLanHost")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairSoldierProbe")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairGraphicsCheck")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLanClient")) && (FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmokeSaved")));
+	return !FParse::Param(FCommandLine::Get(), TEXT("CrosshairFrontendSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLethalSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairExpansionSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMatchSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairNavProbe")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMovementSmoke")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMovementVisual")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMenuVisual")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairOnlineHost")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairOnlineClient")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairMatchLayoutProbe")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLanHost")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairSoldierProbe")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairGraphicsCheck")) && !FParse::Param(FCommandLine::Get(), TEXT("CrosshairLanClient")) && (FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmoke")) || FParse::Param(FCommandLine::Get(), TEXT("CrosshairSmokeSaved")));
 #endif
 }
 void UCrosshairSmokeTest::Initialize(FSubsystemCollectionBase& Collection)
@@ -214,7 +214,7 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 		if (!Check(Calibrated.X > 0 && Calibrated.Y > 0, TEXT("Calibrated physical right/up produce right/up camera direction"))) return;
 		Disk = Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("CrosshairSmoke_v1"),0));
 		if (!Check(Disk && Disk->Settings.ControllerAxisDirection.Equals(FVector2D(-1,-1)), TEXT("Controller hardware calibration persists to disk"))) return;
-		Key(EKeys::Escape,IE_Pressed); PC->SetControlRotation(FRotator::ZeroRotator);
+		PC->ToggleMenu(); PC->SetControlRotation(FRotator::ZeroRotator);
 		AxisCalibration(EKeys::Gamepad_RightX,-.8f); AxisCalibration(EKeys::Gamepad_RightY,-.8f); PC->UpdateRotation(1.f/60.f);
 		if (!Check(PC->GetControlRotation().Yaw > 0 && PC->GetControlRotation().Pitch > 0, TEXT("Calibrated reversed axes turn the actual camera right and up"))) return;
 		PC->FlushPressedKeys(); const float BeforeMouse = PC->GetControlRotation().Yaw;
@@ -258,7 +258,7 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 		if (!Check(Weapon->SkinId == TEXT("Desert"), TEXT("Finish survives weapon switching and attempt reset"))) return;
 		Disk = Cast<UCrosshairSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("CrosshairSmoke_v1"), 0));
 		if (!Check(Disk && Disk->Settings.WeaponSkins.FindRef(Weapon->Definition->GetFName()) == TEXT("Desert"), TEXT("Per-weapon finish selection persists to disk"))) return;
-		Key(EKeys::Escape, IE_Pressed);
+		PC->ToggleMenu();
 		if (FParse::Param(FCommandLine::Get(), TEXT("CrosshairFollowupVisual"))) { PC->SetControlRotation(FRotator::ZeroRotator); Next(86); return; }
 		Replay->ChangePracticeMap(TEXT("/Game/Crosshair/Maps/L_Nuketown")); Next(85); return;
 	}
@@ -278,7 +278,7 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 		Next(89); return;
 	case 89:
 		if (Elapsed < .6) return;
-		Key(EKeys::Escape, IE_Pressed);
+		PC->ToggleMenu();
 		Pawn->Inventory->Equip(1);
 		Pawn->Inventory->GetCurrent()->SetSkin(TEXT("Woodland"));
 		Next(90); return;
@@ -367,18 +367,22 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 	{
 		if (Elapsed < .5) return;
 		Key(EKeys::Gamepad_Special_Right, IE_Pressed);
-		if (!Check(PC->bMenuOpen && PC->bShowMouseCursor && PC->MenuTab == 0, TEXT("Start opens mouse-accessible Practice tab"))) return;
-		Key(EKeys::Gamepad_RightShoulder, IE_Pressed);
-		if (!Check(PC->MenuTab == 1 && PC->GetVisibleMenuRows().Num() == 10, TEXT("Controller bumper opens Controls tab"))) return;
+		if (!Check(PC->bMenuOpen && PC->bShowMouseCursor && PC->bHomeScreen && PC->GetVisibleMenuRows().Num() == 4, TEXT("Start opens the mouse-accessible pause screen"))) return;
+		PC->ActivateMenuRow(PC->HubSettingsRow);
+		if (!Check(PC->MenuTab == 1 && PC->GetVisibleMenuRows().Num() == 10, TEXT("Settings opens the Controls tab"))) return;
 		const float Old = Replay->GetSettings().StickYawSpeed;
 		Key(EKeys::Gamepad_DPad_Right, IE_Pressed);
 		if (!Check(Replay->GetSettings().StickYawSpeed > Old, TEXT("Controller adjusts sensitivity in its tab"))) return;
+		Key(EKeys::Gamepad_RightShoulder, IE_Pressed);
+		if (!Check(PC->MenuTab == 2, TEXT("Controller bumper moves to Graphics"))) return;
+		Key(EKeys::Gamepad_RightShoulder, IE_Pressed);
+		if (!Check(PC->MenuTab == 1, TEXT("Tab navigation stays within Settings and wraps"))) return;
 		if (auto* HUD = Cast<ACrosshairHUD>(PC->GetHUD())) HUD->NotifyHitBoxClick(TEXT("Tab_3"));
 		if (!Check(PC->MenuTab == 3 && PC->GetVisibleMenuRows() == TArray<int32>({PC->GetSandboxRow(),11,12}), TEXT("Mouse tab action isolates sandbox and target controls"))) return;
-		PC->SetMenuTab(ACrosshairPlayerController::MenuTabCount - 1);
-		Key(EKeys::Gamepad_RightShoulder, IE_Pressed);
-		if (!Check(PC->MenuTab == 0, TEXT("Tab navigation wraps to Practice"))) return;
+		Key(EKeys::Gamepad_FaceButton_Right, IE_Pressed);
+		if (!Check(PC->bHomeScreen && PC->bMenuOpen, TEXT("B goes back to the pause screen"))) return;
 		PC->SetControlRotation(FRotator(-12,37,0));
+		PC->SetMenuTab(0);
 		if (auto* HUD = Cast<ACrosshairHUD>(PC->GetHUD())) HUD->NotifyHitBoxClick(TEXT("Row_9"));
 		if (!Check(Pawn->Attempt->bHasSavedStart && Pawn->Attempt->StartTransform.GetLocation().Z > 250, TEXT("Save position accepts elevated platform"))) return;
 		InitialPosition = Pawn->Attempt->StartTransform.GetLocation();
@@ -422,7 +426,7 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 	case 60:
 		if (Elapsed < .5) return;
 		if (!Check(!Replay->ChangePracticeMap(TEXT("/Game/Crosshair/Maps/MissingMap")), TEXT("Missing map is rejected without travel"))) return;
-		Key(EKeys::Escape, IE_Pressed);
+		Key(EKeys::Escape, IE_Pressed); PC->SetMenuTab(7);
 		PC->MenuSelection = ACrosshairPlayerController::MapRow;
 		Key(EKeys::Right, IE_Pressed);
 		if (!Check(PC->bMenuOpen && PC->GetMenuRows()[PC->MapRow].Contains(TEXT("Nuketown")), TEXT("Map row selects Nuketown without loading on adjustment"))) return;
@@ -430,7 +434,7 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 		Key(EKeys::Enter, IE_Pressed); Next(61); return;
 	case 61:
 		if (!World->GetOutermost()->GetName().Contains(TEXT("L_Nuketown")) || World->GetTimeSeconds() < 3) return;
-		if (!Check(Pawn->Inventory->Weapons.Num() == 3 && Pawn->Inputs->IsComplete() && !PC->bMenuOpen, TEXT("Nuketown initializes practice pawn, loadout and closed menu"))) return;
+		if (!Check(Pawn->Inventory->Weapons.Num() == 4 && Pawn->Inputs->IsComplete() && !PC->bMenuOpen, TEXT("Nuketown initializes practice pawn, loadout and closed menu"))) return;
 		if (!Pawn->GetCharacterMovement()->IsMovingOnGround())
 		{
 			UE_LOG(LogTemp, Display, TEXT("NUKETOWN_SPAWN_PROBE player=%s velocity=%s mode=%d"), *Pawn->GetActorLocation().ToString(), *Pawn->GetVelocity().ToString(), int32(Pawn->GetCharacterMovement()->MovementMode));
@@ -472,21 +476,21 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
 		Pawn->Attempt->SaveStart();
 		Pawn->Attempt->ResetAttempt();
 		if (!Check(FVector::Dist(Pawn->GetActorLocation(), Pawn->Attempt->StartTransform.GetLocation()) < 2, TEXT("Attempt reset uses Nuketown start"))) return;
-		Key(EKeys::Escape, IE_Pressed);
+		Key(EKeys::Escape, IE_Pressed); PC->SetMenuTab(7);
 		PC->MenuSelection = ACrosshairPlayerController::MapRow;
 		Key(EKeys::Gamepad_DPad_Left, IE_Pressed);
 		if (!Check(PC->GetMenuRows()[PC->MapRow].Contains(TEXT("Testing Map")), TEXT("Controller selects Testing Map"))) return;
 		Key(EKeys::Gamepad_FaceButton_Bottom, IE_Pressed); Next(64); return;
 	case 64:
 		if (!World->GetOutermost()->GetName().Contains(TEXT("L_Practice")) || World->GetTimeSeconds() < 2) return;
-		if (!Check(Pawn->Inventory->Weapons.Num() == 3 && Pawn->Inputs->IsComplete(), TEXT("Testing map remains playable after return travel"))) return;
+		if (!Check(Pawn->Inventory->Weapons.Num() == 4 && Pawn->Inputs->IsComplete(), TEXT("Testing map remains playable after return travel"))) return;
 		if (!Check(Pawn->Placement->GetLayout().Num() == 3, TEXT("Nuketown target layout does not leak into Testing Map"))) return;
 		if (!Check(FMath::IsNearlyEqual(Replay->GetSettings().MouseSensitivity, .37f), TEXT("Settings survive round-trip map travel"))) return;
 		UE_LOG(LogTemp, Display, TEXT("CROSSHAIR_MAP_SMOKE_OK"));
 		bFinished = true; FPlatformMisc::RequestExitWithStatus(false, 0); return;
 	case 0:
 		if (Elapsed < 2) return;
-		if (!Check(Pawn->Inputs && Pawn->Inputs->IsComplete() && Pawn->Inventory->Weapons.Num() == 3, TEXT("Blueprint assets and three-weapon loadout initialized"))) return;
+		if (!Check(Pawn->Inputs && Pawn->Inputs->IsComplete() && Pawn->Inventory->Weapons.Num() == 4, TEXT("Blueprint assets and four-weapon loadout initialized"))) return;
 				if (FParse::Param(FCommandLine::Get(), TEXT("CrosshairFollowupSmoke")))
 				{
 						if (!Check(!Replay->GetSettings().bInvertControllerHorizontal && !Replay->GetSettings().bInvertControllerVertical, TEXT("Fresh profile defaults to non-inverted look"))) return;
@@ -564,19 +568,20 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
         if (!Check(Target->bHit && Target->Health == 0, TEXT("AR defeats on third head hit"))) return;
         Target->ResetTarget();
         if (!Check(Target->IsHeadImpact(Target->Model->GetBoneLocation(TEXT("head"))) && !Target->IsHeadImpact(Target->GetActorLocation()), TEXT("Head and body regions are distinct"))) return;
-        Key(EKeys::Escape,IE_Pressed);
+        Key(EKeys::Escape,IE_Pressed); PC->SetMenuTab(5);
         PC->MenuSelection = ACrosshairPlayerController::WeaponRow;
         Key(EKeys::Enter,IE_Pressed);
         if (!Check(PC->bMenuOpen && Pawn->Inventory->ActiveIndex == 1, TEXT("Menu equips next weapon and stays open"))) return;
         PC->MenuSelection = ACrosshairPlayerController::WeaponRow;
         Key(EKeys::Left,IE_Pressed);
         if (!Check(Pawn->Inventory->ActiveIndex == 0, TEXT("Menu cycles back to sniper"))) return;
-        if (!Check(PC->GetMenuRows()[ACrosshairPlayerController::QuitRow] == TEXT("Quit to Desktop"), TEXT("Quit action is visible"))) return;
-        Key(EKeys::Escape,IE_Pressed);
+        PC->ToggleMenu();
         if (FParse::Param(FCommandLine::Get(),TEXT("CrosshairQuitSmoke")))
         {
+            PC->ShowHome();
             Key(EKeys::Escape,IE_Pressed);
-            PC->MenuSelection = ACrosshairPlayerController::QuitRow;
+            if (!Check(PC->bExitPrompt && PC->ExitChoice==1, TEXT("Esc at the main menu asks before exiting"))) return;
+            Key(EKeys::Left,IE_Pressed);
             UE_LOG(LogTemp, Display, TEXT("CROSSHAIR_QUIT_SMOKE invoking normal menu quit"));
             Key(EKeys::Enter,IE_Pressed);
             bFinished = true;
@@ -617,7 +622,7 @@ void UCrosshairSmokeTest::Tick(float DeltaSeconds)
         Next(36); break;
     case 36:
         if (Elapsed < .8) return;
-        Key(EKeys::Escape,IE_Pressed); PC->MenuSelection = ACrosshairPlayerController::QuitRow;
+        Key(EKeys::Escape,IE_Pressed);
         FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/CrosshairMenu.png"),false,false);
         Next(37); break;
     case 37:

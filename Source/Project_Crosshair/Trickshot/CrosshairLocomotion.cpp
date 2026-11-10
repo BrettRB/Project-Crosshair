@@ -52,8 +52,24 @@ void UCrosshairLocomotionAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
  // Replicated stance sets the body layout, and shots hit the physics bodies that follow these bones.
  const auto* Soldier=Cast<ACrosshairCharacter>(Pawn);
  const ECrosshairStance Stance=Soldier ? Soldier->Stance->GetStance() : DrivenStance;
- if (Stance!=ECrosshairStance::Normal) Lay=CrosshairLocomotion::LayFor(Stance);
- LayAlpha=FMath::FInterpConstantTo(LayAlpha,Stance!=ECrosshairStance::Normal ? 1.f : 0.f,DeltaSeconds,6.f);
+ if (Stance==ECrosshairStance::Prone)
+ {
+  // A full cycle (both knees) per 1.5 m crawled.
+  CrawlPhase=FMath::Fmod(CrawlPhase+DeltaSeconds*Speed/150.f,1.f);
+  CrawlAmount=FMath::FInterpTo(CrawlAmount,FMath::Clamp(Speed/60.f,0.f,1.f),DeltaSeconds,8.f);
+ }
+ else CrawlAmount=0;
+ if (Stance!=ECrosshairStance::Normal)
+ {
+  const CrosshairLocomotion::FLay Target=CrosshairLocomotion::LayFor(Stance,CrawlPhase,CrawlAmount,float(Velocity.Z));
+  // From standing the overall weight does the blending; between stances (a dive landing) the frames themselves blend.
+  if (Stance!=LastStance) { LayFrom=Lay; LayBlend=LastStance==ECrosshairStance::Normal ? 1.f : 0.f; LastStance=Stance; }
+  LayBlend=FMath::Min(1.f,LayBlend+DeltaSeconds/.28f);
+  Lay=CrosshairLocomotion::BlendLay(LayFrom,Target,LayBlend*LayBlend*(3.f-2.f*LayBlend));
+ }
+ else LastStance=ECrosshairStance::Normal;
+ // Snaps into a slide or dive, and rises a little slower for the pop back up.
+ LayAlpha=FMath::FInterpConstantTo(LayAlpha,Stance!=ECrosshairStance::Normal ? 1.f : 0.f,DeltaSeconds,Stance!=ECrosshairStance::Normal ? 9.f : 6.f);
  float ShiftGoal=0;
  if (Soldier && Stance==ECrosshairStance::Prone && GetWorld())
  {
@@ -154,9 +170,30 @@ bool FCrosshairLocomotionProxy::Evaluate(FPoseContext& Output)
    const FCompactPoseBoneIndex Parent=Output.Pose.GetParentBoneIndex(Pelvis);
    Output.Pose[Pelvis]=Parent.IsValid() ? World.GetRelativeTransform(Component.GetComponentSpaceTransform(Parent)) : World;
   }
+  for (const TCHAR* Segment:{TEXT("spine_01"),TEXT("spine_02"),TEXT("spine_03")}) Turn(BoneIndex(Segment),Lay.Spine/3.f);
   Turn(BoneIndex(TEXT("clavicle_l")),Lay.Chest);
   Turn(BoneIndex(TEXT("clavicle_r")),Lay.Chest);
   Turn(BoneIndex(TEXT("neck_01")),Lay.Neck);
+  // Limb goals: swing a bone until the line to its child points the wanted way, whatever pose the bone came from.
+  auto Point=[&](const TCHAR* BoneName,const TCHAR* ChildName,const FVector& Goal,float Weight)
+  {
+   const FCompactPoseBoneIndex Bone=BoneIndex(BoneName),Child=BoneIndex(ChildName);
+   if (!Bone.IsValid() || !Child.IsValid() || Goal.IsNearlyZero() || Weight<=KINDA_SMALL_NUMBER) return;
+   const FCompactPoseBoneIndex Parent=Output.Pose.GetParentBoneIndex(Bone);
+   if (!Parent.IsValid()) return;
+   FCSPose<FCompactPose> Component; Component.InitPose(Output.Pose);
+   const FVector From=(Component.GetComponentSpaceTransform(Child).GetLocation()-Component.GetComponentSpaceTransform(Bone).GetLocation()).GetSafeNormal();
+   const FQuat Swing=FQuat::Slerp(FQuat::Identity,FQuat::FindBetweenNormals(From,Goal.GetSafeNormal()),Weight*LayAlpha);
+   const FQuat ParentRotation=Component.GetComponentSpaceTransform(Parent).GetRotation();
+   FTransform& Local=Output.Pose[Bone];
+   Local.SetRotation((ParentRotation.Inverse()*Swing*ParentRotation*Local.GetRotation()).GetNormalized());
+  };
+  Point(TEXT("thigh_l"),TEXT("calf_l"),Lay.ThighL,1.f);
+  Point(TEXT("calf_l"),TEXT("foot_l"),Lay.CalfL,1.f);
+  Point(TEXT("thigh_r"),TEXT("calf_r"),Lay.ThighR,1.f);
+  Point(TEXT("calf_r"),TEXT("foot_r"),Lay.CalfR,1.f);
+  Point(TEXT("upperarm_l"),TEXT("lowerarm_l"),Lay.UpperArmL,Lay.LeftArm);
+  Point(TEXT("lowerarm_l"),TEXT("hand_l"),Lay.LowerArmL,Lay.LeftArm);
  }
  // Upper-body aim: tilt spine_03 about the mesh's sideways axis (the mannequin faces +Y).
  const int32 MeshIndex=Bones.GetPoseBoneIndexForBoneName(TEXT("spine_03"));

@@ -224,6 +224,33 @@ public:
 	UPROPERTY() TArray<FCrosshairReplayEntry> Replays;
 };
 
+/** Which guns a class may carry, by index in the character's DefaultLoadout (Sniper, AR, SMG, Pistol). */
+namespace CrosshairLoadoutRules
+{
+	constexpr int32 Sniper = 0, AR = 1, SMG = 2, Pistol = 3;
+	inline bool IsPrimary(int32 Index) { return Index == Sniper || Index == AR || Index == SMG; }
+	inline bool IsSecondary(int32 Index) { return Index == SMG || Index == Pistol; }
+	/** Makes any pair legal. A secondary that is not allowed, or duplicates the primary, becomes the SMG or the pistol. */
+	inline void Sanitize(int32& Primary, int32& Secondary)
+	{
+		if (!IsPrimary(Primary)) Primary = Sniper;
+		if (!IsSecondary(Secondary)) Secondary = Primary == SMG ? Pistol : SMG;
+		if (Secondary == Primary) Secondary = Pistol;
+	}
+	/** Next primary in the menu; the secondary moves to the pistol if the SMG was just taken as primary. */
+	inline void StepPrimary(int32& Primary, int32& Secondary, int32 Direction)
+	{
+		Primary = (Primary + Direction + 3) % 3;
+		if (Secondary == Primary) Secondary = Pistol;
+	}
+	/** Swaps between SMG and pistol; an SMG primary leaves only the pistol. */
+	inline void StepSecondary(int32 Primary, int32& Secondary)
+	{
+		const int32 Other = Secondary == SMG ? Pistol : SMG;
+		if (Other != Primary) Secondary = Other;
+	}
+}
+
 namespace CrosshairRules
 {
 	enum class EHitZone : uint8 { Body, Head, Limb };

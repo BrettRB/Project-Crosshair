@@ -2,12 +2,16 @@
 Only project-owned finish graphs are rebuilt. Painted surfaces use slot Paint;
 barrels, sights, magazines, grips and lenses retain their own surface materials.
 """
+import os
 import unreal as ue
 assets=ue.EditorAssetLibrary; editing=ue.MaterialEditingLibrary; tools=ue.AssetToolsHelpers.get_asset_tools()
 ROOT='/Game/Crosshair/Weapons/Finishes'
+# CROSSHAIR_WEAPON_MODELS=Pistol applies the finishes to just that weapon and leaves the material graphs alone.
+ONLY=[n for n in os.environ.get('CROSSHAIR_WEAPON_MODELS','').split(',') if n]
 
 def build(name, colors, metallic, roughness, camo=False, tiger=False):
     path=ROOT+'/'+name
+    if ONLY and assets.does_asset_exist(path): return assets.load_asset(path)
     m=assets.load_asset(path) if assets.does_asset_exist(path) else tools.create_asset(name,ROOT,ue.Material,ue.MaterialFactoryNew())
     editing.delete_all_material_expressions(m)
     def node(cls,x=0,y=0): return editing.create_material_expression(m,cls,x,y)
@@ -79,8 +83,9 @@ instances=[]
 for name,parent in [('Woodland',wood),('Desert',desert),('RedTiger',tiger),('Arctic',arctic)]:
     path=ROOT+'/MI_'+name
     instance=assets.load_asset(path) if assets.does_asset_exist(path) else tools.create_asset('MI_'+name,ROOT,ue.MaterialInstanceConstant,ue.MaterialInstanceConstantFactoryNew())
-    editing.set_material_instance_parent(instance,parent); assets.save_loaded_asset(instance,False); instances.append(instance)
-for name in ['Sniper','AR','SMG']:
+    if not ONLY: editing.set_material_instance_parent(instance,parent); assets.save_loaded_asset(instance,False)
+    instances.append(instance)
+for name in ONLY or ['Sniper','AR','SMG','Pistol']:
     definition=assets.load_asset('/Game/Crosshair/Weapons/DA_'+name); mesh=definition.get_editor_property('presentation_mesh')
     slots=[]
     for previous in mesh.get_editor_property('static_materials'):

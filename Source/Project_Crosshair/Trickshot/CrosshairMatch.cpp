@@ -150,7 +150,7 @@ void ACrosshairMatchState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
  DOREPLIFETIME(ACrosshairMatchState,AlphaScore); DOREPLIFETIME(ACrosshairMatchState,BravoScore); DOREPLIFETIME(ACrosshairMatchState,bMatchOver);
  DOREPLIFETIME(ACrosshairMatchState,Result); DOREPLIFETIME(ACrosshairMatchState,MapName); DOREPLIFETIME(ACrosshairMatchState,KillFeed);
  DOREPLIFETIME(ACrosshairMatchState,bInLobby); DOREPLIFETIME(ACrosshairMatchState,MaxHumans); DOREPLIFETIME(ACrosshairMatchState,LobbyInfo);
- DOREPLIFETIME(ACrosshairMatchState,bLanMatch); DOREPLIFETIME(ACrosshairMatchState,ResultsEndAt);
+ DOREPLIFETIME(ACrosshairMatchState,bLanMatch); DOREPLIFETIME(ACrosshairMatchState,ResultsEndAt); DOREPLIFETIME(ACrosshairMatchState,JoinCode);
 }
 int32 ACrosshairMatchState::CountHumans(uint8 Team) const
 {
@@ -210,6 +210,7 @@ void ACrosshairMatchGameMode::InitGameState()
  Super::InitGameState();
  auto* State=GetGameState<ACrosshairMatchState>(); if (!State) return;
  State->bInLobby=bLobby; State->bLanMatch=bLanMatch;
+ State->JoinCode=bLanMatch ? GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->OnlineCode : FString();
  PublishSetup();
  State->MapName=GetWorld()->GetMapName().Contains(TEXT("L_Grid")) ? TEXT("Grid") : GetWorld()->GetMapName().Contains(TEXT("L_SpaceStation")) ? TEXT("Space Station") : TEXT("Nuketown");
 }

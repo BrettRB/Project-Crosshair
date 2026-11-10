@@ -106,7 +106,9 @@ float UCrosshairStanceComponent::GetCrouchedSpeed(float CrouchSpeed) const
 }
 void UCrosshairStanceComponent::Interrupt()
 {
- if (Stance==ECrosshairStance::Slide) SetStance(ECrosshairStance::Normal,Direction);
+ if (Stance!=ECrosshairStance::Slide) return;
+ SetStance(ECrosshairStance::Normal,Direction);
+ if (ACrosshairCharacter* Player=GetPlayer()) Player->UnCrouch();
 }
 void UCrosshairStanceComponent::Reset()
 {
@@ -129,8 +131,8 @@ void UCrosshairStanceComponent::TickComponent(float Delta,ELevelTick Type,FActor
  if (Stance==ECrosshairStance::Slide)
  {
   Player->AddMovementInput(Direction,1.f);
-  if (!Move->IsMovingOnGround()) { SetStance(ECrosshairStance::Normal,Direction); Player->UnCrouch(); }
-  else if (Elapsed>=SlideSeconds || (Elapsed>.15f && Player->GetVelocity().Size2D()<Player->CrouchSpeed*1.1f)) SetStance(ECrosshairStance::Normal,Direction);
+  // Every way out of a slide pops back up to standing; under a low ceiling the capsule waits until there is room.
+  if (!Move->IsMovingOnGround() || Elapsed>=SlideSeconds || (Elapsed>.15f && Player->GetVelocity().Size2D()<Player->CrouchSpeed*1.1f)) { SetStance(ECrosshairStance::Normal,Direction); Player->UnCrouch(); }
  }
  else if (Stance==ECrosshairStance::Dive && Elapsed>.1f && Move->IsMovingOnGround()) SetStance(ECrosshairStance::Prone,Direction);
 }

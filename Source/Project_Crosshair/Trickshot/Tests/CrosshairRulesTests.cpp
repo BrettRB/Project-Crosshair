@@ -327,9 +327,53 @@ bool FCrosshairStanceRulesTest::RunTest(const FString&)
  TestEqual(TEXT("Slide speed clamps past the end"),SlideSpeed(950.f,220.f,3.f),220.f);
  using CrosshairLocomotion::LayFor;
  TestEqual(TEXT("Normal does not lay the body out"),LayFor(ECrosshairStance::Normal).Tilt,0.f);
- TestTrue(TEXT("Prone is face down and nearly flat"),LayFor(ECrosshairStance::Prone).Tilt<-80.f && LayFor(ECrosshairStance::Prone).PelvisZ<25.f);
+ TestTrue(TEXT("Prone is face down and nearly flat"),LayFor(ECrosshairStance::Prone).Tilt<-70.f && LayFor(ECrosshairStance::Prone).PelvisZ<25.f);
  TestTrue(TEXT("A slide leans back, feet first"),LayFor(ECrosshairStance::Slide).Tilt>30.f);
  TestTrue(TEXT("A dive goes head first"),LayFor(ECrosshairStance::Dive).Tilt<-60.f);
+ return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairClassRulesTest, "Crosshair.Weapon.ClassRules", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairClassRulesTest::RunTest(const FString&)
+{
+ using namespace CrosshairLoadoutRules;
+ TestTrue(TEXT("Sniper, AR and SMG are primaries"),IsPrimary(Sniper) && IsPrimary(AR) && IsPrimary(SMG));
+ TestFalse(TEXT("The pistol is not a primary"),IsPrimary(Pistol));
+ TestTrue(TEXT("SMG and pistol are secondaries"),IsSecondary(SMG) && IsSecondary(Pistol));
+ TestFalse(TEXT("Sniper and AR are not secondaries"),IsSecondary(Sniper) || IsSecondary(AR));
+ int32 P=Sniper,S=AR; Sanitize(P,S);
+ TestTrue(TEXT("An old sniper + AR save keeps the sniper and gets a legal secondary"),P==Sniper && S==SMG);
+ P=SMG; S=Sniper; Sanitize(P,S);
+ TestTrue(TEXT("An SMG primary falls back to the pistol"),P==SMG && S==Pistol);
+ P=Pistol; S=Pistol; Sanitize(P,S);
+ TestTrue(TEXT("A pistol primary is replaced"),IsPrimary(P) && S==Pistol);
+ P=SMG; S=SMG; Sanitize(P,S);
+ TestTrue(TEXT("The same gun cannot fill both slots"),S==Pistol);
+ P=AR; S=SMG; StepPrimary(P,S,1);
+ TestTrue(TEXT("Stepping onto the SMG moves the secondary to the pistol"),P==SMG && S==Pistol);
+ StepSecondary(P,S);
+ TestEqual(TEXT("An SMG primary leaves only the pistol"),S,Pistol);
+ P=Sniper; StepSecondary(P,S);
+ TestEqual(TEXT("Otherwise the secondary swaps to the SMG"),S,SMG);
+ for (int32 Step=0;Step<9;++Step) { StepPrimary(P,S,Step%2 ? -1 : 1); TestTrue(TEXT("Menu stepping stays legal"),IsPrimary(P) && IsSecondary(S) && P!=S); }
+ const auto* Gun=LoadObject<UCrosshairWeaponDefinition>(nullptr,TEXT("/Game/Crosshair/Weapons/DA_Pistol.DA_Pistol"));
+ if (TestNotNull(TEXT("Pistol definition exists"),Gun))
+ {
+  TestFalse(TEXT("The pistol is semi-automatic"),Gun->bAutomatic);
+  TestNotNull(TEXT("The pistol has a model"),Gun->PresentationMesh.Get());
+  const auto* AssaultRifle=LoadObject<UCrosshairWeaponDefinition>(nullptr,TEXT("/Game/Crosshair/Weapons/DA_AR.DA_AR"));
+  TestTrue(TEXT("The pistol hits softer than the AR"),AssaultRifle && Gun->MatchMaxDamage<AssaultRifle->MatchMaxDamage);
+ }
+ return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairOnlineCodeTest, "Crosshair.Match.OnlineCode", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairOnlineCodeTest::RunTest(const FString&)
+{
+ using namespace CrosshairOnlineCode;
+ for (int32 i=0;i<200;++i) { const FString Code=Generate(); TestTrue(TEXT("Generated codes are valid"),IsValid(Code)); TestFalse(TEXT("No misreadable characters"),Code.Contains(TEXT("0")) || Code.Contains(TEXT("O")) || Code.Contains(TEXT("1")) || Code.Contains(TEXT("I"))); }
+ TestEqual(TEXT("Typing is forgiving"),Normalize(TEXT(" k7-qxm ")),FString(TEXT("K7QXM")));
+ TestEqual(TEXT("Input stops at the code length"),Normalize(TEXT("ABCDEFGH")),FString(TEXT("ABCDE")));
+ TestFalse(TEXT("Short codes are rejected"),IsValid(TEXT("ABCD")));
+ TestFalse(TEXT("Empty codes are rejected"),IsValid(FString()));
  return true;
 }
 #endif

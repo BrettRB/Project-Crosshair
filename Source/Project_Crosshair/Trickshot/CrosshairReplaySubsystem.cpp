@@ -42,9 +42,10 @@ void UCrosshairReplaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
   Settings.ControlPresetVersion=1;
  }
  if (Settings.Classes.IsEmpty()) for (int32 i=0;i<5;++i)
- { FCrosshairClass C; C.Name=FString::Printf(TEXT("Custom %d"),i+1); C.Primary=i%3; C.Secondary=(i+1)%3; C.Lethal=Settings.LethalType; Settings.Classes.Add(C); }
+ { FCrosshairClass C; C.Name=FString::Printf(TEXT("Custom %d"),i+1); C.Primary=i%3; C.Secondary=i%2 ? CrosshairLoadoutRules::Pistol : CrosshairLoadoutRules::SMG; C.Lethal=Settings.LethalType; Settings.Classes.Add(C); }
  Settings.ActiveClass=FMath::Clamp(Settings.ActiveClass,0,Settings.Classes.Num()-1);
- for (auto& C:Settings.Classes) { C.Primary=FMath::Clamp(C.Primary,0,2); C.Secondary=FMath::Clamp(C.Secondary,0,2); if (C.Secondary==C.Primary) C.Secondary=(C.Primary+1)%3; }
+ // Also repairs classes saved before the slot rules, such as a sniper and AR together.
+ for (auto& C:Settings.Classes) CrosshairLoadoutRules::Sanitize(C.Primary,C.Secondary);
  CrosshairGraphics::Upgrade(Settings);
  // First launch: benchmark this PC so integrated-graphics laptops start on a preset they can run.
  if (CrosshairGraphics::ShouldAutoDetect(Settings))

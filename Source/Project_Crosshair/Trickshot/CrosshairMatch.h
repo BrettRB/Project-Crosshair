@@ -188,6 +188,8 @@ public:
  UPROPERTY(Replicated,BlueprintReadOnly) int32 MaxHumans=1;
  /** Lobby summary of the host's setup, e.g. "Bots fill open slots  /  10 minutes". */
  UPROPERTY(Replicated,BlueprintReadOnly) FString LobbyInfo;
+ /** The friend code of an Online match; empty for LAN and offline. */
+ UPROPERTY(Replicated,BlueprintReadOnly) FString JoinCode;
  /** Hosted from the LAN setup: after the results, everyone returns to the lobby instead of Home. */
  UPROPERTY(Replicated,BlueprintReadOnly) bool bLanMatch=false;
  /** Server time when the results screen ends (back to the lobby on LAN, Home offline). */

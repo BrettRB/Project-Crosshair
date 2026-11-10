@@ -1,6 +1,6 @@
 # Practice controls and presentation
 
-Open the menu with Escape / Start. Click a category or use Q / E, Tab, or LB / RB to switch between Practice, Controls, Display, Targets, Replays, and Camos. Arrows / D-pad select rows; Left / Right adjust values; Enter / A activates. Click the arrow buttons to adjust a setting with the mouse. Escape / B closes the menu.
+The main menu has three choices: **Play** (Trickshot, Offline Match, LAN, Maps, Replays), **Customize** (Classes, Camos) and **Settings** (Controls, Graphics). In a game, Escape / Start opens a pause screen with Resume, Customize, Settings and Main menu (or Leave match). On any page, Escape / B goes back one level and Q / E, Tab or LB / RB switch between that page's tabs. Arrows / D-pad select rows; Left / Right adjust values; Enter / A activates. There is no quit row: Escape at the main menu opens an "Exit to desktop?" popup, which starts on Cancel.
 
 ## Saved attempt position
 
@@ -108,8 +108,8 @@ Main menu > Offline match vs bots, or Escape / Start > Offline Match, starts Fre
 | Dive | Left Ctrl | Click right stick | Sprinting |
 
 - **Sprint** builds to full speed over 0.25 s, adds a small field-of-view kick and head bob, and swings the gun low. It no longer works backwards or sideways, and it stops at once when you aim or fire. Bots are exempt from the direction limit.
-- **Slide** carries you forward at up to 950 cm/s, easing down over 0.85 s, and ends in a crouch. Jump during a slide to stand and jump straight out of it.
-- **Dive** launches you forward and slightly upward, then lands you prone. You can shoot during a dive.
+- **Slide** is feet first like a baseball slide: up to 950 cm/s, easing down over 0.85 s, then you pop back up to standing (or as soon as there is headroom). Jump during a slide to stand and jump straight out of it.
+- **Dive** is head first, launching you forward and slightly upward, then landing you in a crawl. You can shoot during a dive.
 - **Prone** crawls at 110 cm/s. Left Ctrl gets up if there is room, or comes up to a crouch if there is only room for that. C comes up to a crouch; Jump also gets up. Resetting an attempt or dying always stands you back up.
 
 ### Hit boxes
@@ -117,8 +117,14 @@ Main menu > Offline match vs bots, or Escape / Start > Offline Match, starts Fre
 Two things change with each stance. Both apply on every machine, and in replays and killcams:
 
 - **Movement capsule** (half-height): standing 96, crouch 58, slide 44, dive 42, prone 34.
-- **Shootable body**: shots hit the physics bodies that follow the third-person skeleton, so `UCrosshairLocomotionAnimInstance` poses the skeleton for each stance. Prone lies flat, head forward. A slide leans back, feet first. A dive is head first. A shot at standing chest height passes over a prone or sliding soldier, and one along the floor still hits a prone one.
+- **Shootable body**: shots hit the physics bodies that follow the third-person skeleton, so `UCrosshairLocomotionAnimInstance` poses the skeleton for each stance, with a code-driven animation for the dive, the slide and a knee-by-knee crawl (`CrosshairLocomotion::LayFor`). A shot at standing chest height passes over a prone or sliding soldier, and one along the floor still hits a prone one.
 
 A prone body is longer than the capsule, so its head and feet slide away from nearby walls instead of poking through them.
 
 Tuning is on `UCrosshairStanceComponent` (speeds and durations) and `CrosshairLocomotion::LayFor` (body layout). Verify with `-game -CrosshairSmoke -CrosshairMovementSmoke -NullRHI`.
+
+## Weapon classes (2026-11-09)
+
+- **Primary:** sniper, assault rifle or SMG. **Secondary:** SMG or the new pistol, and never the same gun twice, so a sniper and AR can no longer be carried together.
+- Saved classes that break the rule are repaired on load, keeping the primary. Bots follow the same rule, and the host enforces it for joined LAN players (`CrosshairLoadoutRules`, applied in `ApplyLoadout`).
+- **Pistol:** semi-automatic, 12 rounds. 30 damage to 12 m falling to 20 at 30 m, so four body shots up close. To regenerate it: `CROSSHAIR_WEAPON_MODELS=Pistol` with `Scripts/create_weapon_models.py`, then `Scripts/create_weapon_finishes.py`.

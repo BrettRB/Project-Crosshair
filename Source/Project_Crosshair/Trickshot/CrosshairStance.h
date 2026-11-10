@@ -52,7 +52,7 @@ public:
  bool HandleJump();
  /** Current top speed while crouched (slide decay, crawl speed, or the plain crouch speed). */
  float GetCrouchedSpeed(float CrouchSpeed) const;
- /** Ends a slide (menus, match end). A prone player stays down and a dive still lands. */
+ /** Ends a slide, standing back up (menus, match end). A prone player stays down and a dive still lands. */
  void Interrupt();
  /** Back to Normal now: death and attempt resets. */
  void Reset();

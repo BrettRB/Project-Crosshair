@@ -105,6 +105,11 @@ public:
 	bool IsSprinting() const;
 	/** 0 to 1 sprint build-up, for the speed, view and weapon. */
 	float GetSprintAlpha() const { return SprintAlpha; }
+	/** 0 to 1 eased weights for the first-person weapon during a slide and a dive. */
+	float GetSlideView() const { return SlideView; }
+	float GetDiveView() const { return DiveView; }
+	/** Tests: shows this soldier's third-person body and carried weapon even to its own player. */
+	bool bForceWorldBody = false;
 	/** Left Ctrl / right stick click: lie down, get up, or dive while sprinting. */
 	void PronePressed();
 	/** LAN client -> host: sprint and aim change movement speed, so the host must simulate the same intent. */
@@ -169,6 +174,7 @@ private:
 	bool bSentSprint = false, bSentAim = false;
 	float AimAlpha = 0;
 	float SprintAlpha = 0;
+	float SlideView = 0, DiveView = 0;
 	float EyeHeight = 64;
 	bool WantsToSprint(bool bWantsAim) const;
 	int32 PresentedHit = 0;

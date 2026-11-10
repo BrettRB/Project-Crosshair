@@ -29,6 +29,16 @@ private:
  void ProbeNavFloors(const TCHAR* Map);
  /** -CrosshairMovementSmoke: sprint, prone, dive and slide through real key presses, and bots walking up and down stairs. */
  void TickMovement();
+ /** -CrosshairMovementVisual (rendered): films a real dive, crawl and slide from a third-person camera. */
+ void TickMovementVisual();
+ /** -CrosshairMenuVisual (rendered): screenshots of the main menu, exit popup, each page and the pause screen. */
+ void TickMenuVisual();
+ /** -CrosshairOnlineHost and -CrosshairOnlineClient: a real Epic sign-in, published code and lookup. Needs the Epic IDs. */
+ void TickOnline();
+ FString OnlineLastStatus;
+ TWeakObjectPtr<class ACameraActor> VisualCamera;
+ int32 VisualShot=0;
+ FVector VisualSpot=FVector::ZeroVector;
  void TickLan();
  /** LAN: walk, aim and switch weapons with real key presses through this player's own input mapping. True when done. */
  bool TickRealInput(const TCHAR* Who);

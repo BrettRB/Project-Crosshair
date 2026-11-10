@@ -237,6 +237,7 @@ void ACrosshairBotController::Roam()
  }
  else if (Now-LastProgressAt>3.0)
  {
+  if (TripStage==2) UE_LOG(LogTemp,Log,TEXT("Crosshair bot gave up a stair trip at waypoint %d of %d, %s"),TripIndex,TripRoute.Num(),*Self->GetActorLocation().ToCompactString());
   // A tag the bot cannot reach (a roof, a ledge) is left for others.
   if (bChasingTag) { SkippedTag=GoalTag; bChasingTag=false; }
   StopMovement(); bHasDestination=false; TripStage=0; if (bDirectMove) Self->Jump(); bDirectMove=false; LastProgressAt=Now;

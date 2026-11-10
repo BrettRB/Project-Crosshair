@@ -17,6 +17,9 @@ Saved/
 *.xcodeproj
 *.xcworkspace
 
+# Epic Online Services IDs (secret)
+Content/Online/CrosshairOnline.local.ini
+
 # OS files
 .DS_Store
 Thumbs.db
