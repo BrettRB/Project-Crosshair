@@ -4288,3 +4288,31 @@ Recommended keeping the file: without it the packaged game shows "Online isn't a
 ### Response Summary
 Advised keeping the file in the zip, confirming the client's Peer2Peer policy, and keeping the file out of git.
 ---
+
+---
+## Interaction 94
+
+### User Prompt
+so its fine if those id numbers are seen since they just allow people to join the games
+
+### Interpretation
+Confirm whether it is acceptable for the Epic IDs in the packaged game to be visible to players.
+
+### Requirements / Acceptance Criteria
+- An accurate confirmation, including any limit on it.
+
+### Actions Taken
+Confirmed it is acceptable if the client uses the Peer2Peer policy. Clarified that the IDs act like a copy of the game's own access, so someone could also host sessions or send junk traffic under the product, but they do not give access to the Epic developer account.
+
+### Files Changed
+- docs/ai-interaction-log.md (this entry)
+
+### Verification
+- Question only, no build or tests. The client's policy in the Epic Developer Portal still has not been confirmed.
+
+### Notes / Follow-up
+- The user should confirm the Peer2Peer policy before publishing.
+
+### Response Summary
+Confirmed the IDs are fine to expose under a Peer2Peer policy and clarified what they do and do not allow.
+---
