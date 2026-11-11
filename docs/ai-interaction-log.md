@@ -4260,3 +4260,31 @@ Write Markdown release notes for v1.3.1, following the earlier release notes, an
 ### Response Summary
 Saved the v1.3.1 release notes to Downloads and flagged the Epic secret in the zip and the untested cross-network Online play.
 ---
+
+---
+## Interaction 93
+
+### User Prompt
+So should I delete that file from the zip folder or what
+
+### Interpretation
+Decide whether `CrosshairOnline.local.ini` should be removed from the v1.3.1 zip because it contains the Epic Client Secret.
+
+### Requirements / Acceptance Criteria
+- A clear recommendation that accounts for what removing the file would break.
+
+### Actions Taken
+Recommended keeping the file: without it the packaged game shows "Online isn't available in this build". Epic's SDK needs these credentials on each player's PC, so shipping them is expected for a peer-to-peer client. Advised confirming in the Epic Developer Portal that the client uses the Peer2Peer policy and not a trusted-server policy.
+
+### Files Changed
+- docs/ai-interaction-log.md (this entry)
+
+### Verification
+- Question only, no build or tests. The zip was not changed. The client's policy in the Epic Developer Portal could not be checked from here.
+
+### Notes / Follow-up
+- If the credentials are abused, create a new client in the portal, update the ini and repackage.
+
+### Response Summary
+Advised keeping the file in the zip, confirming the client's Peer2Peer policy, and keeping the file out of git.
+---
