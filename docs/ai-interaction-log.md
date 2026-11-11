@@ -4227,3 +4227,36 @@ Read `Saved/Logs/Project_Crosshair.log`, which reported `Failed to load UnrealEd
 ### Response Summary
 Explained that stale binaries still imported the removed OnlineSubsystemEOS plugin, rebuilt the editor target, and confirmed the module now loads so the user can open the project and package it.
 ---
+
+---
+## Interaction 92
+
+### User Prompt
+now create the markdown file for version 1.3.1
+
+### Interpretation
+Write Markdown release notes for v1.3.1, following the earlier release notes, and save them in the Downloads folder like the previous ones.
+
+### Requirements / Acceptance Criteria
+- A Markdown file for v1.3.1 is in the Downloads folder.
+- It follows the v1.3.0 layout and accurately covers the changes since v1.3.0.
+
+### Actions Taken
+- Read the v1.3.0 notes and Interactions 86-91. The v1.3.0 package (2026-11-09 7:28 PM) predates c440296, so the player-facing changes are the Online move to Epic Game Services and the killcam stand-in collision fix, plus the Mac README instructions.
+- Listed file names in `Project Crosshair v1.3.1.zip` without extracting it: the game exe dates from 2026-11-10 8:30 PM, after c440296, and `Content/Online/CrosshairOnline.local.ini` is included.
+- Wrote player-facing notes: download, what's new, known limitations, credits.
+
+### Files Changed
+- ~/Downloads/Project Crosshair v1.3.1 Release Notes.md (outside the repo)
+- docs/ai-interaction-log.md
+
+### Verification
+- `git log`, `git tag`, a listing of Downloads, and a listing of file names in the v1.3.1 zip. Documentation only, so no build was run for this request.
+
+### Notes / Follow-up
+- The v1.3.1 zip includes `CrosshairOnline.local.ini` with the Epic Client Secret, so anyone who downloads it can read the secret (first noted in Interaction 86).
+- Online between separate PCs and in a packaged build has no recorded test result. The notes list this as a known limitation and should be updated if the user's test confirms it.
+
+### Response Summary
+Saved the v1.3.1 release notes to Downloads and flagged the Epic secret in the zip and the untested cross-network Online play.
+---
