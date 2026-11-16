@@ -4452,3 +4452,60 @@ Node.js, python-docx and LibreOffice were not available, so I generated the .doc
 ### Response Summary
 Saved a one-page security response .docx to Downloads covering key concerns, a prioritized fix plan and justified accepted risks.
 ---
+
+---
+## Interaction 99
+
+### User Prompt
+Using the safety report you wrote, go through and start working on fixing some of those issues, primarily focus on the high risk ones.
+
+### Interpretation
+Start fixing findings from `docs/security-audit.md`, highest risk first. F1 (High) is mainly a Developer Portal policy check that can't be done from the repo, so make the repo-side mitigations, then fix the next items in the remediation plan that can be fixed in code: F5 (Development + PDB release) and the Medium cheat vectors F3 (loadout refill) and F4 (client-trusted stance).
+
+### Requirements / Acceptance Criteria
+- F1: the template ini no longer ships, and the docs say the shipped IDs are public and must use a minimal client policy. The portal check is reported as still open.
+- F5: packaging defaults to Shipping without debug files, and the Shipping target compiles.
+- F3: a joined player cannot refill ammo or lethals mid-life through `ServerApplyLoadout`.
+- F4: the host validates stance requests (no mid-air dive chaining, no slide or dive without sprint, dive cooldown, no standing inside geometry, valid enum, flat dive direction).
+- Unit tests for the new rules. The existing suite and the LAN smoke test still pass.
+
+### Actions Taken
+- Added `CrosshairLoadoutRules::AcceptsMatchLoadout` (once per life, alive, within 5 s of possession) and used it in `ServerApplyLoadout`. Added `PossessedAt` and `bMatchLoadoutApplied` to the character.
+- Added `CrosshairStanceRules::ServerAllows` with `DiveCooldownSeconds` and `GroundGraceSeconds`. `ServerSetStance` now validates against the host's copy: grounded tracking in `TickComponent`, sprint intent via the new `WantsSprint()`, and `HasRoom` before rising. It flattens the dive direction and sends a new `ClientCorrectStance` RPC when it refuses a request.
+- Moved `CrosshairOnline.example.ini` from `Content/Online/` (staged loose into builds) to `docs/` and added policy guidance there, in `DefaultGame.ini` and in `docs/offline-match-and-lan.md`.
+- Set `BuildConfiguration=PPBC_Shipping` and `IncludeDebugFiles=False` in `DefaultGame.ini`. Made Shipping the `package_mac.sh` default and updated README and `docs/mac.md`.
+- Found that the Shipping target did not compile: `FCrosshairBotTuningTest` in `CrosshairRulesTests.cpp` sat outside its `WITH_DEV_AUTOMATION_TESTS` guard. Merged the guards.
+- Added a remediation status section (section 8) to `docs/security-audit.md`.
+
+### Files Changed
+- Config/DefaultGame.ini
+- Content/Online/CrosshairOnline.example.ini -> docs/CrosshairOnline.example.ini
+- README.md
+- Scripts/package_mac.sh
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairCharacter.h
+- Source/Project_Crosshair/Trickshot/CrosshairData.h
+- Source/Project_Crosshair/Trickshot/CrosshairStance.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairStance.h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairRulesTests.cpp
+- docs/mac.md
+- docs/offline-match-and-lan.md
+- docs/security-audit.md
+- docs/ai-interaction-log.md (this entry)
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development`: Succeeded.
+- `Build.bat Project_Crosshair Win64 Shipping`: failed at first (the existing guard bug), then Succeeded after the fix.
+- `UnrealEditor-Cmd ... -ExecCmds="Automation RunTests Crosshair"`: 20/20 Success, including new `Crosshair.Security.MatchLoadoutGate` and `Crosshair.Security.ServerStanceGate`. Rerun after the guard fix, still 20/20.
+- Two-process LAN smoke (`-game -CrosshairSmoke -CrosshairLanHost` / `-CrosshairLanClient -NullRHI`): CROSSHAIR_LAN_HOST_OK and CROSSHAIR_LAN_CLIENT_OK. The joined player's class (SMG + pistol) is applied, and their dive/prone reaches the host.
+
+### Notes / Follow-up
+- **F1 is still open:** confirm the EOS client uses the Peer2Peer/GameClient policy in the Developer Portal. Rotate the client if it was ever broader.
+- A full Shipping package was not produced. On the next release, check for a `*-Shipping.exe`, no `.pdb` and no console. Graphics cvars marked `ECVF_Cheat` are not settable in Shipping; the code already null-checks them.
+- Not yet tested: a modified client actually sending forged RPCs.
+- Next: F2 (host-checked join code, hashed advertisement, kick), then F6 and the low-risk backlog.
+- `Build/Windows/FileOpenOrder/EditorOpenOrder.log` was already modified and was left uncommitted.
+
+### Response Summary
+Made the repo-side F1 mitigations and noted that the portal policy check is still the user's action. Switched packaging to Shipping without PDBs and fixed the existing guard bug that stopped Shipping from compiling. Added host-side validation for the loadout and stance RPCs, with unit tests. All tests and the LAN smoke test pass.
+---

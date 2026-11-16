@@ -1,11 +1,11 @@
 #!/bin/sh
 # Builds, cooks and packages Crosshair as a Mac app (run on a Mac; Unreal cannot build Mac games from Windows).
 # Needs Unreal Engine 5.8 for Mac and Xcode 15.2 or newer (26.x recommended) with its command line tools.
-#   sh Scripts/package_mac.sh                 -> Packaged/Mac/Project_Crosshair.app (Development)
-#   sh Scripts/package_mac.sh Shipping        -> Shipping configuration instead
+#   sh Scripts/package_mac.sh                 -> Packaged/Mac/Project_Crosshair.app (Shipping, for players)
+#   sh Scripts/package_mac.sh Development     -> Development configuration for testing (console and debug commands)
 # Override the engine location with UE_ROOT=/path/to/UE_5.8 if it is not in the launcher's default folder.
 set -e
-CONFIG="${1:-Development}"
+CONFIG="${1:-Shipping}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 UE_ROOT="${UE_ROOT:-/Users/Shared/Epic Games/UE_5.8}"
 UAT="$UE_ROOT/Engine/Build/BatchFiles/RunUAT.sh"

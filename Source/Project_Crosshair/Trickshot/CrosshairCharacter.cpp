@@ -138,6 +138,7 @@ void ACrosshairCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 	bReplayFocus = NewController && NewController->IsLocalPlayerController();
+	PossessedAt = GetWorld()->GetTimeSeconds();
 	// TDM uniforms: Alpha wears the first half of the soldier catalog, Bravo the second.
 	const auto* Match = NewController ? NewController->GetPlayerState<ACrosshairMatchPlayerState>() : nullptr;
 	if (!Match || !MatchAppearance->Catalog || MatchAppearance->Catalog->Designs.IsEmpty()) return;
@@ -532,8 +533,9 @@ void ACrosshairCharacter::ServerLethal_Implementation(uint8 Action)
 }
 void ACrosshairCharacter::ServerApplyLoadout_Implementation(int32 Primary, int32 Secondary, ECrosshairLethalType Lethal)
 {
-	const int32 Count = Inventory->Weapons.Num();
-	if (Count < 2 || !IsInMatch()) return;
+	// Applying a class restocks ammo and lethals, so the host takes it only once, just after this soldier spawned.
+	if (!CrosshairLoadoutRules::AcceptsMatchLoadout(IsInMatch(), Inventory->Weapons.Num(), Health->bDead, bMatchLoadoutApplied, float(GetWorld()->GetTimeSeconds() - PossessedAt))) return;
+	bMatchLoadoutApplied = true;
 	// ApplyLoadout enforces the slot rules, so a joined player cannot request an illegal class either.
 	Inventory->ApplyLoadout(Primary, Secondary, Lethal == ECrosshairLethalType::Tomahawk ? Lethal : ECrosshairLethalType::Frag);
 }

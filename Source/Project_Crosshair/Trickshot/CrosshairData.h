@@ -249,6 +249,16 @@ namespace CrosshairLoadoutRules
 		const int32 Other = Secondary == SMG ? Pistol : SMG;
 		if (Other != Primary) Secondary = Other;
 	}
+	/** How long after possessing a soldier the host still accepts the joined player's class (it arrives one round trip later). */
+	constexpr float SpawnLoadoutSeconds = 5.f;
+	/**
+	 * Host check for a joined player's class request. Applying a class refills ammo and lethals, so the host takes it
+	 * once per life, while alive and just after spawning. A class picked later waits for the next spawn.
+	 */
+	inline bool AcceptsMatchLoadout(bool bInMatch, int32 WeaponCount, bool bDead, bool bAlreadyApplied, float SecondsSincePossessed)
+	{
+		return bInMatch && WeaponCount >= 2 && !bDead && !bAlreadyApplied && SecondsSincePossessed >= 0.f && SecondsSincePossessed <= SpawnLoadoutSeconds;
+	}
 }
 
 namespace CrosshairRules

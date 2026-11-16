@@ -431,7 +431,7 @@ When another soldier kills you in a match (offline or LAN), you see the last mom
 
 **How it works:** Epic Online Services matches the code to the host and connects players peer-to-peer, using Epic's relay when a direct path fails. Each PC signs in anonymously with a device ID. Online reuses the LAN lobby, setup and match rules; only finding and connecting differs. LAN stays on IP sockets.
 
-**One-time developer setup:** create a product and a Peer2Peer client in the [Epic Developer Portal](https://dev.epicgames.com/portal), then put its five IDs in `Content/Online/CrosshairOnline.local.ini`. The file is git-ignored and packaged builds include it automatically, so GitHub releases work for players while the source repository holds no secret. A source build without it shows "Online isn't available in this build". `CrosshairOnline.example.ini` is the template.
+**One-time developer setup:** create a product and a Peer2Peer client in the [Epic Developer Portal](https://dev.epicgames.com/portal), then put its five IDs in `Content/Online/CrosshairOnline.local.ini`. The file is git-ignored and packaged builds include it automatically, so GitHub releases work for players while the source repository holds no secret. A source build without it shows "Online isn't available in this build". `docs/CrosshairOnline.example.ini` is the template; it is kept out of `Content/Online` because everything in that folder ships with the game. Players can read the shipped IDs, so the client must use the Peer2Peer (or GameClient) policy with no extra permissions.
 
 **After a match:** LAN and Online groups return to the same lobby together when the results timer ends; the host can go early with Enter / A. Leave from the lobby to quit.
 

@@ -26,10 +26,32 @@ void UCrosshairStanceComponent::OnRep_Stance()
 }
 void UCrosshairStanceComponent::ServerSetStance_Implementation(ECrosshairStance NewStance,FVector_NetQuantizeNormal NewDirection)
 {
- const bool bDive=NewStance==ECrosshairStance::Dive && Stance!=ECrosshairStance::Dive;
- Stance=NewStance; Direction=NewDirection; Elapsed=0;
+ ACrosshairCharacter* Player=GetPlayer();
+ if (!Player || NewStance==Stance) return;
+ // The host re-checks the owner's decision against its own copy of this soldier.
+ const double Now=GetWorld()->GetTimeSeconds();
+ const bool bRise=NewStance==ECrosshairStance::Normal && Stance!=ECrosshairStance::Slide;
+ if (!CrosshairStanceRules::ServerAllows(Stance,NewStance,Player->CanAct(),Now-LastGroundedAt<=CrosshairStanceRules::GroundGraceSeconds,
+  Player->WantsSprint(),Now-LastDiveAt>=CrosshairStanceRules::DiveCooldownSeconds,bRise && HasRoom(CrosshairStanceRules::CrouchHalfHeight)))
+ {
+  ClientCorrectStance(Stance);
+  return;
+ }
+ // Slides and dives run along the ground; a tilted direction would turn the dive launch into a vertical boost.
+ FVector Flat=FVector(NewDirection).GetSafeNormal2D();
+ if (Flat.IsNearlyZero()) Flat=Player->GetActorForwardVector().GetSafeNormal2D();
+ const bool bDive=NewStance==ECrosshairStance::Dive;
+ Stance=NewStance; Direction=Flat; Elapsed=0;
  ApplyStance();
- if (ACrosshairCharacter* Player=GetPlayer(); Player && bDive) Player->LaunchCharacter(Direction*DiveForwardSpeed+FVector::UpVector*DiveUpSpeed,true,true);
+ if (bDive) { LastDiveAt=Now; Player->LaunchCharacter(Direction*DiveForwardSpeed+FVector::UpVector*DiveUpSpeed,true,true); }
+}
+void UCrosshairStanceComponent::ClientCorrectStance_Implementation(ECrosshairStance HostStance)
+{
+ ACrosshairCharacter* Player=GetPlayer();
+ if (!Player || HostStance==Stance) return;
+ Stance=HostStance; Elapsed=0;
+ ApplyStance();
+ if (Stance==ECrosshairStance::Normal) Player->UnCrouch();
 }
 void UCrosshairStanceComponent::SetStance(ECrosshairStance NewStance,const FVector& NewDirection)
 {
@@ -123,6 +145,7 @@ void UCrosshairStanceComponent::TickComponent(float Delta,ELevelTick Type,FActor
 {
  Super::TickComponent(Delta,Type,Function);
  ACrosshairCharacter* Player=GetPlayer();
+ if (Player && Player->HasAuthority() && Player->GetCharacterMovement()->IsMovingOnGround()) LastGroundedAt=GetWorld()->GetTimeSeconds();
  if (!IsActive() || !Player || Player->IsReplayPlayback()) return;
  Elapsed+=Delta;
  // Only the owner decides; the host mirrors what it is told.

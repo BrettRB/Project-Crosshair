@@ -101,6 +101,8 @@ public:
 	float TrickshotUntil = 0;
 	void SetBotInput(bool bAim, bool bSprint) { bAimHeld = bAim; bSprintHeld = bSprint; }
 	bool IsAimHeld() const { return bAimHeld; }
+	/** Sprint intent; on the host this is what a joined player last reported. */
+	bool WantsSprint() const { return bSprintHeld; }
 	/** True while actually sprinting: the only state that can start a slide or a dive. */
 	bool IsSprinting() const;
 	/** 0 to 1 sprint build-up, for the speed, view and weapon. */
@@ -172,6 +174,9 @@ private:
 	float LastYaw = 0;
 	bool bHasLastYaw = false;
 	bool bSentSprint = false, bSentAim = false;
+	/** Host only: a joined player's class was already applied to this soldier, and when it was possessed. */
+	bool bMatchLoadoutApplied = false;
+	double PossessedAt = -100;
 	float AimAlpha = 0;
 	float SprintAlpha = 0;
 	float SlideView = 0, DiveView = 0;

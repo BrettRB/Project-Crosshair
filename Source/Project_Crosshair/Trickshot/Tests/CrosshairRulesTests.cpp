@@ -124,8 +124,6 @@ bool FCrosshairObjTest::RunTest(const FString& Parameters)
  return true;
 }
 
-#endif
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairBotTuningTest, "Crosshair.Bots.DifficultyPresets", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
 bool FCrosshairBotTuningTest::RunTest(const FString& Parameters)
 {
@@ -142,7 +140,6 @@ bool FCrosshairBotTuningTest::RunTest(const FString& Parameters)
  return true;
 }
 
-#if WITH_DEV_AUTOMATION_TESTS
 #include "../CrosshairMatch.h"
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairMatchRulesTest, "Crosshair.Match.Rules", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
 bool FCrosshairMatchRulesTest::RunTest(const FString& Parameters)
@@ -374,6 +371,45 @@ bool FCrosshairOnlineCodeTest::RunTest(const FString&)
  TestEqual(TEXT("Input stops at the code length"),Normalize(TEXT("ABCDEFGH")),FString(TEXT("ABCDE")));
  TestFalse(TEXT("Short codes are rejected"),IsValid(TEXT("ABCD")));
  TestFalse(TEXT("Empty codes are rejected"),IsValid(FString()));
+ return true;
+}
+#include "../CrosshairStance.h"
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairMatchLoadoutGateTest, "Crosshair.Security.MatchLoadoutGate", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairMatchLoadoutGateTest::RunTest(const FString&)
+{
+ using namespace CrosshairLoadoutRules;
+ TestTrue(TEXT("A fresh soldier takes its class"),AcceptsMatchLoadout(true,2,false,false,.4f));
+ TestFalse(TEXT("A second request in the same life is refused (no ammo or lethal refill)"),AcceptsMatchLoadout(true,2,false,true,.6f));
+ TestFalse(TEXT("A request long after spawning is refused"),AcceptsMatchLoadout(true,2,false,false,SpawnLoadoutSeconds+1.f));
+ TestFalse(TEXT("A dead soldier cannot restock"),AcceptsMatchLoadout(true,2,true,false,.4f));
+ TestFalse(TEXT("Practice has no networked class requests"),AcceptsMatchLoadout(false,2,false,false,.4f));
+ TestFalse(TEXT("A soldier without two weapons is skipped"),AcceptsMatchLoadout(true,1,false,false,.4f));
+ return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairServerStanceTest, "Crosshair.Security.ServerStanceGate", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairServerStanceTest::RunTest(const FString&)
+{
+ using namespace CrosshairStanceRules;
+ using S=ECrosshairStance;
+ // From, To, can act, recently grounded, sprint held, dive cooled down, room to rise
+ TestTrue(TEXT("Sprinting on the ground can dive"),ServerAllows(S::Normal,S::Dive,true,true,true,true,true));
+ TestFalse(TEXT("No dive in mid-air"),ServerAllows(S::Normal,S::Dive,true,false,true,true,true));
+ TestFalse(TEXT("No dive without sprinting"),ServerAllows(S::Normal,S::Dive,true,true,false,true,true));
+ TestFalse(TEXT("No dive during the cooldown"),ServerAllows(S::Normal,S::Dive,true,true,true,false,true));
+ TestFalse(TEXT("No dive out of a slide or prone"),ServerAllows(S::Slide,S::Dive,true,true,true,true,true) || ServerAllows(S::Prone,S::Dive,true,true,true,true,true));
+ TestFalse(TEXT("No dive while dead"),ServerAllows(S::Normal,S::Dive,false,true,true,true,true));
+ TestTrue(TEXT("Sprinting on the ground can slide"),ServerAllows(S::Normal,S::Slide,true,true,true,false,true));
+ TestFalse(TEXT("No slide from a standstill"),ServerAllows(S::Normal,S::Slide,true,true,false,true,true));
+ TestFalse(TEXT("No slide in mid-air"),ServerAllows(S::Normal,S::Slide,true,false,true,true,true));
+ TestTrue(TEXT("Lying down on the ground"),ServerAllows(S::Normal,S::Prone,true,true,false,false,true));
+ TestFalse(TEXT("No lying down in mid-air"),ServerAllows(S::Normal,S::Prone,true,false,false,false,true));
+ TestTrue(TEXT("A dive lands prone"),ServerAllows(S::Dive,S::Prone,true,false,false,false,true));
+ TestTrue(TEXT("Getting up with room"),ServerAllows(S::Prone,S::Normal,true,true,false,false,true));
+ TestFalse(TEXT("No standing up inside a ceiling"),ServerAllows(S::Prone,S::Normal,true,true,false,false,false));
+ TestTrue(TEXT("A slide always ends"),ServerAllows(S::Slide,S::Normal,true,false,false,false,false));
+ TestTrue(TEXT("Death resets the stance"),ServerAllows(S::Prone,S::Normal,false,false,false,false,false));
+ TestFalse(TEXT("Same stance is ignored"),ServerAllows(S::Prone,S::Prone,true,true,true,true,true));
+ TestFalse(TEXT("Out-of-range stance values are refused"),ServerAllows(S::Normal,static_cast<S>(7),true,true,true,true,true));
  return true;
 }
 #endif

@@ -119,8 +119,8 @@ Without a GitHub SSH key, clone `https://github.com/BrettRB/Project-Crosshair.gi
 From the project folder in Terminal:
 
 ```
-sh Scripts/package_mac.sh            # Development build
-sh Scripts/package_mac.sh Shipping   # Shipping build
+sh Scripts/package_mac.sh               # Shipping build (for players)
+sh Scripts/package_mac.sh Development   # Development build (testing only)
 ```
 
 The app is written to `Packaged/Mac/Project_Crosshair.app`. If Unreal is installed somewhere else, run `UE_ROOT="/path/to/UE_5.8" sh Scripts/package_mac.sh`. You can also package from the editor with **Platforms → Mac → Package Project**.

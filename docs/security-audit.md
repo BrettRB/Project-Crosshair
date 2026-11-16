@@ -307,3 +307,17 @@ The replicated `MapId` cannot reach outside the GUID folders, so a remote host c
 - **F4:** Test that `ServerSetStance(Dive)` from a non-sprinting or airborne character, or one still in dive cooldown, does not call `LaunchCharacter` (velocity unchanged).
 - **F5:** Confirm the packaged exe is `*-Shipping.exe`, that the archive contains no `.pdb`, and that the `~` console does not open.
 - **F9:** Test that a hand-placed map folder with an oversized OBJ or a non-PNG/JPG texture is skipped by `Refresh()`.
+
+---
+
+## 8. Remediation Status (2026-11-16)
+
+| Finding | Status | What changed |
+|---|---|---|
+| F1 | **Partly mitigated; owner action still required** | `CrosshairOnline.example.ini` moved from `Content/Online/` (which ships loose) to `docs/`, so builds now ship only the local ini. Comments in `DefaultGame.ini`, the template and `docs/offline-match-and-lan.md` state that the shipped IDs are public and the client must use the Peer2Peer/GameClient policy. **The Developer Portal policy check (and a client rotation if it was ever broader) cannot be done from the repository and is still open.** Until it is confirmed, F1 stays High. |
+| F5 | **Fixed (config); verify on next release** | `DefaultGame.ini` now sets `BuildConfiguration=PPBC_Shipping` and `IncludeDebugFiles=False`. `Scripts/package_mac.sh` defaults to Shipping (Development only on request), with README and `docs/mac.md` updated to match. The Shipping target had never compiled: a test in `Tests/CrosshairRulesTests.cpp` sat outside its `WITH_DEV_AUTOMATION_TESTS` guard. The guard was fixed and `Build.bat Project_Crosshair Win64 Shipping` now succeeds. |
+| F3 | **Fixed** | `ServerApplyLoadout` now goes through `CrosshairLoadoutRules::AcceptsMatchLoadout`: once per life, alive, and within 5 s of possession. A class chosen later still applies on the next spawn, as the menu already says. |
+| F4 | **Fixed** | `ServerSetStance` now goes through `CrosshairStanceRules::ServerAllows`. Slide/dive need the host's copy to have been on the ground in the last 0.3 s, plus sprint intent. Dives have a 0.5 s cooldown. Prone needs ground or a landing dive. Getting up from prone needs crouch-height room. Out-of-range enum values are refused, and the dive direction is flattened to the ground plane. A refused request sends `ClientCorrectStance` so the owner snaps back to the host's stance. |
+| F2, F6–F11 | Open | Not yet addressed. Next in priority: F2 (host-checked join code, hashed advertisement, kick). |
+
+**Verification:** new automation tests `Crosshair.Security.MatchLoadoutGate` and `Crosshair.Security.ServerStanceGate`. Full `Crosshair` suite: 20/20 pass. The two-process LAN smoke test (`-CrosshairLanHost` / `-CrosshairLanClient`) passes: the joined player's class still applies, and their dive/prone still reaches the host. A Shipping game build compiles. A full Shipping package (`.exe` name, no `.pdb`, console disabled) has not been produced yet and should be checked on the next release.

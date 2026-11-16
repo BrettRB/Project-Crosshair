@@ -23,6 +23,25 @@ namespace CrosshairStanceRules
  }
  /** Slide top speed easing from the entry speed down to crouch speed. */
  inline float SlideSpeed(float Start,float End,float T) { T=FMath::Clamp(T,0.f,1.f); return FMath::Lerp(Start,End,T*T); }
+ /** Shortest gap between two dives the host accepts. A real dive spends longer than this in the air. */
+ constexpr float DiveCooldownSeconds=.5f;
+ /** How long after leaving the ground the host still treats a slide or dive as started on the ground (network delay). */
+ constexpr float GroundGraceSeconds=.3f;
+ /**
+  * Host check for a stance change a joined player asks for. The owner decides stances, but without this a modified
+  * client could chain dive launches in mid-air, slide from a standstill, or stand up inside a ceiling.
+  * Returning to Normal is always allowed once the soldier cannot act (death and match-end resets).
+  */
+ inline bool ServerAllows(ECrosshairStance From,ECrosshairStance To,bool bCanAct,bool bRecentlyGrounded,bool bWantsSprint,bool bDiveReady,bool bRoomToRise)
+ {
+  if (To==From || uint8(To)>uint8(ECrosshairStance::Dive)) return false;
+  if (To==ECrosshairStance::Normal) return !bCanAct || From==ECrosshairStance::Slide || bRoomToRise;
+  if (!bCanAct) return false;
+  if (To==ECrosshairStance::Prone) return From==ECrosshairStance::Dive || (From==ECrosshairStance::Normal && bRecentlyGrounded);
+  // Slides and dives start from a sprint on the ground.
+  if (From!=ECrosshairStance::Normal || !bRecentlyGrounded || !bWantsSprint) return false;
+  return To==ECrosshairStance::Slide || bDiveReady;
+ }
 }
 
 /**
@@ -64,6 +83,8 @@ public:
 private:
  UFUNCTION() void OnRep_Stance();
  UFUNCTION(Server,Reliable) void ServerSetStance(ECrosshairStance NewStance,FVector_NetQuantizeNormal NewDirection);
+ /** Host -> owner: a requested change was refused, so the owner goes back to the host's stance. */
+ UFUNCTION(Client,Reliable) void ClientCorrectStance(ECrosshairStance HostStance);
  ACrosshairCharacter* GetPlayer() const;
  /** Decides a change on this machine: applies it and tells the host. */
  void SetStance(ECrosshairStance NewStance,const FVector& NewDirection);
@@ -72,4 +93,6 @@ private:
  UPROPERTY(ReplicatedUsing=OnRep_Stance) ECrosshairStance Stance=ECrosshairStance::Normal;
  FVector Direction=FVector::ForwardVector;
  float Elapsed=0;
+ /** Host only: when this soldier was last on the ground, and when its last dive launched. */
+ double LastGroundedAt=-100,LastDiveAt=-100;
 };

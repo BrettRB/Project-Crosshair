@@ -22,8 +22,8 @@ Open `Project_Crosshair.uproject` in Unreal Editor 5.8 and click **Yes** when it
 ## Package a Mac app
 
 ```
-sh Scripts/package_mac.sh            # Development build
-sh Scripts/package_mac.sh Shipping   # Shipping build
+sh Scripts/package_mac.sh               # Shipping build (for players)
+sh Scripts/package_mac.sh Development   # Development build (testing only)
 ```
 
 The script runs Unreal's `BuildCookRun` for the `Mac` platform and writes `Packaged/Mac/Project_Crosshair.app` (the `Packaged/` folder is git-ignored). If the engine is somewhere else, set `UE_ROOT=/path/to/UE_5.8` first. You can also package from the editor with **Platforms → Mac → Package Project**.
