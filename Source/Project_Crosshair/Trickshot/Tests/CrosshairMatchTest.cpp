@@ -401,6 +401,8 @@ void UCrosshairMatchTest::TickOnline()
  const FString CodeFile=FPaths::ProjectSavedDir()/TEXT("CrosshairOnlineCode.txt");
  // The joined player writes this once it has played on the host; the host stays up until then.
  const FString ClientDoneFile=FPaths::ProjectSavedDir()/TEXT("CrosshairOnlineClientDone.txt");
+ // The removed player writes this once its rejoin was refused.
+ const FString ClientRemovedFile=FPaths::ProjectSavedDir()/TEXT("CrosshairOnlineClientRemoved.txt");
  if (Session->LanStatus!=OnlineLastStatus) { OnlineLastStatus=Session->LanStatus; UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO status: %s"),*OnlineLastStatus); }
  auto Finish=[&]{ UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_DONE")); bDone=true; FPlatformMisc::RequestExitWithStatus(false,0); };
  const bool bHost=HasMatchTestFlag(TEXT("CrosshairOnlineHost"));
@@ -415,7 +417,7 @@ void UCrosshairMatchTest::TickOnline()
  case 0:
   if (!PC || !PC->GetPawn() || Elapsed<3) return;
   if (!Check(UCrosshairMatchSession::IsOnlineConfigured(),TEXT("The Epic IDs are read from the local file"))) return;
-  if (bHost) { IFileManager::Get().Delete(*CodeFile); IFileManager::Get().Delete(*ClientDoneFile); Session->HostOnlineMatch(); Next(1); }
+  if (bHost) { IFileManager::Get().Delete(*CodeFile); IFileManager::Get().Delete(*ClientDoneFile); IFileManager::Get().Delete(*ClientRemovedFile); Session->HostOnlineMatch(); Next(1); }
   else Next(2);
   return;
  case 1:
@@ -428,6 +430,8 @@ void UCrosshairMatchTest::TickOnline()
   if (!Match || Match->CountHumans()<2) { if (Elapsed>120) Check(false,TEXT("A second player joins through the code")); return; }
   if (Elapsed<1) return;
   Check(true,TEXT("A second player joins through the code"));
+  // The client tried a wrong code first; the host turned it away before letting the right one in.
+  if (!Check(Session->JoinGate.Failures.Num()==1 && Session->JoinGate.Failures.CreateConstIterator().Value()==1,TEXT("The host refused a join with the wrong code"))) return;
   // Give the joined player a moment in the lobby, then start like the host would (Start match).
   StepStarted=FPlatformTime::Seconds(); Next(5); return;
  case 5:
@@ -442,6 +446,16 @@ void UCrosshairMatchTest::TickOnline()
  case 8:
   if (!IFileManager::Get().FileExists(*ClientDoneFile)) { if (Elapsed>90) Check(false,TEXT("The joined player confirms the Online match")); return; }
   Check(true,TEXT("The joined player confirms the Online match"));
+  {
+   // The host removes the joined player, who then cannot rejoin with the code.
+   APlayerController* Joined=nullptr;
+   for (FConstPlayerControllerIterator It=World->GetPlayerControllerIterator();It;++It) if (It->Get() && !It->Get()->IsLocalController()) Joined=It->Get();
+   if (!Check(Joined && Session->RemovePlayer(Joined),TEXT("The host removes the joined player"))) return;
+  }
+  Next(12); return;
+ case 12:
+  if (!IFileManager::Get().FileExists(*ClientRemovedFile) || (Match && Match->CountHumans()>1)) { if (Elapsed>120) Check(false,TEXT("The removed player is refused when rejoining with the code")); return; }
+  if (!Check(Session->JoinGate.Removed.Num()==1,TEXT("The removed player is refused when rejoining with the code"))) return;
   // Leaving removes the code listing.
   Session->LeaveMatch();
   Next(10); return;
@@ -456,8 +470,19 @@ void UCrosshairMatchTest::TickOnline()
   if (!FFileHelper::LoadFileToString(Code,*CodeFile)) { if (Elapsed>120) Check(false,TEXT("The host published a code")); return; }
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_INFO joining with code %s"),*Code);
   OnlineJoinCode=Code;
-  Session->JoinOnlineMatch(Code); Next(4); return;
+  // First with a wrong code: the host must turn the player away.
+  Session->TestSentCode=TEXT("WRONG2");
+  Session->JoinOnlineMatch(Code); Next(11); return;
  }
+ case 11:
+  if (Session->LanStatus!=TEXT("Wrong match code.") || World->GetNetMode()==NM_Client || !PC || !PC->GetPawn()) { if (Elapsed>90) Check(false,TEXT("The host refuses a wrong code and the player is told why")); return; }
+  Check(true,TEXT("The host refuses a wrong code and the player is told why"));
+  Session->TestSentCode.Reset();
+  Next(14); return;
+ case 14:
+  // Retry like a player would, after a few seconds: Epic's peer-to-peer link needs a moment to close on both sides.
+  if (Elapsed<10) return;
+  Session->JoinOnlineMatch(OnlineJoinCode); Next(4); return;
  case 4:
   if (!Match || World->GetNetMode()!=NM_Client || !Match->bInLobby) { if (Elapsed>90) Check(false,TEXT("The joined player reaches the host's lobby through Epic")); return; }
   // Replicated state arrives over a few frames after the map loads.
@@ -473,8 +498,15 @@ void UCrosshairMatchTest::TickOnline()
   Next(9); return;
  }
  case 9:
-  // The host leaves: this player is sent back to Home.
-  if (World->GetNetMode()==NM_Client && Elapsed<40) return;
+  // The host removes this player: back in practice, told why.
+  if (World->GetNetMode()==NM_Client || !PC || !PC->GetPawn()) { if (Elapsed>60) Check(false,TEXT("The removed player returns to practice and is told why")); return; }
+  if (!Check(Session->LanStatus==TEXT("The host removed you from this match."),TEXT("The removed player returns to practice and is told why"))) return;
+  Session->LanStatus.Reset();
+  Session->JoinOnlineMatch(OnlineJoinCode); Next(13); return;
+ case 13:
+  if (Session->LanStatus!=TEXT("The host removed you from this match.") || World->GetNetMode()==NM_Client || !PC || !PC->GetPawn()) { if (Elapsed>90) Check(false,TEXT("A removed player cannot rejoin with the code")); return; }
+  Check(true,TEXT("A removed player cannot rejoin with the code"));
+  FFileHelper::SaveStringToFile(TEXT("ok"),*ClientRemovedFile);
   UE_LOG(LogTemp,Display,TEXT("CROSSHAIR_ONLINE_CLIENT_OK"));
   Finish(); return;
  default: return;

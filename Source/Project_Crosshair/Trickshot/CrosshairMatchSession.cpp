@@ -21,14 +21,38 @@
 #include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"
+#include "Misc/SecureHash.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameSession.h"
+#include "Engine/NetConnection.h"
+#include "Engine/NetDriver.h"
+#include "Engine/Engine.h"
+#include "GameFramework/PlayerState.h"
+
+FString CrosshairOnlineCode::ListingKey(const FString& Code)
+{
+ // A fixed salt keeps these hashes specific to Crosshair. The rounds turn testing all 2^30 codes against a listing
+ // from seconds into hours of computing: a speed bump, not a lock. The host's code check (FCrosshairJoinGate) is the lock.
+ const FTCHARToUTF8 Salted(*(TEXT("Crosshair:Online:v1:")+Code));
+ uint8 Hash[FSHA1::DigestSize];
+ FSHA1::HashBuffer(Salted.Get(),Salted.Length(),Hash);
+ TArray<uint8> Round;
+ for (int32 i=1;i<ListingHashRounds;++i)
+ {
+  Round.Reset(); Round.Append(Hash,FSHA1::DigestSize); Round.Append(reinterpret_cast<const uint8*>(Salted.Get()),Salted.Length());
+  FSHA1::HashBuffer(Round.GetData(),Round.Num(),Hash);
+ }
+ return BytesToHex(Hash,FSHA1::DigestSize);
+}
 
 namespace
 {
  const FName CrosshairModeKey(TEXT("CROSSHAIR_MODE"));
  const FName CrosshairHostKey(TEXT("CROSSHAIR_HOST"));
  const FName CrosshairBotsKey(TEXT("CROSSHAIR_BOTS"));
- // Epic session attributes and bucket for Online code listings.
- const char* const CrosshairEpicCodeAttr="CROSSHAIRCODE";
+ // Epic session attributes and bucket for Online code listings. The code itself is never advertised, only
+ // CrosshairOnlineCode::ListingKey (the old plain CROSSHAIRCODE attribute is gone, so older builds cannot find these).
+ const char* const CrosshairEpicKeyAttr="CROSSHAIRKEY";
  const char* const CrosshairEpicHostAttr="CROSSHAIRHOST";
  const char* const CrosshairEpicModeAttr="CROSSHAIRMODE";
  const char* const CrosshairEpicMapAttr="CROSSHAIRMAP";
@@ -193,6 +217,7 @@ void UCrosshairMatchSession::CreateOnlineSession()
  UCrosshairBotMatch::Validate(Saved.Lan);
  const auto& Options=Saved.Lan.Match;
  OnlineCode=CrosshairOnlineCode::Generate();
+ JoinGate.Reset(OnlineCode);
  HostedChoice=Options.Map; HostedMap=UCrosshairBotMatch::ResolveMap(Options.Map);
  // Each listing gets its own local name, so a new one never waits for an old one to be removed.
  OnlineSessionName=TEXT("Crosshair_")+OnlineCode;
@@ -212,7 +237,7 @@ void UCrosshairMatchSession::CreateOnlineSession()
   Progress.ApiVersion=EOS_SESSIONMODIFICATION_SETJOININPROGRESSALLOWED_API_LATEST; Progress.bAllowJoinInProgress=EOS_TRUE;
   bReady=EOS_SessionModification_SetPermissionLevel(Modification,&Permission)==EOS_EResult::EOS_Success
    && EOS_SessionModification_SetJoinInProgressAllowed(Modification,&Progress)==EOS_EResult::EOS_Success
-   && AddEpicAttribute(Modification,CrosshairEpicCodeAttr,OnlineCode)
+   && AddEpicAttribute(Modification,CrosshairEpicKeyAttr,CrosshairOnlineCode::ListingKey(OnlineCode))
    && AddEpicAttribute(Modification,CrosshairEpicHostAttr,CrosshairEpicUserText(Me))
    && AddEpicAttribute(Modification,CrosshairEpicModeAttr,UCrosshairBotMatch::ModeName(Options.Mode))
    && AddEpicAttribute(Modification,CrosshairEpicMapAttr,UCrosshairBotMatch::MapName(HostedMap));
@@ -280,9 +305,10 @@ void UCrosshairMatchSession::FindOnlineHost(const FString& Code,int32 Attempt)
  Create.ApiVersion=EOS_SESSIONS_CREATESESSIONSEARCH_API_LATEST; Create.MaxSearchResults=1;
  EOS_HSessionSearch SearchHandle=nullptr;
  if (EOS_Sessions_CreateSessionSearch(Sessions,&Create,&SearchHandle)!=EOS_EResult::EOS_Success) { LanStatus=TEXT("Could not search for that code."); return; }
- const FTCHARToUTF8 CodeText(*Code);
+ // Listings carry only the code's hash, so look the hash up.
+ const FTCHARToUTF8 CodeText(*CrosshairOnlineCode::ListingKey(Code));
  EOS_Sessions_AttributeData Match={};
- Match.ApiVersion=EOS_SESSIONS_ATTRIBUTEDATA_API_LATEST; Match.Key=CrosshairEpicCodeAttr; Match.Value.AsUtf8=CodeText.Get(); Match.ValueType=EOS_EAttributeType::EOS_AT_STRING;
+ Match.ApiVersion=EOS_SESSIONS_ATTRIBUTEDATA_API_LATEST; Match.Key=CrosshairEpicKeyAttr; Match.Value.AsUtf8=CodeText.Get(); Match.ValueType=EOS_EAttributeType::EOS_AT_STRING;
  EOS_SessionSearch_SetParameterOptions Parameter={};
  Parameter.ApiVersion=EOS_SESSIONSEARCH_SETPARAMETER_API_LATEST; Parameter.Parameter=&Match; Parameter.ComparisonOp=EOS_EOnlineComparisonOp::EOS_CO_EQUAL;
  // Only Crosshair's own listings (the bucket every Online host uses).
@@ -346,14 +372,47 @@ void UCrosshairMatchSession::FindOnlineHost(const FString& Code,int32 Attempt)
   Self->bOnlineJoined=true;
   Self->LanStatus=TEXT("Connecting...");
   // Epic's peer-to-peer address for the host, as the engine writes it: [EOS:<host's Epic user ID>].
+  // The code rides along as a login option: the host lets the player in only if it matches (FCrosshairJoinGate).
+  // Lobby reloads travel relative to this URL, so it is sent again on every reconnect.
   const FString Address=FString::Printf(TEXT("[EOS:%s]"),*Host);
   UE_LOG(LogTemp,Display,TEXT("Crosshair online: found the host, travelling to %s"),*Address);
-  Controller->ClientTravel(Address,TRAVEL_Absolute);
+  const FString& Sent=Self->TestSentCode.IsEmpty() ? Context->Code : Self->TestSentCode;
+  Controller->ClientTravel(FString::Printf(TEXT("%s?%s=%s"),*Address,CrosshairOnlineCode::TravelOption(),*Sent),TRAVEL_Absolute);
  });
 }
 
+void UCrosshairMatchSession::Initialize(FSubsystemCollectionBase& Collection)
+{
+ Super::Initialize(Collection);
+ if (GEngine) FailureHandle=GEngine->OnNetworkFailure().AddUObject(this,&UCrosshairMatchSession::OnNetworkFailure);
+}
+void UCrosshairMatchSession::OnNetworkFailure(UWorld* World,UNetDriver* Driver,ENetworkFailure::Type Type,const FString& Error)
+{
+ // Only this game's own client connection (the host losing a client is not a failure for the host).
+ if (!Driver || Driver->IsServer() || (World && World->GetGameInstance()!=GetGameInstance())) return;
+ if (Driver->NetDriverName!=NAME_GameNetDriver && Driver->NetDriverName!=NAME_PendingNetDriver) return;
+ bOnlineJoined=false;
+ // A refused login (wrong code, locked out, removed) carries the host's reason; the engine then returns to practice.
+ if (Type==ENetworkFailure::PendingConnectionFailure || Type==ENetworkFailure::FailureReceived)
+ {
+  LanStatus=DisconnectReason=Error.IsEmpty() ? FString(TEXT("Could not join that match.")) : Error;
+  UE_LOG(LogTemp,Display,TEXT("Crosshair online: the host refused the connection: %s"),*LanStatus);
+ }
+}
+bool UCrosshairMatchSession::RemovePlayer(APlayerController* Player)
+{
+ UWorld* World=GetWorld();
+ AGameModeBase* Mode=World ? World->GetAuthGameMode() : nullptr;
+ UNetConnection* Connection=Player ? Player->GetNetConnection() : nullptr;
+ if (!Mode || !Mode->GameSession || World->GetNetMode()!=NM_ListenServer || !Connection || Player->IsLocalController()) return false;
+ // Keyed by the same address PreLogin sees, so the removed player cannot come back with the code this session.
+ JoinGate.Removed.Add(Connection->LowLevelGetRemoteAddress());
+ UE_LOG(LogTemp,Display,TEXT("Crosshair: host removed %s"),Player->PlayerState ? *Player->PlayerState->GetPlayerName() : TEXT("a player"));
+ return Mode->GameSession->KickPlayer(Player,FText::FromString(TEXT("The host removed you from this match.")));
+}
 void UCrosshairMatchSession::Deinitialize()
 {
+ if (GEngine) GEngine->OnNetworkFailure().Remove(FailureHandle);
  ClearHandles();
  DestroyOnlineSession();
  Super::Deinitialize();
@@ -397,7 +456,7 @@ bool UCrosshairMatchSession::HostLanMatch()
  FString Reason;
  if (!CanTravel(Reason)) { LanStatus=Reason; return false; }
  DestroyOnlineSession();
- bOnlineSession=bOnlineJoined=false; OnlineCode.Reset();
+ bOnlineSession=bOnlineJoined=false; OnlineCode.Reset(); JoinGate.Reset();
  const IOnlineSessionPtr Interface=SessionInterface();
  if (!Interface.IsValid()) { LanStatus=TEXT("LAN unavailable: online subsystem not loaded."); return false; }
  if (Interface->GetNamedSession(NAME_GameSession)) Interface->DestroySession(NAME_GameSession);
@@ -493,7 +552,7 @@ void UCrosshairMatchSession::LeaveMatch()
  if (const IOnlineSessionPtr Interface=SessionInterface(); Interface.IsValid() && Interface->GetNamedSession(NAME_GameSession))
   Interface->DestroySession(NAME_GameSession);
  DestroyOnlineSession();
- bOnlineSession=bOnlineJoined=false; OnlineCode.Reset();
+ bOnlineSession=bOnlineJoined=false; OnlineCode.Reset(); JoinGate.Reset();
  auto* Library=GetGameInstance()->GetSubsystem<UCrosshairMapLibrary>();
  // Arrive on Home, as when the game first opens.
  Library->bHomeVisited=false; Library->ActiveMapId.Reset();

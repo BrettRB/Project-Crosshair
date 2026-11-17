@@ -566,6 +566,10 @@ void ACrosshairMatchGameMode::EndMatch(const FString& Result)
 void ACrosshairMatchGameMode::PreLogin(const FString& Options,const FString& Address,const FUniqueNetIdRepl& UniqueId,FString& ErrorMessage)
 {
  Super::PreLogin(Options,Address,UniqueId,ErrorMessage);
+ // Online lobbies admit only players who send the code; removed players stay out (LAN and Online).
+ if (ErrorMessage.IsEmpty() && bLanMatch)
+  ErrorMessage=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->JoinGate.Check(Address,UGameplayStatics::ParseOption(Options,CrosshairOnlineCode::TravelOption()));
  if (ErrorMessage.IsEmpty() && bLanMatch && GetNumPlayers()>=MaxHumans)
   ErrorMessage=FString::Printf(TEXT("This LAN match is full (%d players)."),MaxHumans);
+ if (!ErrorMessage.IsEmpty()) UE_LOG(LogTemp,Display,TEXT("Crosshair: refused a join from %s: %s"),*Address,*ErrorMessage);
 }

@@ -4540,3 +4540,62 @@ Read-only status question: report whether Online (internet) multiplayer works in
 ### Response Summary
 Online works in the current version for casual play with friends (verified on one PC against Epic's real backend), but is beta: cross-network play, packaged builds and a full Online match are untested, and the join code is not yet enforced. Suggested a two-PC test as the next step.
 ---
+
+---
+## Interaction 101
+
+### User Prompt
+go ahead and fix F2
+
+### Interpretation
+Fix security audit finding F2: Online friend codes did not restrict who could join. Apply the audit's four recommendations: the host checks the code, the listing stops showing the plain code, codes are stronger, and the host can kick players.
+
+### Requirements / Acceptance Criteria
+- The host refuses Online joins with a missing or wrong code, and the player is told why.
+- Epic's public listing no longer contains the plain code.
+- Codes come from cryptographic randomness and are longer.
+- The host can remove a joined player from the lobby, and that player cannot rejoin the session.
+- LAN keeps working (no code), unit tests cover the new rules, and the Online smoke test exercises the real path.
+
+### Actions Taken
+- `CrosshairOnlineCode`: 6 characters from `FGuid::NewGuid` (CoCreateGuid / uuid_generate random bits), `ListingKey` (salted SHA-1, 20,000 rounds), `Matches`, and the `CrosshairCode` travel option.
+- New `FCrosshairJoinGate`: code check, a 5-failure lockout per address, and a removed-players set. `UCrosshairMatchSession` holds it across lobby reloads and resets it when a new session is hosted or left.
+- `ACrosshairMatchGameMode::PreLogin` checks the gate for LAN/Online lobbies.
+- The Epic listing advertises and searches `CROSSHAIRKEY` (the hash) instead of `CROSSHAIRCODE`. The joiner travels to `[EOS:<host>]?CrosshairCode=<code>`.
+- `UCrosshairMatchSession::RemovePlayer` records the address and kicks through `AGameSession::KickPlayer`. A network-failure hook and `ClientWasKicked` keep the reason, which shows on the Online page and over the practice soldier.
+- Lobby: new host-only **Remove player** row (Left / Right picks, Enter removes).
+- Tests: new `Crosshair.Security.JoinGate`, an extended `Crosshair.Match.OnlineCode`, and new Online smoke steps (wrong code refused, retry, host removes the player, rejoin refused). The smoke test has a `TestSentCode` hook.
+- Docs: README (six-character code), `docs/offline-match-and-lan.md` (new section with remaining limits), and `docs/security-audit.md` (F2 marked Fixed, with verification).
+
+### Files Changed
+- README.md
+- Source/Project_Crosshair/Trickshot/CrosshairGame.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairGame.h
+- Source/Project_Crosshair/Trickshot/CrosshairMatch.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairMatchSession.cpp
+- Source/Project_Crosshair/Trickshot/CrosshairMatchSession.h
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairMatchTest.cpp
+- Source/Project_Crosshair/Trickshot/Tests/CrosshairRulesTests.cpp
+- docs/offline-match-and-lan.md
+- docs/security-audit.md
+- docs/ai-interaction-log.md (this entry)
+
+### Verification
+- `Build.bat Project_CrosshairEditor Win64 Development`: Succeeded. `Build.bat Project_Crosshair Win64 Shipping`: Succeeded.
+- `UnrealEditor-Cmd ... -ExecCmds="Automation RunTests Crosshair"`: 21/21 Success, including `Crosshair.Security.JoinGate` and `Crosshair.Match.OnlineCode`.
+- Online two-process test with the real Epic IDs (`-game -CrosshairSmoke -CrosshairOnlineHost` / `-CrosshairOnlineClient -CrosshairOnlineFreshDevice -NullRHI`):
+  - First run: the wrong code was refused ("PreLogin failure: Wrong match code."), but the retry 0.5 s later timed out because the Epic P2P link was still closing.
+  - The test now waits 10 s before retrying. Second run: CROSSHAIR_ONLINE_HOST_OK and CROSSHAIR_ONLINE_CLIENT_OK. The wrong code was refused, the right code joined and played, the host removed the player, and the rejoin was refused with "The host removed you from this match."
+- LAN two-process (`-CrosshairLanHost` / `-CrosshairLanClient`): CROSSHAIR_LAN_HOST_OK and CROSSHAIR_LAN_CLIENT_OK. `-CrosshairFrontendSmoke`: CROSSHAIR_FRONTEND_OK.
+
+### Notes / Follow-up
+- This change breaks compatibility: older builds (v1.3.1 and earlier) cannot find lobbies from new builds, and new builds cannot find old ones.
+- Remaining risk: the host's Epic ID is still listed. A 30-bit code hash can be brute-forced offline with effort. A removed player can return with a new device ID. Remove player is lobby-only.
+- An immediate retry (under about a second) after a refusal can time out while Epic's P2P link closes.
+- Not tested: two PCs on different networks, a packaged build, and the Remove player row by hand in a rendered lobby (the smoke test calls `RemovePlayer` directly).
+- F1 portal check and F6-F11 are still open.
+- `Build/Windows/FileOpenOrder/EditorOpenOrder.log` was already modified and was left uncommitted.
+
+### Response Summary
+Fixed F2: the host checks a six-character, OS-random code on connect with a lockout, the listing carries only a slow hash, and the host can remove players, who cannot rejoin. Unit, Online (real Epic), LAN and frontend tests pass. Reported the compatibility break and the remaining limits.
+---

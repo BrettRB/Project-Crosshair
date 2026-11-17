@@ -427,7 +427,7 @@ When another soldier kills you in a match (offline or LAN), you see the last mom
 
 ## Online matches with a friend code (2026-11-09)
 
-**For players:** Play > Online. Set a username, then type a friend's five-character code and choose Join, or choose Host to open a lobby and get a code to share. No account or sign-up. The code stays on the lobby screen for the whole session.
+**For players:** Play > Online. Set a username, then type a friend's six-character code and choose Join, or choose Host to open a lobby and get a code to share. No account or sign-up. The code stays on the lobby screen for the whole session.
 
 **How it works:** Epic Online Services matches the code to the host and connects players peer-to-peer, using Epic's relay when a direct path fails. Each PC signs in anonymously with a device ID. Online reuses the LAN lobby, setup and match rules; only finding and connecting differs. LAN stays on IP sockets.
 
@@ -442,7 +442,7 @@ When another soldier kills you in a match (offline or LAN), you see the last mom
 The first real run with the Epic IDs failed at sign-in: the engine's old `OnlineSubsystemEOS` plugin cannot sign in with a device ID on Windows (Epic requires a display name with device-ID logins, and that engine build never sends one). Online now runs on Epic Game Services through the engine's newer **`OnlineServicesEOSGS`** plugin:
 
 - **Sign-in:** each PC creates (or reuses) its device ID and logs in anonymously through `OnlineServicesEOSGS`. No Epic account. The IDs from `CrosshairOnline.local.ini` are registered with the engine's Epic SDK manager at runtime, so the secret still never goes into checked-in config.
-- **Host:** publishes an Epic session in the `Crosshair:Online` bucket with the five-character code and the host's Epic user ID as searchable attributes, then opens the lobby as a listen server on Epic's peer-to-peer driver (`NetDriverEOS`).
+- **Host:** publishes an Epic session in the `Crosshair:Online` bucket with a salted hash of the code and the host's Epic user ID as searchable attributes (the code itself is not listed; see [Join code checks](#join-code-checks-and-removing-players-2026-11-17)), then opens the lobby as a listen server on Epic's peer-to-peer driver (`NetDriverEOS`).
 - **Join:** searches for the code (retrying a few times, since a brand new listing can take a moment to appear), then travels to `[EOS:<host's Epic user ID>]`. Epic's relay carries the traffic if a direct connection fails. Typing your own code says "That code is your own match."
 - **Leave:** the host's code listing is removed when they leave or quit. Joined players drop back to Home when the host leaves.
 - LAN is unchanged: it still uses the Null subsystem and IP sockets.
@@ -451,3 +451,23 @@ The first real run with the Epic IDs failed at sign-in: the engine's old `Online
 **Verified with the real Epic IDs** (two processes on one PC; `-CrosshairSmoke -CrosshairOnlineHost` / `-CrosshairOnlineClient -NullRHI`): the host signs in, publishes a code and opens the lobby; the client signs in as a different Epic user, finds the code, connects peer-to-peer, sees the same code and both players in the lobby; the host starts the match; each side sees the other's soldier; the host leaves and the listing is removed (`CROSSHAIR_ONLINE_HOST_OK` / `CROSSHAIR_ONLINE_CLIENT_OK`). For the one-PC test only, the client passes `-CrosshairOnlineFreshDevice` so it gets its own device ID instead of sharing the first game's.
 
 **Not verified:** two separate PCs on different networks (the relay path), a packaged build, and a full Online match with killcams and the lobby return (these share the LAN code and were verified over LAN).
+
+### Join code checks and removing players (2026-11-17)
+
+Fixes security audit finding F2 (see `docs/security-audit.md`). Before this change the code only helped players find a lobby. Anyone with the game's Epic IDs could list every lobby and join without it.
+
+- **The host checks the code.** A joining player sends the code with the connection (`?CrosshairCode=`). `ACrosshairMatchGameMode::PreLogin` refuses a missing or wrong code with "Wrong match code." The rule lives in `FCrosshairJoinGate` (`CrosshairMatchSession.h`).
+- **Lockout:** after 5 wrong codes from one Epic user (or one LAN address), that user cannot join this session even with the right code.
+- **The listing no longer shows the code.** Epic's listing carries `CrosshairOnlineCode::ListingKey(code)`, a salted SHA-1 hashed 20,000 times, and joiners search for the same key. Builds from before this change cannot find new lobbies, and new builds cannot find old ones.
+- **Codes are six characters** (about 1 billion combinations, up from 33 million). They come from the OS's cryptographic random source (a random GUID), not the game's RNG.
+- **Remove player (host, lobby):** once someone has joined, the host's lobby shows **Remove player**. Left / Right picks a player and Enter removes them. They return to practice with "The host removed you from this match." and cannot rejoin this session with the code. This works on LAN too, by IP address. Hosting a new session clears removals and lockouts.
+- A refused or removed player sees the reason on the Online page and briefly over their practice soldier.
+
+**Remaining limits:**
+- The host's Epic user ID is still listed. It identifies the host but no longer lets anyone in.
+- The hash slows down working out a code from the listing but cannot prevent it. Six characters at 20,000 hashing rounds is a lot of computing work, but someone determined could still recover a live code. The host-side check plus **Remove player** is the real protection.
+- A removed player could come back with a new Epic device ID if they still have the code. The host can remove them again.
+- **Remove player** is only in the lobby, not mid-match.
+- Retrying within about a second of a refusal can time out, because Epic's peer-to-peer link is still closing. A few seconds later works.
+
+**Verified** (two processes on one PC, real Epic IDs, `-CrosshairSmoke -CrosshairOnlineHost` / `-CrosshairOnlineClient -CrosshairOnlineFreshDevice -NullRHI`): a wrong code was refused and the player was told why. The right code then joined, and the match started with each side seeing the other. The host removed the player, who returned to practice with the message. Their rejoin with the right code was refused. The listing was removed when the host left (`CROSSHAIR_ONLINE_HOST_OK` / `CROSSHAIR_ONLINE_CLIENT_OK`). Unit test: `Crosshair.Security.JoinGate`.

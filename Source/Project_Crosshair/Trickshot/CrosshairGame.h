@@ -94,6 +94,13 @@ public:
  static constexpr int32 LobbyLeaveRow=4;
  /** Host only: the LAN setup (mode, map, bots, limits); applied on returning to the lobby. */
  static constexpr int32 LobbySetupRow=5;
+ /** Host only, once someone has joined: Left / Right picks a joined player, Enter removes them for the session. */
+ static constexpr int32 LobbyRemoveRow=6;
+ /** Host: joined players (not the host) in lobby order, for the Remove player row. */
+ TArray<APlayerController*> GetRemovablePlayers() const;
+ int32 RemoveTarget=0;
+ /** The host removed this player: keep the reason to show back in practice. */
+ virtual void ClientWasKicked_Implementation(const FText& KickReason) override;
  UFUNCTION(Server,Reliable) void ServerRequestTeam(uint8 Team);
  UFUNCTION(Server,Reliable) void ServerStartLobbyMatch();
  /** Replays the last seconds before this player's death from the killer's eyes (local player only). */

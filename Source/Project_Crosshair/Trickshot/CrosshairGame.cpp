@@ -61,6 +61,17 @@ void ACrosshairPlayerController::BeginPlay()
  if (IsLocalController() && !GetWorld()->GetDemoNetDriver()) ServerSetPlayerName(GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>()->GetSettings().PlayerName);
  if (IsLocalController() && !Library->bHomeVisited && !FParse::Param(FCommandLine::Get(),TEXT("CrosshairSmoke")) && !GetWorld()->GetDemoNetDriver())
  { Library->bHomeVisited=true; GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this,[this](){ ShowHome(); })); }
+ // Back from a match the host refused or removed us from: say why, on the practice soldier once it spawns.
+ if (IsLocalController() && GetNetMode()!=NM_Client)
+  if (auto* Session=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>(); !Session->DisconnectReason.IsEmpty())
+  {
+   FTimerHandle Show;
+   GetWorldTimerManager().SetTimer(Show,FTimerDelegate::CreateWeakLambda(this,[this,Session]()
+   {
+    if (auto* Soldier=Cast<ACrosshairCharacter>(GetPawn())) Soldier->Notify(Session->DisconnectReason);
+    Session->DisconnectReason.Reset();
+   }),1.f,false);
+  }
 }
 void ACrosshairPlayerController::ApplyGameplayInputMode()
 {
@@ -117,6 +128,7 @@ FString ACrosshairPlayerController::GetRowHelp(int32 Row) const
   case LobbySettingsRow: return TEXT("Controls, sensitivity and graphics.");
   case LobbySetupRow: return TEXT("Mode, map, bots and limits. Changes apply when you return to the lobby.");
   case LobbyLeaveRow: return IsLobbyHost() ? TEXT("Close the lobby for everyone and return to the main menu.") : TEXT("Leave this LAN match and return to the main menu.");
+  case LobbyRemoveRow: return TEXT("Left / Right picks a player. Enter removes them; they cannot rejoin this match.");
   default: return FString();
   }
  }
@@ -244,6 +256,20 @@ void ACrosshairPlayerController::ClientNotify_Implementation(const FString& Text
 {
  // Drawn by the HUD in the match overlay or the lobby, so it shows with or without a soldier.
  Notice=Text; NoticeUntil=GetWorld()->GetTimeSeconds()+3;
+}
+TArray<APlayerController*> ACrosshairPlayerController::GetRemovablePlayers() const
+{
+ TArray<APlayerController*> Players;
+ if (!IsLobbyHost()) return Players;
+ for (FConstPlayerControllerIterator It=GetWorld()->GetPlayerControllerIterator();It;++It)
+  if (APlayerController* Other=It->Get(); Other && !Other->IsLocalController() && Other->PlayerState && !Other->PlayerState->IsABot()) Players.Add(Other);
+ return Players;
+}
+void ACrosshairPlayerController::ClientWasKicked_Implementation(const FText& KickReason)
+{
+ // The connection closes right after this; the reason is shown once the player is back in practice.
+ auto* Session=GetGameInstance()->GetSubsystem<UCrosshairMatchSession>();
+ Session->LanStatus=Session->DisconnectReason=KickReason.ToString();
 }
 void ACrosshairPlayerController::StartPlaying()
 {
@@ -430,8 +456,11 @@ TArray<FString> ACrosshairPlayerController::GetMenuRows() const
 	if (bLobbyScreen)
 	{
 		const auto* Me=GetPlayerState<ACrosshairMatchPlayerState>();
+		const TArray<APlayerController*> Removable=GetRemovablePlayers();
+		const APlayerController* Target=Removable.IsEmpty() ? nullptr : Removable[FMath::Clamp(RemoveTarget,0,Removable.Num()-1)];
 		return {IsLobbyHost() ? TEXT("Start match") : TEXT("Waiting for the host to start"),TEXT("Team: ")+(Me ? ACrosshairMatchState::TeamName(Me->Team) : FString()),
-			TEXT("Weapon classes"),TEXT("Settings"),TEXT("Leave lobby"),TEXT("Match settings")};
+			TEXT("Weapon classes"),TEXT("Settings"),TEXT("Leave lobby"),TEXT("Match settings"),
+			TEXT("Remove player: ")+(Target && Target->PlayerState ? Target->PlayerState->GetPlayerName() : FString())};
 	}
  auto* Replay = GetGameInstance()->GetSubsystem<UCrosshairReplaySubsystem>();
 	if (bHomeScreen) return {bFromHome ? TEXT("Play") : Replay->IsPlayback() ? TEXT("Return to practice") : TEXT("Resume"),TEXT("Customize"),TEXT("Settings"),IsInMatch() ? TEXT("Leave match") : TEXT("Main menu")};
@@ -566,6 +595,7 @@ TArray<int32> ACrosshairPlayerController::GetVisibleMenuRows() const
 		TArray<int32> Rows;
 		if (IsLobbyHost()) Rows.Append({LobbyStartRow,LobbySetupRow});
 		if (const auto* Match=ACrosshairMatchState::Get(this); Match && Match->IsTeamMode()) Rows.Add(LobbyTeamRow);
+		if (IsLobbyHost() && !GetRemovablePlayers().IsEmpty()) Rows.Add(LobbyRemoveRow);
 		Rows.Append({LobbyClassRow,LobbySettingsRow,LobbyLeaveRow});
 		return Rows;
 	}
@@ -658,6 +688,7 @@ void ACrosshairPlayerController::AdjustSelection(int32 Direction)
   // Two teams, so Left and Right both switch.
   const auto* Me=GetPlayerState<ACrosshairMatchPlayerState>();
   if (MenuSelection==LobbyTeamRow && Me) ServerRequestTeam(Me->Team==CrosshairMatchRules::Alpha ? CrosshairMatchRules::Bravo : CrosshairMatchRules::Alpha);
+  if (MenuSelection==LobbyRemoveRow) { const int32 Count=GetRemovablePlayers().Num(); if (Count>0) RemoveTarget=(FMath::Clamp(RemoveTarget,0,Count-1)+Direction+Count)%Count; }
   return;
  }
  if (bHomeScreen) return;
@@ -737,6 +768,17 @@ void ACrosshairPlayerController::ActivateSelection()
   else if (Selected==LobbyClassRow) SetMenuTab(6);
   else if (Selected==LobbySettingsRow) SetMenuTab(1);
   else if (Selected==LobbySetupRow && IsLobbyHost()) SetMenuTab(9);
+  else if (Selected==LobbyRemoveRow && IsLobbyHost())
+  {
+   const TArray<APlayerController*> Removable=GetRemovablePlayers();
+   if (!Removable.IsEmpty())
+   {
+    APlayerController* Target=Removable[FMath::Clamp(RemoveTarget,0,Removable.Num()-1)];
+    const FString Name=Target->PlayerState ? Target->PlayerState->GetPlayerName() : FString(TEXT("Player"));
+    if (GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->RemovePlayer(Target)) { Notice=Name+TEXT(" was removed."); NoticeUntil=GetWorld()->GetTimeSeconds()+3; }
+    RemoveTarget=0;
+   }
+  }
   else if (Selected==LobbyLeaveRow) { FlushPressedKeys(); bLobbyScreen=bLobbyMenus=false; GetGameInstance()->GetSubsystem<UCrosshairMatchSession>()->LeaveMatch(); }
   return;
  }
@@ -1202,7 +1244,14 @@ void ACrosshairHUD::DrawMenu(ACrosshairPlayerController* PC,ACrosshairMatchState
 			Rows[Row].Split(TEXT(": "),&RowLabel,&Value);
 			Text(RowLabel,Sel ? Amber : Ink,54,Y+7,.98f);
 			Text(PC->GetRowHelp(Row),Muted,54,Y+31,.56f);
-			if (Row==PC->LobbyTeamRow)
+			if (Row==PC->LobbyRemoveRow)
+			{
+				Text(TEXT("<"),Sel ? Amber : Dim,330,Y+14,.95f); TextRight(TEXT(">"),Sel ? Amber : Dim,484,Y+14,.95f);
+				TextCenter(Value.Left(12),Ink,407,Y+14,.8f);
+				HitBox(FString::Printf(TEXT("Less_%d"),Row),316,Y,84,RH); HitBox(FString::Printf(TEXT("More_%d"),Row),416,Y,84,RH);
+				HitBox(RowName,32,Y,284,RH);
+			}
+			else if (Row==PC->LobbyTeamRow)
 			{
 				Text(TEXT("<"),Sel ? Amber : Dim,330,Y+14,.95f); TextRight(TEXT(">"),Sel ? Amber : Dim,484,Y+14,.95f);
 				TextCenter(Value.ToUpper(),Value==TEXT("Alpha") ? FLinearColor(.35f,.65f,1.f) : FLinearColor(1.f,.38f,.32f),407,Y+14,.95f);

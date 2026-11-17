@@ -33,7 +33,7 @@ This project was made for an **AI-Assisted Software Engineering** course. It was
 - After a LAN match, everyone returns to the **same lobby** to change classes and play again. The host can change the mode, map, bots and limits there from **Match settings**.
 
 ### Online with a friend code (experimental)
-- **Play > Online**: host to get a five-character code, or type a friend's code to join them over the internet. No account or sign-up: each PC signs in anonymously to Epic Online Services (free), which finds the host by code and connects players peer-to-peer, through Epic's relay when needed.
+- **Play > Online**: host to get a six-character code, or type a friend's code to join them over the internet. No account or sign-up: each PC signs in anonymously to Epic Online Services (free), which finds the host by code and connects players peer-to-peer, through Epic's relay when needed.
 - Online uses the same lobby, setup, match rules and killcam as LAN. Builds need the developer's Epic IDs in `Content/Online/CrosshairOnline.local.ini`; see [Online matches](docs/offline-match-and-lan.md#online-made-to-work-with-epic-2026-11-10).
 
 ### Everything else

@@ -1,21 +1,32 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Engine/EngineBaseTypes.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "CrosshairBotMatch.h"
 #include "CrosshairMatchSession.generated.h"
 
 class FOnlineSessionSearch;
 
-/** Friend codes for Online matches: five characters, leaving out ones easily misread (0/O, 1/I). */
+/**
+ * Friend codes for Online matches: six characters, leaving out ones easily misread (0/O, 1/I).
+ * The code is the key to the lobby: the host checks it on every connection (FCrosshairJoinGate), and Epic's
+ * public listing carries only a slow salted hash of it (ListingKey), never the code itself.
+ */
 namespace CrosshairOnlineCode
 {
- constexpr int32 Length=5;
+ constexpr int32 Length=6;
  inline const TCHAR* Alphabet() { return TEXT("ABCDEFGHJKLMNPQRSTUVWXYZ23456789"); }
+ /**
+  * Uses the OS's cryptographic random source, not the game's RNG: a new GUID is a random (version 4) UUID on
+  * Windows (CoCreateGuid) and Mac (uuid_generate), and its first 32 bits are all random. 6 x 5 bits = 30 of them.
+  */
  inline FString Generate()
  {
+  static_assert(Length*5<=32,"One GUID word holds the whole code");
+  const uint32 Random=FGuid::NewGuid().A;
   FString Code;
-  for (int32 i=0;i<Length;++i) Code.AppendChar(Alphabet()[FMath::RandRange(0,31)]);
+  for (int32 i=0;i<Length;++i) Code.AppendChar(Alphabet()[(Random>>(i*5))&31]);
   return Code;
  }
  /** Uppercases what a player typed and drops anything that cannot be in a code. */
@@ -26,7 +37,47 @@ namespace CrosshairOnlineCode
   return Code;
  }
  inline bool IsValid(const FString& Code) { return Code.Len()==Length && Normalize(Code)==Code; }
+ /** Travel option a joining player sends the code in; the host's PreLogin reads it. */
+ inline const TCHAR* TravelOption() { return TEXT("CrosshairCode"); }
+ /** Hash rounds for ListingKey: a few milliseconds per lookup, but hours of computing to try every code against a listing. */
+ constexpr int32 ListingHashRounds=20000;
+ /** What the Epic listing advertises and is searched by instead of the code: an iterated, salted SHA-1 (hex). */
+ PROJECT_CROSSHAIR_API FString ListingKey(const FString& Code);
+ /** Compares the whole code without stopping at the first difference. */
+ inline bool Matches(const FString& Expected,const FString& Offered)
+ {
+  if (Expected.IsEmpty() || Expected.Len()!=Offered.Len()) return false;
+  uint32 Difference=0;
+  for (int32 i=0;i<Expected.Len();++i) Difference|=uint32(Expected[i])^uint32(Offered[i]);
+  return Difference==0;
+ }
 }
+
+/**
+ * The host's door: an Online player must send the lobby's code. Wrong codes count against the player's network
+ * address, which is locked out after MaxFailures. Players the host removes stay out for the rest of the session.
+ * LAN lobbies have no code (Code empty) and only use the removed list.
+ */
+struct FCrosshairJoinGate
+{
+ static constexpr int32 MaxFailures=5;
+ /** The hosted Online code; empty for LAN. */
+ FString Code;
+ TMap<FString,int32> Failures;
+ TSet<FString> Removed;
+ /** Empty when the player may join; otherwise the reason sent back to them. */
+ FString Check(const FString& Address,const FString& OfferedCode)
+ {
+  if (Removed.Contains(Address)) return TEXT("The host removed you from this match.");
+  if (Code.IsEmpty()) return FString();
+  int32& Failed=Failures.FindOrAdd(Address);
+  if (Failed>=MaxFailures) return TEXT("Too many wrong codes for this match.");
+  if (CrosshairOnlineCode::Matches(Code,OfferedCode)) return FString();
+  ++Failed;
+  return TEXT("Wrong match code.");
+ }
+ void Reset(const FString& NewCode=FString()) { Code=NewCode; Failures.Reset(); Removed.Reset(); }
+};
 
 /**
  * Starts offline matches and owns the hosted sessions. LAN uses the engine's Null online subsystem: broadcast
@@ -40,7 +91,10 @@ class PROJECT_CROSSHAIR_API UCrosshairMatchSession : public UGameInstanceSubsyst
 {
  GENERATED_BODY()
 public:
+ virtual void Initialize(FSubsystemCollectionBase& Collection) override;
  virtual void Deinitialize() override;
+ /** Why the host turned this player away or removed them (shown once back in practice); empty otherwise. */
+ FString DisconnectReason;
  /** Travels to the saved COD map with the saved mode. Rejects non-match maps. */
  bool StartOfflineMatch();
  /** Advertises a LAN session, then opens the match map as a listen server. */
@@ -67,6 +121,12 @@ public:
  bool JoinOnlineMatch(const FString& Code);
  /** The hosted Online match's friend code; empty otherwise. */
  FString OnlineCode;
+ /** Host: who may connect (the Online code, wrong-code lockouts, removed players). Kept across lobby reloads. */
+ FCrosshairJoinGate JoinGate;
+ /** Host: removes a joined player; they cannot rejoin this session. */
+ bool RemovePlayer(APlayerController* Player);
+ /** Online smoke test only: sent to the host instead of the looked-up code, to check that the host refuses it. */
+ FString TestSentCode;
  /** What the player has typed on the Online page. */
  FString TypedCode;
  TArray<FString> LanResults;
@@ -83,6 +143,9 @@ private:
  void OnFindComplete(bool bSuccess);
  void OnJoinComplete(FName Session,EOnJoinSessionCompleteResult::Type Result);
  void ClearHandles();
+ /** A joined or joining player lost the host: keeps the host's reason (wrong code, removed) for the player. */
+ void OnNetworkFailure(UWorld* World,class UNetDriver* Driver,ENetworkFailure::Type Type,const FString& Error);
+ FDelegateHandle FailureHandle;
  /** The LAN (Null) session interface. Online sessions go straight to Epic's SDK. */
  IOnlineSessionPtr SessionInterface() const;
  bool bOnlineSession=false;

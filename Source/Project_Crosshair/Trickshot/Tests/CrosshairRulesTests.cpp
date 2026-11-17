@@ -367,10 +367,46 @@ bool FCrosshairOnlineCodeTest::RunTest(const FString&)
 {
  using namespace CrosshairOnlineCode;
  for (int32 i=0;i<200;++i) { const FString Code=Generate(); TestTrue(TEXT("Generated codes are valid"),IsValid(Code)); TestFalse(TEXT("No misreadable characters"),Code.Contains(TEXT("0")) || Code.Contains(TEXT("O")) || Code.Contains(TEXT("1")) || Code.Contains(TEXT("I"))); }
- TestEqual(TEXT("Typing is forgiving"),Normalize(TEXT(" k7-qxm ")),FString(TEXT("K7QXM")));
- TestEqual(TEXT("Input stops at the code length"),Normalize(TEXT("ABCDEFGH")),FString(TEXT("ABCDE")));
- TestFalse(TEXT("Short codes are rejected"),IsValid(TEXT("ABCD")));
+ TestEqual(TEXT("Codes are six characters"),Length,6);
+ TestEqual(TEXT("Typing is forgiving"),Normalize(TEXT(" k7-qxm4 ")),FString(TEXT("K7QXM4")));
+ TestEqual(TEXT("Input stops at the code length"),Normalize(TEXT("ABCDEFGH")),FString(TEXT("ABCDEF")));
+ TestFalse(TEXT("Short codes are rejected"),IsValid(TEXT("ABCDE")));
  TestFalse(TEXT("Empty codes are rejected"),IsValid(FString()));
+ // Codes come from the OS random source: 200 draws from 2^30 should not repeat.
+ TSet<FString> Seen; for (int32 i=0;i<200;++i) Seen.Add(Generate());
+ TestTrue(TEXT("Generated codes do not repeat"),Seen.Num()>=199);
+ // The listing never shows the code: it carries a fixed-length hash that the joiner can recompute.
+ const FString Key=ListingKey(TEXT("K7QXM4"));
+ TestEqual(TEXT("Listing key is a SHA-1 hex digest"),Key.Len(),40);
+ TestFalse(TEXT("Listing key does not contain the code"),Key.Contains(TEXT("K7QXM4")));
+ TestEqual(TEXT("Host and joiner derive the same listing key"),ListingKey(TEXT("K7QXM4")),Key);
+ TestNotEqual(TEXT("Different codes give different listing keys"),ListingKey(TEXT("K7QXM5")),Key);
+ TestTrue(TEXT("The right code matches"),Matches(TEXT("K7QXM4"),TEXT("K7QXM4")));
+ TestFalse(TEXT("A wrong code does not match"),Matches(TEXT("K7QXM4"),TEXT("K7QXM5")));
+ TestFalse(TEXT("A missing code does not match"),Matches(TEXT("K7QXM4"),FString()));
+ TestFalse(TEXT("No code is ever expected to be empty"),Matches(FString(),FString()));
+ return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrosshairJoinGateTest, "Crosshair.Security.JoinGate", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+bool FCrosshairJoinGateTest::RunTest(const FString&)
+{
+ FCrosshairJoinGate Gate;
+ Gate.Reset(TEXT("K7QXM4"));
+ TestTrue(TEXT("The right code gets in"),Gate.Check(TEXT("EOS:friend"),TEXT("K7QXM4")).IsEmpty());
+ TestFalse(TEXT("No code is refused"),Gate.Check(TEXT("EOS:stranger"),FString()).IsEmpty());
+ TestFalse(TEXT("A wrong code is refused"),Gate.Check(TEXT("EOS:stranger"),TEXT("AAAAAA")).IsEmpty());
+ for (int32 i=0;i<FCrosshairJoinGate::MaxFailures;++i) Gate.Check(TEXT("EOS:guesser"),TEXT("AAAAAA"));
+ TestEqual(TEXT("Repeated wrong codes lock the address out, even with the right code"),Gate.Check(TEXT("EOS:guesser"),TEXT("K7QXM4")),FString(TEXT("Too many wrong codes for this match.")));
+ TestTrue(TEXT("Other players are unaffected by a lockout"),Gate.Check(TEXT("EOS:friend"),TEXT("K7QXM4")).IsEmpty());
+ Gate.Removed.Add(TEXT("EOS:friend"));
+ TestEqual(TEXT("A removed player cannot rejoin with the code"),Gate.Check(TEXT("EOS:friend"),TEXT("K7QXM4")),FString(TEXT("The host removed you from this match.")));
+ Gate.Reset(TEXT("BBBBBB"));
+ TestTrue(TEXT("A new session forgets lockouts and removals"),Gate.Check(TEXT("EOS:guesser"),TEXT("BBBBBB")).IsEmpty() && Gate.Check(TEXT("EOS:friend"),TEXT("BBBBBB")).IsEmpty());
+ TestFalse(TEXT("The old code stops working"),Gate.Check(TEXT("EOS:other"),TEXT("K7QXM4")).IsEmpty());
+ Gate.Reset();
+ TestTrue(TEXT("LAN lobbies need no code"),Gate.Check(TEXT("192.168.1.20"),FString()).IsEmpty());
+ Gate.Removed.Add(TEXT("192.168.1.20"));
+ TestFalse(TEXT("LAN still keeps removed players out"),Gate.Check(TEXT("192.168.1.20"),FString()).IsEmpty());
  return true;
 }
 #include "../CrosshairStance.h"
