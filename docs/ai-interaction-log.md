@@ -4509,3 +4509,34 @@ Start fixing findings from `docs/security-audit.md`, highest risk first. F1 (Hig
 ### Response Summary
 Made the repo-side F1 mitigations and noted that the portal policy check is still the user's action. Switched packaging to Shipping without PDBs and fixed the existing guard bug that stopped Shipping from compiling. Added host-side validation for the loadout and stance RPCs, with unit tests. All tests and the LAN smoke test pass.
 ---
+
+---
+## Interaction 100
+
+### User Prompt
+is the online function of the game ready and usable in the current version of the project
+
+### Interpretation
+Read-only status question: report whether Online (internet) multiplayer works in the current master, what has been verified, and what remains open.
+
+### Requirements / Acceptance Criteria
+- Answer based on the current code, config and recorded test results, not assumptions.
+- State what is verified, what is not, and any blockers.
+
+### Actions Taken
+- Read the Online sections of `docs/offline-match-and-lan.md`, the online config in `Config/DefaultEngine.ini`, `Project_Crosshair.uproject`, `Project_Crosshair.Build.cs`, and Interactions 87-99 of this log.
+- Confirmed `Content/Online/CrosshairOnline.local.ini` exists with all six fields filled (values not printed) and is git-ignored.
+
+### Files Changed
+- docs/ai-interaction-log.md (this entry)
+
+### Verification
+- No build or tests run (question only). Most recent recorded results: two-process Online test with real Epic IDs passed (Interaction 87); suite 20/20 and LAN smoke passed after the security fixes (Interaction 99).
+
+### Notes / Follow-up
+- Not verified: two PCs on different networks (Epic relay/NAT), a packaged build's Online, a full Online match with killcams and lobby return, and Online after the Interaction 99 changes (only LAN was retested).
+- Open security items: F1 portal policy check; F2 join code not checked by the host, so anyone with the IDs could list and join lobbies.
+
+### Response Summary
+Online works in the current version for casual play with friends (verified on one PC against Epic's real backend), but is beta: cross-network play, packaged builds and a full Online match are untested, and the join code is not yet enforced. Suggested a two-PC test as the next step.
+---
